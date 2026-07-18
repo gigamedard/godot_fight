@@ -3,10 +3,13 @@ const AppState = {
     currentScreen: 'screen-character',
     selectedCharacter: null,
     walletAddress: null,
-    currentChallenger: null, // Pour stocker le challenger en cours
-    currentTargetId: null, // Le joueur qu'on est en train de défier
-    pendingChallengeParam: null, // Pour stocker le Wallet issu du lien URL
-    defaultBetAmount: localStorage.getItem('web3combat_bet_amount') || '10'
+    currentChallenger: null, 
+    currentTargetId: null, 
+    pendingChallengeParam: null, 
+    defaultBetAmount: localStorage.getItem('web3combat_bet_amount') || '10',
+    currentPoolId: null,
+    currentPoolFee: 0,
+    pendingPoolParam: null
 };
 
 let onlinePlayers = []; // Mis à jour via Reverb
@@ -30,6 +33,10 @@ function checkURLParameters() {
     const challengeId = urlParams.get('challenge');
     if(challengeId) {
         AppState.pendingChallengeParam = challengeId;
+    }
+    const poolId = urlParams.get('pool');
+    if(poolId) {
+        AppState.pendingPoolParam = poolId;
     }
 }
 
@@ -117,8 +124,12 @@ async function initWeb3() {
                 AppState.currentBetAmount = betAmount;
                 AppState.opponentChar = "p" + challengerChar;
                 
-                // Execute accept on chain automatically since we already agreed off-chain
-                executeAcceptOnChain(matchId, betAmount);
+                // Si c'est un pool match
+                if (AppState.currentPoolId) {
+                    executeAcceptPoolOnChain(matchId);
+                } else {
+                    executeAcceptOnChain(matchId, betAmount);
+                }
             } else if (challenger.toLowerCase() === AppState.walletAddress.toLowerCase()) {
                 console.log("Web3: Mon défi a été créé sur la blockchain !", matchId);
                 AppState.currentMatchId = matchId;
@@ -156,8 +167,13 @@ async function initWeb3() {
                     godotResult = 2;
                 }
                 showToast(msg, godotResult === 1 ? 'success' : (godotResult === 0 ? 'info' : 'error'));
+                
+                if (AppState.currentPoolId) {
+                    checkPoolElimination(godotResult);
+                }
+
                 resetMatchState();
-                navigateTo('screen-duel');
+                navigateTo(AppState.currentPoolId ? 'screen-pool-room' : 'screen-duel');
                 
                 updateBalance();
             }
@@ -219,9 +235,14 @@ async function initWeb3() {
                         showToast(`Défaite... Vous avez perdu le match.`, 'error');
                     }
                     updateBalance();
+                    
+                    if (AppState.currentPoolId) {
+                        checkPoolElimination(godotResult);
+                    }
+
                     // Réinitialisation complète des états (incluant le statut serveur online)
                     resetMatchState();
-                    navigateTo('screen-duel');
+                    navigateTo(AppState.currentPoolId ? 'screen-pool-room' : 'screen-duel');
                 }, 3000); // Wait for Godot animation before alert
             }
         });
@@ -430,6 +451,11 @@ function performLogin() {
             });
     }
 
+    if (AppState.pendingPoolParam) {
+        joinPool(AppState.pendingPoolParam);
+        AppState.pendingPoolParam = null;
+    }
+
     navigateTo('screen-main');
 }
 
@@ -496,7 +522,11 @@ window.resetMatchState = function() {
         body: JSON.stringify({ player_id: AppState.walletAddress, status: 'online' })
     }).catch(e => console.error(e));
     
-    renderDuelLobby();
+    if (AppState.currentPoolId) {
+        renderPoolRoom();
+    } else {
+        renderDuelLobby();
+    }
 };
 
 window.quitGodot = function() {
@@ -752,36 +782,49 @@ async function executeAcceptOnChain(matchId, betWei) {
 
 
 // --- GÉNÉRATION ÉCRAN BATTLE ROYALE ---
-function renderBRLobby() {
+async function renderBRLobby() {
     const list = document.getElementById('br-list');
-    list.innerHTML = '';
+    list.innerHTML = '<p class="empty-state">Recherche de poules...</p>';
 
-    brLobbies.forEach(lobby => {
-        const isFull = lobby.players >= lobby.max;
-        const progress = (lobby.players / lobby.max) * 100;
+    try {
+        const res = await fetch(`http://${window.location.hostname}:8000/api/pools`);
+        const pools = await res.json();
         
-        const card = document.createElement('div');
-        card.className = 'br-card';
-        card.innerHTML = `
-            <div class="progress-bar-bg">
-                <div class="progress-bar-fill" style="width: ${progress}%"></div>
-            </div>
-            <div class="br-header">
-                <div>
-                    <h3 style="color: white; font-size: 1.1rem;">${lobby.name}</h3>
-                    <span class="br-tag">${lobby.entry}</span>
+        list.innerHTML = '';
+        if (pools.length === 0) {
+            list.innerHTML = '<p class="empty-state">Aucune poule publique ouverte.</p>';
+            return;
+        }
+
+        pools.forEach(lobby => {
+            const isFull = lobby.players_count >= lobby.max_players;
+            const progress = (lobby.players_count / lobby.max_players) * 100;
+            
+            const card = document.createElement('div');
+            card.className = 'br-card';
+            card.innerHTML = `
+                <div class="progress-bar-bg">
+                    <div class="progress-bar-fill" style="width: ${progress}%"></div>
                 </div>
-                <div class="br-players">
-                    <span>${lobby.players}</span>
-                    <span style="color: var(--text-gray-400)">/${lobby.max}</span>
+                <div class="br-header">
+                    <div>
+                        <h3 style="color: white; font-size: 1.1rem;">Poule #${lobby.id} ${lobby.penalty_mode == 1 ? '(All-In)' : ''}</h3>
+                        <span class="br-tag">${lobby.entry_fee} TKN</span>
+                    </div>
+                    <div class="br-players">
+                        <span>${lobby.players_count}</span>
+                        <span style="color: var(--text-gray-400)">/${lobby.max_players}</span>
+                    </div>
                 </div>
-            </div>
-            <button class="btn btn-join ${isFull ? 'full' : ''}" ${isFull ? 'disabled' : ''} onclick="launchGodot('BR_MODE')">
-                ${isFull ? 'Salon Complet' : 'Rejoindre la file'}
-            </button>
-        `;
-        list.appendChild(card);
-    });
+                <button class="btn btn-join ${isFull ? 'full' : ''}" ${isFull ? 'disabled' : ''} onclick="joinPool(${lobby.id})">
+                    ${isFull ? 'Salon Complet' : 'Rejoindre la file'}
+                </button>
+            `;
+            list.appendChild(card);
+        });
+    } catch(e) {
+        list.innerHTML = '<p class="empty-state">Erreur de connexion.</p>';
+    }
 }
 
 // --- LANCEMENT DU JEU GODOT ---
@@ -920,3 +963,235 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 });
+
+// --- POULE / BATTLE ROYALE LOGIC ---
+
+function openCreatePoolModal() {
+    document.getElementById('create-pool-modal').style.display = 'flex';
+}
+
+function closeCreatePoolModal() {
+    document.getElementById('create-pool-modal').style.display = 'none';
+}
+
+async function confirmCreatePool() {
+    const fee = document.getElementById('pool-entry-fee').value;
+    const max = document.getElementById('pool-max-players').value;
+    const mode = document.getElementById('pool-penalty-mode').value;
+    
+    if(!fee || isNaN(fee) || Number(fee) <= 0) return showToast("Mise invalide", "error");
+    
+    try {
+        const entryWei = ethers.parseEther(fee.toString());
+        closeCreatePoolModal();
+        showToast("Création de la poule sur la blockchain...", "info");
+        
+        const tx = await contract.createPool(entryWei, max, mode);
+        const receipt = await tx.wait();
+        
+        // Find PoolCreated event
+        let poolId = null;
+        for (const log of receipt.logs) {
+            try {
+                const event = contract.interface.parseLog(log);
+                if (event && event.name === 'PoolCreated') {
+                    poolId = event.args[0];
+                }
+            } catch(e) {}
+        }
+        
+        if (poolId) {
+            // Register on backend
+            await fetch(`http://${window.location.hostname}:8000/api/pools`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                body: JSON.stringify({
+                    id: Number(poolId),
+                    entry_fee: Number(fee),
+                    max_players: Number(max),
+                    penalty_mode: Number(mode),
+                    is_private: true
+                })
+            });
+            showToast("Poule créée ! ID: " + poolId, "success");
+            renderBRLobby();
+            joinPool(poolId);
+        }
+    } catch(e) {
+        console.error(e);
+        showToast("Erreur lors de la création de la poule", "error");
+    }
+}
+
+async function joinPool(poolId) {
+    if(!contract) return showToast("Veuillez vous connecter d'abord", "error");
+    
+    try {
+        // Fetch pool details from backend to know fee
+        const res = await fetch(`http://${window.location.hostname}:8000/api/pools`);
+        let pools = await res.json();
+        let pool = pools.find(p => p.id == poolId);
+        
+        if (!pool) {
+            // It might be private, try fetching by ID directly if we had a route, 
+            // for now let's assume it's in the list or we can get it.
+            // Simplified for prototype.
+            showToast("Vérification de la poule...", "info");
+            pool = { entry_fee: 10 }; // Fallback for prototype
+        }
+        
+        const entryWei = ethers.parseEther(pool.entry_fee.toString());
+        const feePercent = await contract.feePercent();
+        const txFee = (entryWei * feePercent) / 1000n;
+        const totalWei = entryWei + txFee;
+        
+        showToast("Paiement de la mise d'entrée...", "info");
+        const tx = await contract.joinPool(poolId, { value: totalWei });
+        await tx.wait();
+        
+        // Notify backend
+        const joinRes = await fetch(`http://${window.location.hostname}:8000/api/pools/join`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({ pool_id: poolId, wallet_address: AppState.walletAddress })
+        });
+        
+        const joinData = await joinRes.json();
+        if(joinData.status === 'success') {
+            AppState.currentPoolId = poolId;
+            AppState.currentPoolFee = pool.entry_fee;
+            showToast("Poule rejointe !", "success");
+            navigateTo('screen-pool-room');
+            renderPoolRoom();
+            subscribeToPoolRound(poolId);
+        } else {
+            showToast(joinData.message || "Erreur lors de l'inscription", "error");
+        }
+        
+    } catch(e) {
+        console.error(e);
+        showToast("Erreur lors de l'intégration à la poule", "error");
+    }
+}
+
+function subscribeToPoolRound(poolId) {
+    if(window.poolChannel) {
+        window.echoInstance.leave('pool.' + window.poolChannel);
+    }
+    window.poolChannel = poolId;
+    
+    window.echoInstance.join('pool.' + poolId)
+        .listen('PoolRoundStarted', (e) => {
+            console.log("Pool Round Started!", e);
+            handlePoolRoundStarted(e);
+        });
+}
+
+async function handlePoolRoundStarted(e) {
+    document.getElementById('pool-room-status').innerText = "Round en cours...";
+    document.getElementById('pool-room-status').style.color = "var(--color-red)";
+    
+    if (e.waitingPlayer && e.waitingPlayer.toLowerCase() === AppState.walletAddress.toLowerCase()) {
+        showToast("Vous êtes exempté pour ce round !", "info");
+        return;
+    }
+    
+    // Find my pair
+    const myPair = e.pairs.find(p => p.player1.toLowerCase() === AppState.walletAddress.toLowerCase() || p.player2.toLowerCase() === AppState.walletAddress.toLowerCase());
+    
+    if (myPair) {
+        const isChallenger = myPair.player1.toLowerCase() === AppState.walletAddress.toLowerCase();
+        const opponent = isChallenger ? myPair.player2 : myPair.player1;
+        
+        AppState.currentTargetId = opponent;
+        
+        if (isChallenger) {
+            showToast("Défi de l'adversaire de la poule...", "info");
+            try {
+                const charId = AppState.selectedCharacter.id;
+                const tx = await contract.challengePool(opponent, charId, AppState.currentPoolId);
+                await tx.wait();
+                // Wait for ChallengeAccepted event to launch Godot
+            } catch(e) {
+                console.error(e);
+                showToast("Erreur défi poule", "error");
+            }
+        } else {
+            showToast("Attente du défi du round...", "info");
+            // Handled in ChallengeCreated event
+        }
+    }
+}
+
+async function executeAcceptPoolOnChain(matchId) {
+    try {
+        const charId = AppState.selectedCharacter.id;
+        const tx = await contract.acceptPoolChallenge(matchId, charId);
+        await tx.wait();
+    } catch(err) {
+        console.error(err);
+        showToast("Erreur acceptation round", "error");
+    }
+}
+
+function renderPoolRoom() {
+    if (!AppState.currentPoolId) return;
+    document.getElementById('pool-room-title').innerText = "Poule #" + AppState.currentPoolId;
+    
+    // In a real app we would fetch the players in the pool from backend to show them.
+    // For now we just show it's active.
+    fetch(`http://${window.location.hostname}:8000/api/pools`).then(r => r.json()).then(pools => {
+        const pool = pools.find(p => p.id == AppState.currentPoolId);
+        if(pool) {
+            document.getElementById('pool-room-count').innerText = pool.players_count + " / " + pool.max_players;
+        }
+    });
+}
+
+async function checkPoolElimination(godotResult) {
+    // Determine if eliminated based on balance
+    try {
+        const bal = await contract.poolBalances(AppState.currentPoolId, AppState.walletAddress);
+        if (bal == 0n) {
+            fetch(`http://${window.location.hostname}:8000/api/pools/match-finished`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                body: JSON.stringify({
+                    pool_id: AppState.currentPoolId,
+                    loser_wallet: AppState.walletAddress,
+                    is_eliminated: true
+                })
+            });
+            showToast("Vous êtes éliminé de la poule !", "error");
+            quitPool(false);
+        } else {
+            fetch(`http://${window.location.hostname}:8000/api/pools/match-finished`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                body: JSON.stringify({
+                    pool_id: AppState.currentPoolId,
+                    loser_wallet: godotResult === 2 ? AppState.walletAddress : null,
+                    is_eliminated: false
+                })
+            });
+        }
+    } catch(e) { console.error(e); }
+}
+
+async function quitPool(claim = true) {
+    if (claim && contract && AppState.currentPoolId) {
+        try {
+            const tx = await contract.leavePool(AppState.currentPoolId);
+            await tx.wait();
+            showToast("Vous avez quitté la poule et récupéré vos fonds", "info");
+        } catch(e) {
+            console.error(e);
+        }
+    }
+    AppState.currentPoolId = null;
+    if(window.poolChannel) {
+        window.echoInstance.leave('pool.' + window.poolChannel);
+        window.poolChannel = null;
+    }
+    navigateTo('screen-br');
+}

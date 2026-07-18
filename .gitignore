@@ -11,3 +11,5 @@ coverage.json
 
 *.pck
 *.wasm
+
+project_handover.md

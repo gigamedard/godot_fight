@@ -86,11 +86,35 @@
             <button class="header-nav" onclick="navigateTo('screen-main')">
                 <i data-lucide="arrow-left" width="20"></i> Retour
             </button>
+            <button class="header-nav" style="left: auto; right: 20px;" onclick="openCreatePoolModal()">
+                <i data-lucide="plus" width="20"></i> Créer Privée
+            </button>
             
-            <h1 style="text-align: left; font-size: 1.5rem; margin-bottom: 0.5rem;">Salons Battle Royale</h1>
+            <h1 style="text-align: left; font-size: 1.5rem; margin-bottom: 0.5rem; margin-top: 1rem;">Salons Battle Royale</h1>
             <p class="subtitle" style="text-align: left; margin-bottom: 1.5rem;">Rejoins un tournoi en attente. Le combat commence quand le salon est plein.</p>
 
             <div class="list-container" id="br-list">
+                <!-- Injecté par JS -->
+            </div>
+        </div>
+
+        <!-- ECRAN 4.5 : SALON DE POULE -->
+        <div id="screen-pool-room" class="screen">
+            <button class="header-nav" onclick="quitPool()">
+                <i data-lucide="arrow-left" width="20"></i> Quitter Poule
+            </button>
+            
+            <div style="text-align: center; margin-top: 3rem; margin-bottom: 2rem;">
+                <h1 id="pool-room-title" style="font-size: 1.5rem; margin-bottom: 0.5rem;">Poule #ID</h1>
+                <p id="pool-room-status" class="subtitle" style="color: var(--color-yellow);">En attente de joueurs...</p>
+            </div>
+
+            <div class="br-players" style="justify-content: center; margin-bottom: 2rem;">
+                <i data-lucide="users" width="20"></i>
+                <span id="pool-room-count">1 / 8</span> joueurs
+            </div>
+
+            <div class="list-container" id="pool-players-list">
                 <!-- Injecté par JS -->
             </div>
         </div>
@@ -169,6 +193,28 @@
                     <button class="btn btn-challenge" style="flex:1;" id="btn-modify-challenge">Négocier</button>
                     <button class="btn" style="flex:1; background: var(--bg-gray-800); color: white;" id="btn-decline-challenge">Refuser</button>
                 </div>
+            </div>
+        </div>
+
+        <!-- MODAL CREATION POULE PRIVEE -->
+        <div id="create-pool-modal" class="overlay-modal">
+            <div class="bet-card">
+                <h2 style="font-size: 1.25rem; font-weight: bold; color: white; margin-bottom: 1rem;">Créer une Poule Privée</h2>
+                
+                <label style="color: var(--text-gray-400); font-size: 0.85rem; display:block; margin-bottom: 0.25rem;">Mise d'entrée (ETH)</label>
+                <input type="number" id="pool-entry-fee" value="10" min="0" step="0.1" style="width: 100%; padding: 0.5rem; margin-bottom: 1rem; background: var(--bg-gray-800); color: white; border: 1px solid var(--border-gray); border-radius: 5px;">
+
+                <label style="color: var(--text-gray-400); font-size: 0.85rem; display:block; margin-bottom: 0.25rem;">Nombre max de joueurs</label>
+                <input type="number" id="pool-max-players" value="8" min="2" max="64" style="width: 100%; padding: 0.5rem; margin-bottom: 1rem; background: var(--bg-gray-800); color: white; border: 1px solid var(--border-gray); border-radius: 5px;">
+
+                <label style="color: var(--text-gray-400); font-size: 0.85rem; display:block; margin-bottom: 0.25rem;">Règle d'élimination</label>
+                <select id="pool-penalty-mode" style="width: 100%; padding: 0.5rem; margin-bottom: 1.5rem; background: var(--bg-gray-800); color: white; border: 1px solid var(--border-gray); border-radius: 5px;">
+                    <option value="0">Perdre 1 Vie (1 Mise)</option>
+                    <option value="1">All-In (Perdre Tout)</option>
+                </select>
+
+                <button class="btn btn-bet-confirm" onclick="confirmCreatePool()">Créer sur Blockchain</button>
+                <button class="btn" style="background: transparent; color: var(--text-gray-400); margin-top: 1rem; width: 100%;" onclick="closeCreatePoolModal()">Annuler</button>
             </div>
         </div>
     </div>

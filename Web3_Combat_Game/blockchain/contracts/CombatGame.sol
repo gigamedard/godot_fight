@@ -3,6 +3,15 @@ pragma solidity ^0.8.24;
 
 contract CombatGame {
     enum MatchState { Pending, Accepted, Committed, Revealed, Finished, Canceled }
+    enum PenaltyMode { OneBaseBet, AllBalance }
+
+    struct Pool {
+        uint256 entryFee;
+        uint256 maxPlayers;
+        PenaltyMode penaltyMode;
+        bool isActive;
+        address owner; // 0x0 for auto pools
+    }
 
     struct Match {
         address challenger;
@@ -17,6 +26,8 @@ contract CombatGame {
         MatchState state;
         address winner;
         uint256 lastActionTime;
+        bool isPoolMatch;
+        uint256 poolId;
     }
 
     address public owner;
@@ -27,6 +38,11 @@ contract CombatGame {
     uint256 public matchCounter;
     mapping(address => uint256) public pendingWithdrawals;
 
+    // Pool variables
+    mapping(uint256 => Pool) public pools;
+    uint256 public poolCounter;
+    mapping(uint256 => mapping(address => uint256)) public poolBalances;
+
     event ChallengeCreated(uint256 indexed matchId, address indexed challenger, address indexed target, uint256 betAmount, uint8 challengerChar);
     event ChallengeAccepted(uint256 indexed matchId, uint8 targetChar);
     event MoveCommitted(uint256 indexed matchId, address indexed player);
@@ -35,6 +51,11 @@ contract CombatGame {
     event TimeoutClaimed(uint256 indexed matchId, address indexed winner);
     event FundsClaimed(address indexed user, uint256 amount);
     event SettingsUpdated(uint256 newFee, uint256 newTimeout);
+
+    // Pool events
+    event PoolCreated(uint256 indexed poolId, uint256 entryFee, uint256 maxPlayers, PenaltyMode penaltyMode, address owner);
+    event PoolJoined(uint256 indexed poolId, address indexed player);
+    event PoolMatchFinished(uint256 indexed poolId, uint256 indexed matchId, address indexed winner);
 
     modifier onlyOwner() {
         require(msg.sender == owner, "Not owner");
@@ -51,6 +72,8 @@ contract CombatGame {
         timeoutDuration = _timeoutDuration;
         emit SettingsUpdated(_feePercent, _timeoutDuration);
     }
+
+    // --- NORMAL DUELS ---
 
     function challenge(address target, uint8 charId, uint256 bet) external payable {
         require(bet > 0, "Bet must be > 0");
@@ -74,7 +97,9 @@ contract CombatGame {
             targetChar: 0,
             state: MatchState.Pending,
             winner: address(0),
-            lastActionTime: block.timestamp
+            lastActionTime: block.timestamp,
+            isPoolMatch: false,
+            poolId: 0
         });
 
         emit ChallengeCreated(matchCounter, msg.sender, target, bet, charId);
@@ -82,6 +107,7 @@ contract CombatGame {
 
     function acceptChallenge(uint256 matchId, uint8 charId, uint256 bet) external payable {
         Match storage m = matches[matchId];
+        require(!m.isPoolMatch, "Is a pool match");
         require(m.state == MatchState.Pending, "Match not pending");
         require(m.target == msg.sender, "Not your challenge");
         require(m.betAmount == bet, "Bet mismatch");
@@ -97,6 +123,101 @@ contract CombatGame {
 
         emit ChallengeAccepted(matchId, charId);
     }
+
+    // --- POOL SYSTEM ---
+
+    function createPool(uint256 entryFee, uint256 maxPlayers, PenaltyMode penaltyMode) external {
+        require(entryFee > 0, "Entry fee must be > 0");
+        poolCounter++;
+        pools[poolCounter] = Pool({
+            entryFee: entryFee,
+            maxPlayers: maxPlayers,
+            penaltyMode: penaltyMode,
+            isActive: true,
+            owner: msg.sender
+        });
+        emit PoolCreated(poolCounter, entryFee, maxPlayers, penaltyMode, msg.sender);
+    }
+
+    function createAutoPool(uint256 entryFee, uint256 maxPlayers, PenaltyMode penaltyMode) external onlyOwner {
+        require(entryFee > 0, "Entry fee must be > 0");
+        poolCounter++;
+        pools[poolCounter] = Pool({
+            entryFee: entryFee,
+            maxPlayers: maxPlayers,
+            penaltyMode: penaltyMode,
+            isActive: true,
+            owner: address(0)
+        });
+        emit PoolCreated(poolCounter, entryFee, maxPlayers, penaltyMode, address(0));
+    }
+
+    function joinPool(uint256 poolId) external payable {
+        Pool storage p = pools[poolId];
+        require(p.isActive, "Pool not active");
+        
+        uint256 fee = (p.entryFee * feePercent) / 1000;
+        require(msg.value == p.entryFee + fee, "Incorrect value sent (must include fee)");
+
+        pendingWithdrawals[owner] += fee;
+        poolBalances[poolId][msg.sender] += p.entryFee;
+
+        emit PoolJoined(poolId, msg.sender);
+    }
+
+    function challengePool(address target, uint8 charId, uint256 poolId) external {
+        Pool storage p = pools[poolId];
+        require(p.isActive, "Pool not active");
+        require(poolBalances[poolId][msg.sender] >= p.entryFee, "Insufficient pool balance");
+        require(poolBalances[poolId][target] >= p.entryFee, "Target not in pool");
+        require(target != msg.sender, "Cannot challenge yourself");
+
+        matchCounter++;
+        matches[matchCounter] = Match({
+            challenger: msg.sender,
+            target: target,
+            betAmount: p.entryFee, // In pool, bet is always the entryFee base
+            challengerCommit: 0,
+            targetCommit: 0,
+            challengerMove: 0,
+            targetMove: 0,
+            challengerChar: charId,
+            targetChar: 0,
+            state: MatchState.Pending,
+            winner: address(0),
+            lastActionTime: block.timestamp,
+            isPoolMatch: true,
+            poolId: poolId
+        });
+
+        emit ChallengeCreated(matchCounter, msg.sender, target, p.entryFee, charId);
+    }
+
+    function acceptPoolChallenge(uint256 matchId, uint8 charId) external {
+        Match storage m = matches[matchId];
+        require(m.isPoolMatch, "Not a pool match");
+        require(m.state == MatchState.Pending, "Match not pending");
+        require(m.target == msg.sender, "Not your challenge");
+        
+        uint256 poolId = m.poolId;
+        require(poolBalances[poolId][msg.sender] >= m.betAmount, "Insufficient pool balance");
+
+        m.targetChar = charId;
+        m.state = MatchState.Accepted;
+        m.lastActionTime = block.timestamp;
+
+        emit ChallengeAccepted(matchId, charId);
+    }
+
+    function leavePool(uint256 poolId) external {
+        uint256 bal = poolBalances[poolId][msg.sender];
+        require(bal > 0, "No balance in pool");
+        
+        poolBalances[poolId][msg.sender] = 0;
+        pendingWithdrawals[msg.sender] += bal;
+    }
+
+    // --- SHARED GAME LOGIC ---
 
     function commitMove(uint256 matchId, bytes32 moveHash) external {
         Match storage m = matches[matchId];
@@ -152,19 +273,18 @@ contract CombatGame {
         address winner = address(0);
 
         if (m.state == MatchState.Pending) {
-            // Target never accepted, challenger gets refund
             require(msg.sender == m.challenger, "Only challenger can cancel pending");
-            pendingWithdrawals[m.challenger] += m.betAmount;
+            if (!m.isPoolMatch) {
+                pendingWithdrawals[m.challenger] += m.betAmount;
+            }
             m.state = MatchState.Canceled;
-            emit TimeoutClaimed(matchId, m.challenger);
+            emit TimeoutClaimed(matchId, m.isPoolMatch ? address(0) : m.challenger);
             return;
         } 
         
         require(msg.sender == m.challenger || msg.sender == m.target, "Not a player");
-        address opponent = msg.sender == m.challenger ? m.target : m.challenger;
 
         if (m.state == MatchState.Accepted) {
-            // Both must commit. If one committed and the other didn't, the one who committed wins.
             bool challengerCommitted = m.challengerCommit != 0;
             bool targetCommitted = m.targetCommit != 0;
             
@@ -173,15 +293,12 @@ contract CombatGame {
             } else if (targetCommitted && !challengerCommitted) {
                 winner = m.target;
             } else {
-                // Neither committed. Refund both.
-                pendingWithdrawals[m.challenger] += m.betAmount;
-                pendingWithdrawals[m.target] += m.betAmount;
+                _refundMatch(matchId);
                 m.state = MatchState.Canceled;
                 emit TimeoutClaimed(matchId, address(0));
                 return;
             }
         } else if (m.state == MatchState.Committed || m.state == MatchState.Revealed) {
-            // Both committed. If one revealed and the other didn't, the one who revealed wins.
             bool challengerRevealed = m.challengerMove != 0;
             bool targetRevealed = m.targetMove != 0;
 
@@ -190,9 +307,7 @@ contract CombatGame {
             } else if (targetRevealed && !challengerRevealed) {
                 winner = m.target;
             } else {
-                // Neither revealed. Refund both.
-                pendingWithdrawals[m.challenger] += m.betAmount;
-                pendingWithdrawals[m.target] += m.betAmount;
+                _refundMatch(matchId);
                 m.state = MatchState.Canceled;
                 emit TimeoutClaimed(matchId, address(0));
                 return;
@@ -201,8 +316,23 @@ contract CombatGame {
 
         m.winner = winner;
         m.state = MatchState.Finished;
-        pendingWithdrawals[winner] += m.betAmount * 2;
-        emit TimeoutClaimed(matchId, winner);
+        
+        if (m.isPoolMatch) {
+            _applyPoolPenalty(m.poolId, m.challenger, m.target, winner);
+            emit TimeoutClaimed(matchId, winner);
+            emit PoolMatchFinished(m.poolId, matchId, winner);
+        } else {
+            pendingWithdrawals[winner] += m.betAmount * 2;
+            emit TimeoutClaimed(matchId, winner);
+        }
+    }
+
+    function _refundMatch(uint256 matchId) internal {
+        Match storage m = matches[matchId];
+        if (!m.isPoolMatch) {
+            pendingWithdrawals[m.challenger] += m.betAmount;
+            pendingWithdrawals[m.target] += m.betAmount;
+        }
     }
 
     function _resolveMatch(uint256 matchId) internal {
@@ -213,13 +343,12 @@ contract CombatGame {
         uint8 tm = m.targetMove;
 
         address winner = address(0);
-        uint256 payout = m.betAmount * 2;
 
         if (cm == tm) {
             // Draw
-            pendingWithdrawals[m.challenger] += m.betAmount;
-            pendingWithdrawals[m.target] += m.betAmount;
+            _refundMatch(matchId);
             emit MatchFinished(matchId, address(0), 0);
+            if (m.isPoolMatch) emit PoolMatchFinished(m.poolId, matchId, address(0));
             return;
         } else if ((cm == 1 && tm == 3) || (cm == 2 && tm == 1) || (cm == 3 && tm == 2)) {
             winner = m.challenger;
@@ -228,8 +357,34 @@ contract CombatGame {
         }
 
         m.winner = winner;
-        pendingWithdrawals[winner] += payout;
-        emit MatchFinished(matchId, winner, payout);
+        
+        if (m.isPoolMatch) {
+            _applyPoolPenalty(m.poolId, m.challenger, m.target, winner);
+            emit MatchFinished(matchId, winner, m.betAmount * 2); // Send betAmount*2 just for event compat
+            emit PoolMatchFinished(m.poolId, matchId, winner);
+        } else {
+            uint256 payout = m.betAmount * 2;
+            pendingWithdrawals[winner] += payout;
+            emit MatchFinished(matchId, winner, payout);
+        }
+    }
+
+    function _applyPoolPenalty(uint256 poolId, address p1, address p2, address winner) internal {
+        address loser = (winner == p1) ? p2 : p1;
+        Pool storage p = pools[poolId];
+        
+        if (p.penaltyMode == PenaltyMode.OneBaseBet) {
+            uint256 penalty = p.entryFee;
+            if (poolBalances[poolId][loser] < penalty) {
+                penalty = poolBalances[poolId][loser]; 
+            }
+            poolBalances[poolId][loser] -= penalty;
+            poolBalances[poolId][winner] += penalty;
+        } else {
+            uint256 loserBal = poolBalances[poolId][loser];
+            poolBalances[poolId][loser] = 0;
+            poolBalances[poolId][winner] += loserBal;
+        }
     }
 
     function claimFunds() external {

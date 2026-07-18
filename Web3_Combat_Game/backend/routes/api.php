@@ -39,3 +39,12 @@ Route::post('/matchmaking/challenge', [MatchmakingController::class, 'sendChalle
 Route::post('/matchmaking/accept', [MatchmakingController::class, 'acceptChallenge']);
 Route::post('/matchmaking/decline', [MatchmakingController::class, 'declineChallenge']);
 Route::post('/matchmaking/status', [MatchmakingController::class, 'updateStatus']);
+
+// Routes de Pool / Battle Royale
+use App\Http\Controllers\Api\PoolController;
+Route::get('/pools', [PoolController::class, 'index']);
+Route::get('/pools/invite/{code}', [PoolController::class, 'showByInviteCode']);
+Route::post('/pools', [PoolController::class, 'store']);
+Route::post('/pools/join', [PoolController::class, 'join']);
+Route::post('/pools/match-finished', [PoolController::class, 'matchFinished']);
+Route::post('/pools/{id}/matchmake', [PoolController::class, 'triggerMatchmaking']);
