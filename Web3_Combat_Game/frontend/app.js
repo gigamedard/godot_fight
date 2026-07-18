@@ -155,15 +155,9 @@ async function initWeb3() {
                     msg = "Vous avez perdu par forfait (Inactivité).";
                     godotResult = 2;
                 }
-                
-                if (typeof window.receiveMatchResult === 'function') {
-                    // Si Godot est lancé, on lui délègue l'affichage
-                    window.receiveMatchResult(godotResult, 0);
-                } else {
-                    showToast(msg, godotResult === 1 ? 'success' : 'error');
-                    resetMatchState();
-                    navigateTo('screen-duel');
-                }
+                showToast(msg, godotResult === 1 ? 'success' : (godotResult === 0 ? 'info' : 'error'));
+                resetMatchState();
+                navigateTo('screen-duel');
                 
                 updateBalance();
             }
