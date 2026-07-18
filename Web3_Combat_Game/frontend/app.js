@@ -91,17 +91,17 @@ async function initWeb3() {
         
         // Timeout Checker
         setInterval(async () => {
-            if (AppState.currentMatchId && !AppState.hasCommitted && AppState.lastActionTime) {
+            if (AppState.currentMatchId && AppState.lastActionTime) {
                 // If we are waiting for Godot, we check if 25 seconds passed
                 if (Date.now() - AppState.lastActionTime > 25000) {
                     try {
                         const m = await contract.matches(AppState.currentMatchId);
                         if(m[9] != 4 && m[9] != 5) { // not Finished, not Canceled
-                            console.log("Tentative de victoire par forfait (Timeout)...");
+                            console.log("Tentative de réclamation de forfait (Timeout)...");
                             const tx = await contract.claimTimeout(AppState.currentMatchId);
                             await tx.wait();
-                            console.log("Victoire par forfait confirmée !");
-                            AppState.currentMatchId = null;
+                            console.log("Transaction Timeout confirmée !");
+                            // Ne SURTOUT PAS mettre currentMatchId à null ici, l'Event s'en charge !
                         }
                     } catch(e) {}
                 }
