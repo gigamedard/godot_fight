@@ -1,0 +1,39 @@
+[gd_scene format=3 uid="uid://dfuh77hbjwvym"]
+
+[ext_resource type="Script" uid="uid://5j8dk31n16i5" path="res://scripts/main.gd" id="1_main"]
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_abc12"]
+sky_horizon_color = Color(0.64625, 0.65575, 0.67075, 1)
+ground_horizon_color = Color(0.64625, 0.65575, 0.67075, 1)
+
+[sub_resource type="Sky" id="Sky_abc12"]
+sky_material = SubResource("ProceduralSkyMaterial_abc12")
+
+[sub_resource type="Environment" id="Environment_abc12"]
+background_mode = 2
+sky = SubResource("Sky_abc12")
+tonemap_mode = 2
+glow_enabled = true
+
+[node name="Main" type="Node3D" unique_id=499098276 node_paths=PackedStringArray("player1_camera", "player1_node", "player2_node")]
+script = ExtResource("1_main")
+player1_camera = NodePath("Camera3D")
+player1_node = NodePath("Fighters/Player1")
+player2_node = NodePath("Fighters/Player2")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=172446598]
+environment = SubResource("Environment_abc12")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=1719128290]
+transform = Transform3D(-0.866025, -0.433013, 0.25, 0, 0.5, 0.866025, -0.5, 0.75, -0.433013, 0, 0, 0)
+shadow_enabled = true
+
+[node name="Camera3D" type="Camera3D" parent="." unique_id=1911478102]
+transform = Transform3D(1, 0, 0, 0, 0.965926, 0.258819, 0, -0.258819, 0.965926, 0, 1.5, 4)
+
+[node name="Fighters" type="Node3D" parent="." unique_id=973457131]
+
+[node name="Player1" type="Node3D" parent="Fighters" unique_id=87480832]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2, 0, 0)
+
+[node name="Player2" type="Node3D" parent="Fighters" unique_id=649661241]
+transform = Transform3D(-1, 0, -8.74228e-08, 0, 1, 0, 8.74228e-08, 0, -1, 2, 0, 0)

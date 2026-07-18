@@ -1,0 +1,19 @@
+# Godot specific
+.godot/
+*.import
+export_presets.cfg
+
+# Assets
+assets/
+*.png
+*.jpg
+*.glb
+*.fbx
+*.obj
+
+# Unrelated projects
+Actorcore-Unity-0714-405970/
+Web3_Combat_Game/
+
+# Git
+.git/

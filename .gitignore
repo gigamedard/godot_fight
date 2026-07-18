@@ -1,0 +1,13 @@
+# Godot 4+ specific ignores
+.godot/
+
+node_modules/
+artifacts/
+cache/
+.env
+typechain-types/
+coverage/
+coverage.json
+
+*.pck
+*.wasm
