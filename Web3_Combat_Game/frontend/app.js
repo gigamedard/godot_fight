@@ -1053,7 +1053,7 @@ async function joinPool(poolId) {
         const joinRes = await fetch(`http://${window.location.hostname}:8000/api/pools/join`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-            body: JSON.stringify({ pool_id: poolId, wallet_address: AppState.walletAddress })
+            body: JSON.stringify({ pool_id: Number(poolId), wallet_address: AppState.walletAddress })
         });
         
         const joinData = await joinRes.json();
@@ -1178,8 +1178,11 @@ async function checkPoolElimination(godotResult) {
     } catch(e) { console.error(e); }
 }
 
+let isQuitting = false;
 async function quitPool(claim = true) {
+    if (isQuitting) return;
     if (claim && contract && AppState.currentPoolId) {
+        isQuitting = true;
         try {
             const tx = await contract.leavePool(AppState.currentPoolId);
             await tx.wait();
@@ -1187,11 +1190,13 @@ async function quitPool(claim = true) {
         } catch(e) {
             console.error(e);
         }
+        isQuitting = false;
     }
     AppState.currentPoolId = null;
     if(window.poolChannel) {
         window.echoInstance.leave('pool.' + window.poolChannel);
         window.poolChannel = null;
     }
-    navigateTo('screen-br');
+    navigateTo('screen-br-lobby');
+    renderBRLobby();
 }
