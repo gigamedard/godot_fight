@@ -389,3 +389,10 @@ p.subtitle { color: var(--text-gray-400); font-size: 0.9rem; text-align: center;
     color: black;
     border-color: var(--color-yellow);
 }
+
+.toast { background: var(--bg-gray-800); color: white; padding: 12px 20px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); display: flex; align-items: center; gap: 12px; font-size: 0.9rem; animation: slideInRight 0.3s ease-out forwards; border-left: 4px solid var(--color-blue); min-width: 250px; }
+.toast.success { border-color: var(--color-green); }
+.toast.error { border-color: var(--color-red); }
+.toast.info { border-color: var(--color-blue); }
+@keyframes slideInRight { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+@keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }

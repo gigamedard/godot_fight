@@ -38,3 +38,4 @@ Route::post('/broadcasting/auth', function (Request $request) {
 Route::post('/matchmaking/challenge', [MatchmakingController::class, 'sendChallenge']);
 Route::post('/matchmaking/accept', [MatchmakingController::class, 'acceptChallenge']);
 Route::post('/matchmaking/decline', [MatchmakingController::class, 'declineChallenge']);
+Route::post('/matchmaking/status', [MatchmakingController::class, 'updateStatus']);

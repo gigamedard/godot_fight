@@ -51,11 +51,26 @@ class MatchmakingController extends Controller
         $request->validate([
             'challenger_id' => 'required|string|size:42',
             'target_id' => 'required|string|size:42',
+            'is_negotiation' => 'boolean'
         ]);
 
+        $isNegotiation = $request->input('is_negotiation', false);
+
         // Prévenir le challenger que le défi est refusé
-        broadcast(new ChallengeDeclined($request->challenger_id, $request->target_id));
+        broadcast(new ChallengeDeclined($request->challenger_id, $request->target_id, $isNegotiation));
 
         return response()->json(['status' => 'success', 'message' => 'Défi refusé']);
+    }
+
+    public function updateStatus(Request $request)
+    {
+        $request->validate([
+            'player_id' => 'required|string|size:42',
+            'status' => 'required|string|in:online,in-game',
+        ]);
+
+        broadcast(new PlayerStatusChanged($request->player_id, $request->status));
+
+        return response()->json(['status' => 'success']);
     }
 }

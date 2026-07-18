@@ -54,6 +54,32 @@ let signer;
 let contract;
 const CONTRACT_ADDRESS = "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512";
 
+window.showToast = function(message, type = 'info') {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+    
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    
+    let icon = 'info';
+    if (type === 'success') icon = 'check-circle-2';
+    if (type === 'error') icon = 'alert-triangle';
+    
+    toast.innerHTML = `<i data-lucide="${icon}" width="20"></i> <span>${message}</span>`;
+    container.appendChild(toast);
+    lucide.createIcons();
+    
+    setTimeout(() => {
+        toast.style.animation = "fadeOut 0.5s ease forwards";
+        setTimeout(() => toast.remove(), 500);
+    }, 3000);
+};
+
+window.changeCharacter = function() {
+    localStorage.removeItem('web3combat_char');
+    window.location.reload();
+};
+
 async function initWeb3() {
     if (typeof ethers !== 'undefined' && typeof COMBAT_GAME_ABI !== 'undefined') {
         provider = new ethers.JsonRpcProvider("http://127.0.0.1:8545");
@@ -90,10 +116,9 @@ async function initWeb3() {
                 AppState.currentChallenger = challenger;
                 AppState.currentBetAmount = betAmount;
                 AppState.opponentChar = "p" + challengerChar;
-                const shortId = challenger.substring(0,6) + '...' + challenger.substring(challenger.length - 4);
-                const ethAmount = ethers.formatEther(betAmount);
-                document.getElementById('challenge-text').innerText = `${shortId} vous met au défi pour ${ethAmount} ETH !`;
-                document.getElementById('challenge-modal').style.display = 'flex';
+                
+                // Execute accept on chain automatically since we already agreed off-chain
+                executeAcceptOnChain(matchId, betAmount);
             } else if (challenger.toLowerCase() === AppState.walletAddress.toLowerCase()) {
                 console.log("Web3: Mon défi a été créé sur la blockchain !", matchId);
                 AppState.currentMatchId = matchId;
@@ -135,12 +160,12 @@ async function initWeb3() {
                     // Si Godot est lancé, on lui délègue l'affichage
                     window.receiveMatchResult(godotResult, 0);
                 } else {
-                    alert(msg);
-                    navigateTo('screen-main');
+                    showToast(msg, godotResult === 1 ? 'success' : 'error');
+                    resetMatchState();
+                    navigateTo('screen-duel');
                 }
                 
                 updateBalance();
-                AppState.currentMatchId = null;
             }
         });
 
@@ -193,17 +218,16 @@ async function initWeb3() {
                 const ethPayout = ethers.formatEther(payout);
                 setTimeout(() => {
                     if (godotResult === 1) {
-                        alert(`Victoire ! Vous avez gagné ${ethPayout} ETH !`);
+                        showToast(`Victoire ! Vous avez gagné ${ethPayout} ETH !`, 'success');
                     } else if (godotResult === 0) {
-                        alert(`Égalité ! Vous récupérez votre mise.`);
+                        showToast(`Égalité ! Vous récupérez votre mise.`, 'info');
                     } else {
-                        alert(`Défaite... Vous avez perdu le match.`);
+                        showToast(`Défaite... Vous avez perdu le match.`, 'error');
                     }
                     updateBalance();
-                    // Réinitialisation des états
-                    AppState.hasCommitted = false;
-                    AppState.opponentChar = null;
-                    navigateTo('screen-main');
+                    // Réinitialisation complète des états (incluant le statut serveur online)
+                    resetMatchState();
+                    navigateTo('screen-duel');
                 }, 3000); // Wait for Godot animation before alert
             }
         });
@@ -213,30 +237,24 @@ async function initWeb3() {
 }
 
 function updateBalance() {
-    if(AppState.walletAddress && AppState.selectedCharacter) {
-        const badge = document.getElementById('player-badge');
-        badge.innerHTML = `
-            <img src="${AppState.selectedCharacter.image}" class="player-badge-img">
-            <div class="player-badge-info">
-                <div class="player-badge-name">${AppState.walletAddress.substring(0,6)}...</div>
-                <div class="player-badge-balance" id="wallet-balance">-- ETH</div>
-                <div id="pending-funds-container" style="display:none; margin-top: 5px;">
-                    <button class="btn btn-challenge" style="font-size: 0.8rem; padding: 0.5rem;" onclick="claimPendingFunds()">
-                        Réclamer <span id="pending-amount">0</span> ETH
-                    </button>
-                </div>
-            </div>
-        `;
+    if(AppState.walletAddress) {
         provider.getBalance(AppState.walletAddress).then(bal => {
-            document.getElementById('wallet-balance').innerText = parseFloat(ethers.formatEther(bal)).toFixed(2) + " ETH";
+            const el = document.getElementById('wallet-balance');
+            if(el) el.innerText = parseFloat(ethers.formatEther(bal)).toFixed(2) + " ETH";
         });
         
         // Fetch pending withdrawals
         if(contract) {
             contract.pendingWithdrawals(AppState.walletAddress).then(pending => {
-                if(pending > 0n) {
-                    document.getElementById('pending-funds-container').style.display = 'block';
-                    document.getElementById('pending-amount').innerText = parseFloat(ethers.formatEther(pending)).toFixed(3);
+                const container = document.getElementById('pending-funds-container');
+                const amt = document.getElementById('pending-amount');
+                if(container && amt) {
+                    if(pending > 0n) {
+                        container.style.display = 'block';
+                        amt.innerText = parseFloat(ethers.formatEther(pending)).toFixed(3);
+                    } else {
+                        container.style.display = 'none';
+                    }
                 }
             });
         }
@@ -244,14 +262,17 @@ function updateBalance() {
 }
 
 async function claimPendingFunds() {
-    try {
-        const tx = await contract.claimFunds();
-        await tx.wait();
-        alert("Fonds réclamés avec succès !");
-        updateBalance();
-    } catch(e) {
-        console.error(e);
-        alert("Erreur lors de la réclamation des fonds.");
+    if(contract) {
+        contract.claimFunds().then(tx => {
+            showToast("Transaction de retrait envoyée...", "info");
+            return tx.wait();
+        }).then(() => {
+            showToast("Fonds récupérés avec succès !", "success");
+            updateBalance();
+        }).catch(err => {
+            console.error(err);
+            showToast("Erreur lors de la récupération des fonds.", "error");
+        });
     }
 }
 
@@ -285,18 +306,24 @@ function selectCharacter(char) {
     btn.disabled = false;
 }
 
-// --- CONFIRMATION ET CONNEXION WEB3/REVERB ---
-document.getElementById('btn-confirm-char').addEventListener('click', () => {
+function performLogin() {
     window.gameConfig = { character: AppState.selectedCharacter.name };
     
-    // Récupération d'un faux Wallet depuis la liste générée par Hardhat
-    if (typeof HARDHAT_ACCOUNTS !== 'undefined' && HARDHAT_ACCOUNTS.length > 0) {
+    let savedWallet = localStorage.getItem('web3combat_wallet');
+    let savedPk = localStorage.getItem('web3combat_pk');
+    
+    if (savedWallet && savedPk) {
+        AppState.walletAddress = savedWallet;
+        AppState.privateKey = savedPk;
+    } else if (typeof HARDHAT_ACCOUNTS !== 'undefined' && HARDHAT_ACCOUNTS.length > 0) {
         const randomIndex = Math.floor(Math.random() * HARDHAT_ACCOUNTS.length);
         const account = HARDHAT_ACCOUNTS[randomIndex];
         AppState.walletAddress = account.address;
         AppState.privateKey = account.privateKey;
+        localStorage.setItem('web3combat_wallet', account.address);
+        localStorage.setItem('web3combat_pk', account.privateKey);
     } else {
-        alert("Les clés Hardhat ne sont pas chargées. Veuillez générer le fichier hardhat_keys.js.");
+        showToast("Les clés Hardhat ne sont pas chargées. Veuillez générer le fichier hardhat_keys.js.", "error");
         return;
     }
     
@@ -308,9 +335,20 @@ document.getElementById('btn-confirm-char').addEventListener('click', () => {
 
     // Mise à jour du badge dans le Menu Principal
     document.getElementById('player-badge').innerHTML = `
-        <div style="width: 16px; height: 16px; border-radius: 50%; background-color: ${AppState.selectedCharacter.color}"></div>
-        <span>${AppState.selectedCharacter.name}</span>
+        <div class="char-avatar" style="background-color: ${AppState.selectedCharacter.color}; width: 40px; height: 40px;">
+            <i data-lucide="user" color="rgba(255,255,255,0.8)" width="24"></i>
+        </div>
+        <div class="player-badge-info">
+            <div class="player-badge-name">${AppState.selectedCharacter.name} (${AppState.walletAddress.substring(0,6)}...)</div>
+            <div class="player-badge-balance" id="wallet-balance">-- ETH</div>
+            <div id="pending-funds-container" style="display:none; margin-top: 5px;">
+                <button class="btn btn-challenge" style="font-size: 0.8rem; padding: 0.5rem;" onclick="claimPendingFunds()">
+                    Réclamer <span id="pending-amount">0</span> ETH
+                </button>
+            </div>
+        </div>
     `;
+    lucide.createIcons();
 
     // --- INITIALISATION LARAVEL ECHO / REVERB ---
     if (!window.echoInstance) {
@@ -369,20 +407,25 @@ document.getElementById('btn-confirm-char').addEventListener('click', () => {
             .listen('ChallengeSent', (e) => {
                 console.log("Défi reçu de :", e.challengerId, "Pari :", e.betAmount);
                 AppState.currentChallenger = e.challengerId;
+                AppState.currentBetAmountOffchain = e.betAmount;
                 
                 const shortId = e.challengerId.substring(0,6) + '...' + e.challengerId.substring(e.challengerId.length - 4);
-                document.getElementById('challenge-text').innerText = `${shortId} vous met au défi pour ${e.betAmount} TKN !`;
+                document.getElementById('challenge-text').innerText = `${shortId} vous met au défi pour ${e.betAmount} ETH !`;
+                
+                const actions = document.getElementById('challenge-modal-actions');
+                if (actions) actions.style.display = 'flex';
                 document.getElementById('challenge-modal').style.display = 'flex';
             })
             .listen('MatchStarted', (e) => {
-                console.log("Le match démarre !", e);
+                console.log("Accord Off-Chain atteint ! Exécution On-Chain...", e);
                 window.gameConfig.matchId = e.matchId;
-                const opponentId = (e.player1 === AppState.walletAddress) ? e.player2 : e.player1;
-                launchGodot(opponentId);
+                executeMatchOnChain(e);
             })
             .listen('ChallengeDeclined', (e) => {
                 console.log("Défi refusé par :", e.targetId);
-                alert("L'adversaire a refusé votre défi.");
+                if (!e.isNegotiation) {
+                    showToast("L'adversaire a refusé votre défi.", "error");
+                }
                 const btn = document.getElementById(`btn-chal-${e.targetId}`);
                 if (btn) {
                     btn.className = 'btn btn-challenge';
@@ -394,6 +437,12 @@ document.getElementById('btn-confirm-char').addEventListener('click', () => {
     }
 
     navigateTo('screen-main');
+}
+
+// --- CONFIRMATION ET CONNEXION WEB3/REVERB ---
+document.getElementById('btn-confirm-char').addEventListener('click', () => {
+    localStorage.setItem('web3combat_char', AppState.selectedCharacter.id);
+    performLogin();
 });
 
 
@@ -414,13 +463,15 @@ function renderDuelLobby(playersToRender = onlinePlayers) {
         card.className = 'player-card';
         const shortId = player.id.substring(0,6) + '...' + player.id.substring(player.id.length - 4);
         
+        let cardStyle = "";
         let buttonHtml = `<button class="btn btn-challenge" id="btn-chal-${player.id}" onclick="openBetModal('${player.id}')">Défier</button>`;
         if (player.status === 'in-game') {
+            cardStyle = "opacity: 0.5; filter: grayscale(100%); pointer-events: none;";
             buttonHtml = `<button class="btn btn-waiting" id="btn-chal-${player.id}" disabled><i data-lucide="swords" width="16" height="16" style="margin-right: 0.5rem"></i> En combat</button>`;
         }
 
         card.innerHTML = `
-            <div class="player-info">
+            <div class="player-info" style="${cardStyle}">
                 <h3>${player.name}</h3>
                 <p>${shortId}</p>
             </div>
@@ -430,6 +481,36 @@ function renderDuelLobby(playersToRender = onlinePlayers) {
     });
     lucide.createIcons();
 }
+window.resetMatchState = function() {
+    AppState.currentMatchId = null;
+    AppState.hasCommitted = false;
+    AppState.currentMove = null;
+    AppState.currentSecret = null;
+    AppState.opponentChar = null;
+    AppState.lastActionTime = null;
+    AppState.currentChallenger = null;
+    AppState.currentTargetId = null;
+    
+    if (typeof engineInstance !== 'undefined' && engineInstance) {
+        try { engineInstance.requestQuit(); } catch(e){}
+        engineInstance = null;
+    }
+    
+    fetch(`http://${window.location.hostname}:8000/api/matchmaking/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ player_id: AppState.walletAddress, status: 'online' })
+    }).catch(e => console.error(e));
+    
+    renderDuelLobby();
+};
+
+window.quitGodot = function() {
+    if(confirm("Voulez-vous vraiment quitter le jeu et retourner au lobby ?")) {
+        resetMatchState();
+        navigateTo('screen-duel');
+    }
+};
 
 function filterLobby(query) {
     const lowerQuery = query.toLowerCase().trim();
@@ -476,7 +557,16 @@ function openBetModal(playerId) {
     const targetPlayer = onlinePlayers.find(p => p.id === playerId);
     const targetName = targetPlayer ? targetPlayer.name : "Adversaire";
     document.getElementById('bet-target-name').innerText = targetName;
-    document.getElementById('bet-amount').value = AppState.defaultBetAmount;
+    document.getElementById('bet-amount').value = AppState.defaultBetAmount || "10";
+    
+    let maxBet = localStorage.getItem(`web3combat_max_bet_${AppState.walletAddress}`) || '0';
+    let minBet = localStorage.getItem(`web3combat_min_bet_${AppState.walletAddress}`) || '0';
+    
+    const statsEl = document.getElementById('bet-stats');
+    if (statsEl) {
+        statsEl.innerText = `Mise Max : ${maxBet} ETH | Mise Min : ${minBet > 0 ? minBet : '--'} ETH`;
+    }
+    
     document.getElementById('bet-modal').style.display = 'flex';
 }
 
@@ -493,9 +583,15 @@ function confirmBetAndChallenge() {
     const betAmount = document.getElementById('bet-amount').value;
     
     if(!betAmount || isNaN(betAmount) || Number(betAmount) <= 0) {
-        alert("Veuillez entrer un montant valide.");
+        showToast("Veuillez entrer un montant valide.", "error");
         return;
     }
+
+    let maxBet = localStorage.getItem(`web3combat_max_bet_${AppState.walletAddress}`) || '0';
+    let minBet = localStorage.getItem(`web3combat_min_bet_${AppState.walletAddress}`) || '0';
+    
+    if (Number(betAmount) > Number(maxBet)) localStorage.setItem(`web3combat_max_bet_${AppState.walletAddress}`, betAmount);
+    if (Number(minBet) === 0 || Number(betAmount) < Number(minBet)) localStorage.setItem(`web3combat_min_bet_${AppState.walletAddress}`, betAmount);
 
     localStorage.setItem('web3combat_bet_amount', betAmount);
     AppState.defaultBetAmount = betAmount;
@@ -506,83 +602,159 @@ function confirmBetAndChallenge() {
     initiateChallenge(targetId, betAmount);
 }
 
-// Envoi d'un défi via le Smart Contract
+// Envoi d'un défi via API (Off-Chain)
 async function initiateChallenge(playerId, betAmount) {
     const btn = document.getElementById(`btn-chal-${playerId}`);
-    btn.className = 'btn btn-waiting';
-    btn.innerHTML = '<i data-lucide="loader-2" width="16" height="16" style="margin-right: 0.5rem"></i> Attente Tx...';
-    btn.disabled = true;
-    lucide.createIcons();
+    if(btn) {
+        btn.className = 'btn btn-waiting';
+        btn.innerHTML = '<i data-lucide="loader-2" width="16" height="16" style="margin-right: 0.5rem"></i> Envoi...';
+        btn.disabled = true;
+        lucide.createIcons();
+    }
 
     try {
-        const betWei = ethers.parseEther(betAmount.toString());
-        const feePercent = await contract.feePercent();
-        const feeWei = (betWei * feePercent) / 1000n;
-        const totalWei = betWei + feeWei;
+        const response = await fetch(`http://${window.location.hostname}:8000/api/matchmaking/challenge`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({
+                challenger_id: AppState.walletAddress,
+                target_id: playerId,
+                bet_amount: betAmount
+            })
+        });
 
-        const charId = AppState.selectedCharacter.id;
-        const tx = await contract.challenge(playerId, charId, betWei, { value: totalWei });
-        console.log("Tx challenge envoyée :", tx.hash);
-        await tx.wait();
-        console.log("Tx challenge confirmée !");
-        
-        btn.innerHTML = '<i data-lucide="loader-2" width="16" height="16" style="margin-right: 0.5rem"></i> Attente Adversaire...';
-        lucide.createIcons();
+        if (response.ok) {
+            if(btn) {
+                btn.innerHTML = '<i data-lucide="loader-2" width="16" height="16" style="margin-right: 0.5rem"></i> Attente Adv...';
+                lucide.createIcons();
+            }
+        } else {
+            throw new Error("API error");
+        }
     } catch (e) {
         console.error(e);
-        btn.className = 'btn btn-challenge';
-        btn.innerHTML = 'Défier';
-        btn.disabled = false;
-        alert("Erreur lors de l'envoi du défi sur la blockchain.");
+        if(btn) {
+            btn.className = 'btn btn-challenge';
+            btn.innerHTML = 'Défier';
+            btn.disabled = false;
+        }
+        showToast("Erreur lors de l'envoi du défi.", "error");
     }
 }
 
-// --- MODALE DE DÉFI ---
+// --- MODALE DE DÉFI (RÉCEPTION) ---
 document.getElementById('btn-accept-challenge').addEventListener('click', async () => {
-    document.getElementById('challenge-modal').style.display = 'none';
+    document.getElementById('challenge-modal-actions').style.display = 'none';
+    document.getElementById('challenge-text').innerText = "Acceptation en cours...";
+    
     try {
-        const matchId = AppState.currentMatchId;
-        const betWei = AppState.currentBetAmount;
-        const feePercent = await contract.feePercent();
-        const feeWei = (betWei * feePercent) / 1000n;
-        const totalWei = betWei + feeWei;
-
-        const charId = AppState.selectedCharacter.id;
-        console.log("Acceptation du défi", matchId, "Mise:", ethers.formatEther(betWei), "Frais:", ethers.formatEther(feeWei));
-        const tx = await contract.acceptChallenge(matchId, charId, betWei, { value: totalWei });
-        console.log("Tx accept envoyée :", tx.hash);
-        await tx.wait();
-        console.log("Tx accept confirmée ! Le match va démarrer...");
-    } catch (e) {
+        const response = await fetch(`http://${window.location.hostname}:8000/api/matchmaking/accept`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({
+                challenger_id: AppState.currentChallenger,
+                target_id: AppState.walletAddress,
+                bet_amount: AppState.currentBetAmountOffchain
+            })
+        });
+        
+        if (!response.ok) throw new Error("Erreur serveur");
+        document.getElementById('challenge-text').innerText = "Attente du dépôt de l'adversaire sur la blockchain...";
+    } catch(e) {
         console.error(e);
-        alert("Erreur lors de l'acceptation sur la blockchain.");
+        document.getElementById('challenge-modal').style.display = 'none';
+        showToast("Erreur lors de l'acceptation.", "error");
     }
+});
+
+document.getElementById('btn-modify-challenge').addEventListener('click', () => {
+    document.getElementById('challenge-modal').style.display = 'none';
+    
+    // Decline the current off-chain offer silently with is_negotiation = true
+    fetch(`http://${window.location.hostname}:8000/api/matchmaking/decline`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ challenger_id: AppState.currentChallenger, target_id: AppState.walletAddress, is_negotiation: true })
+    });
+    
+    // Open bet modal targeting the challenger
+    openBetModal(AppState.currentChallenger);
 });
 
 document.getElementById('btn-decline-challenge').addEventListener('click', async () => {
     document.getElementById('challenge-modal').style.display = 'none';
     
     try {
-        const response = await fetch(`http://${window.location.hostname}:8000/api/matchmaking/decline`, {
+        await fetch(`http://${window.location.hostname}:8000/api/matchmaking/decline`, {
             method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            },
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
             body: JSON.stringify({
                 challenger_id: AppState.currentChallenger,
                 target_id: AppState.walletAddress
             })
         });
-        if (!response.ok) {
-            console.error("Erreur de refus :", await response.json());
-        }
-    } catch (e) {
-        console.error(e);
-    }
+    } catch (e) { console.error(e); }
 
     AppState.currentChallenger = null;
 });
+
+// --- EXÉCUTION ON-CHAIN ---
+async function executeMatchOnChain(e) {
+    const isChallenger = (e.player1.toLowerCase() === AppState.walletAddress.toLowerCase());
+    
+    if (isChallenger) {
+        document.getElementById('challenge-text').innerText = "L'adversaire a accepté ! Dépôt des fonds...";
+        document.getElementById('challenge-modal-actions').style.display = 'none';
+        document.getElementById('challenge-modal').style.display = 'flex';
+        
+        try {
+            const betWei = ethers.parseEther(AppState.defaultBetAmount.toString());
+            const feePercent = await contract.feePercent();
+            const feeWei = (betWei * feePercent) / 1000n;
+            const totalWei = betWei + feeWei;
+
+            const charId = AppState.selectedCharacter.id;
+            console.log("Envoi challenge on-chain...");
+            const tx = await contract.challenge(e.player2, charId, betWei, { value: totalWei });
+            
+            document.getElementById('challenge-text').innerText = "Transaction en cours de confirmation...";
+            await tx.wait();
+            
+            document.getElementById('challenge-text').innerText = "Fonds déposés ! Attente du dépôt de l'adversaire...";
+        } catch(err) {
+            console.error(err);
+            showToast("Erreur lors du dépôt. Match annulé.", "error");
+            document.getElementById('challenge-modal').style.display = 'none';
+            resetMatchState();
+        }
+    } else {
+        document.getElementById('challenge-modal-actions').style.display = 'none';
+        document.getElementById('challenge-text').innerText = "Attente du dépôt du challenger sur la blockchain...";
+        document.getElementById('challenge-modal').style.display = 'flex';
+    }
+}
+
+async function executeAcceptOnChain(matchId, betWei) {
+    try {
+        const feePercent = await contract.feePercent();
+        const feeWei = (betWei * feePercent) / 1000n;
+        const totalWei = betWei + feeWei;
+        const charId = AppState.selectedCharacter.id;
+
+        document.getElementById('challenge-text').innerText = "L'adversaire a déposé ses fonds ! À vous de déposer...";
+        
+        const tx = await contract.acceptChallenge(matchId, charId, betWei, { value: totalWei });
+        document.getElementById('challenge-text').innerText = "Transaction en cours de confirmation...";
+        await tx.wait();
+        
+        document.getElementById('challenge-modal').style.display = 'none';
+    } catch(err) {
+        console.error(err);
+        showToast("Transaction refusée ou erreur. Le match est annulé.", "error");
+        document.getElementById('challenge-modal').style.display = 'none';
+        resetMatchState();
+    }
+}
 
 
 // --- GÉNÉRATION ÉCRAN BATTLE ROYALE ---
@@ -624,6 +796,10 @@ let engineInstance = null;
 function launchGodot(targetId) {
     console.log("Lancement de Godot contre :", targetId);
     
+    // Fermer la modale pour qu'elle ne bloque pas le jeu
+    const challengeModal = document.getElementById('challenge-modal');
+    if (challengeModal) challengeModal.style.display = 'none';
+
     // Si c'est BR_MODE, c'est juste un test, sinon on informe l'UI que le défi a été accepté
     if (targetId !== 'BR_MODE') {
         const btn = document.getElementById(`btn-chal-${targetId}`);
@@ -684,7 +860,7 @@ window.submitMove = async function(moveNum) {
         try {
             const move = parseInt(moveNum);
             if(isNaN(move) || move < 1 || move > 3) {
-                alert("Mouvement invalide retourné par Godot: " + moveNum);
+                showToast("Mouvement invalide retourné par Godot: " + moveNum, "error");
                 return;
             }
 
@@ -740,4 +916,13 @@ document.addEventListener('DOMContentLoaded', () => {
     renderCharacterSelect();
     renderDuelLobby();
     renderBRLobby();
+    
+    const savedCharId = localStorage.getItem('web3combat_char');
+    if (savedCharId) {
+        const char = characters.find(c => c.id == savedCharId);
+        if (char) {
+            selectCharacter(char);
+            performLogin();
+        }
+    }
 });

@@ -27,6 +27,9 @@
 
         <!-- ECRAN 2 : MENU PRINCIPAL -->
         <div id="screen-main" class="screen">
+            <button class="header-nav" onclick="changeCharacter()" style="position:absolute; top:20px; left:20px; z-index:100; padding:10px; background:rgba(0,0,0,0.5); border-radius:10px;">
+                <i data-lucide="arrow-left" width="20"></i> Changer de Perso
+            </button>
             <div class="player-badge" id="player-badge">
                 <!-- Injecté par JS -->
             </div>
@@ -67,9 +70,9 @@
             <div class="search-bar">
                 <div class="search-input-wrapper">
                     <i data-lucide="search" width="20"></i>
-                    <input type="text" placeholder="Pseudo ou Adresse Wallet..." id="search-input">
+                    <input type="text" placeholder="Pseudo ou Adresse Wallet..." id="search-input" oninput="filterLobby(this.value)">
                 </div>
-                <button class="qr-btn"><i data-lucide="qr-code" width="24"></i></button>
+                <button class="qr-btn" onclick="openQRScanner()"><i data-lucide="qr-code" width="24"></i></button>
             </div>
 
             <h2 class="list-title">Joueurs en ligne</h2>
@@ -94,6 +97,9 @@
 
         <!-- ECRAN 5 : CHARGEMENT GODOT -->
         <div id="screen-combat" class="screen">
+            <button class="header-nav" onclick="quitGodot()" style="position:absolute; top:20px; left:20px; z-index:100; padding:10px;">
+                <i data-lucide="arrow-left" width="20"></i> Quitter
+            </button>
             <div class="godot-icon"><i data-lucide="swords" width="64" height="64"></i></div>
             <h1 class="godot-title">Godot Engine</h1>
             <p class="subtitle">Chargement de la scène 3D de combat...</p>
@@ -105,7 +111,10 @@
         </div>
 
         <!-- Le Canvas Godot sera injecté ou affiché ici -->
-        <div id="godot-layer" class="screen" style="padding:0;">
+        <div id="godot-layer" class="screen" style="padding:0; position:relative;">
+            <button class="header-nav" onclick="quitGodot()" style="position:absolute; top:20px; left:20px; z-index:100; background:rgba(0,0,0,0.5); padding:10px; border-radius:10px;">
+                <i data-lucide="arrow-left" width="20"></i> Quitter
+            </button>
             <canvas id="canvas" style="display: block; width: 100%; height: 100%; border: none; border-radius: 3rem;"></canvas>
         </div>
 
@@ -126,6 +135,7 @@
                 <p style="color: var(--text-gray-400); font-size: 0.85rem; margin-top: 0.25rem;">
                     Adversaire : <span id="bet-target-name" style="color: white; font-weight: bold;">Joueur</span>
                 </p>
+                <p id="bet-stats" style="color: var(--color-yellow); font-size: 0.75rem; margin-top: 0.25rem;"></p>
                 
                 <div class="bet-input-wrapper">
                     <input type="number" id="bet-amount" value="10" min="0" step="0.1">
@@ -151,12 +161,13 @@
                     <i data-lucide="swords" width="48" height="48"></i>
                 </div>
                 <h2 style="font-size: 1.25rem; font-weight: bold; color: white;">Défi Reçu !</h2>
-                <p id="challenge-text" style="color: var(--text-gray-400); font-size: 0.95rem; margin-top: 1rem; margin-bottom: 2rem;">
+                <p id="challenge-text" style="color: var(--text-gray-400); margin-top: 0.5rem; text-align: center;">
                     Joueur XYZ vous met au défi !
                 </p>
-                <div style="display: flex; gap: 1rem; justify-content: center;">
-                    <button id="btn-accept-challenge" class="btn" style="background: var(--color-green); color: white; padding: 0.75rem 1.5rem; flex: 1;">Accepter</button>
-                    <button id="btn-decline-challenge" class="btn" style="background: var(--color-red); color: white; padding: 0.75rem 1.5rem; flex: 1;">Refuser</button>
+                <div style="display: flex; gap: 0.5rem; margin-top: 1.5rem;" id="challenge-modal-actions">
+                    <button class="btn btn-bet-confirm" style="flex:1;" id="btn-accept-challenge">Accepter</button>
+                    <button class="btn btn-challenge" style="flex:1;" id="btn-modify-challenge">Négocier</button>
+                    <button class="btn" style="flex:1; background: var(--bg-gray-800); color: white;" id="btn-decline-challenge">Refuser</button>
                 </div>
             </div>
         </div>
@@ -174,6 +185,7 @@
 
     <!-- Script principal exporté par Godot (à générer) -->
     <script src="godot/jeu.js"></script>
-    <script src="app.js?v=7"></script>
+    <div id="toast-container" style="position: fixed; bottom: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 10px;"></div>
+    <script src="app.js"></script>
 </body>
 </html>

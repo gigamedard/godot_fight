@@ -16,14 +16,16 @@ class ChallengeDeclined implements ShouldBroadcastNow
 
     public $challengerId;
     public $targetId;
+    public $isNegotiation;
 
     /**
      * Create a new event instance.
      */
-    public function __construct($challengerId, $targetId)
+    public function __construct($challengerId, $targetId, $isNegotiation = false)
     {
         $this->challengerId = $challengerId;
         $this->targetId = $targetId;
+        $this->isNegotiation = $isNegotiation;
     }
 
     /**
