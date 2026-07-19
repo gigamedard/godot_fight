@@ -1,67 +1,83 @@
-# Graph Report - G:\DEV\GODOT_GAME  (2026-07-16)
+# Graph Report - G:\DEV\GODOT_GAME  (2026-07-19)
 
 ## Corpus Check
-- Corpus is ~898 words - fits in a single context window. You may not need a graph.
+- Corpus is ~7,096 words - fits in a single context window. You may not need a graph.
 
 ## Summary
-- 34 nodes · 35 edges · 7 communities
-- Extraction: 94% EXTRACTED · 6% INFERRED · 0% AMBIGUOUS · INFERRED: 2 edges (avg confidence: 0.85)
+- 39 nodes · 67 edges · 8 communities
+- Extraction: 82% EXTRACTED · 16% INFERRED · 1% AMBIGUOUS · INFERRED: 11 edges (avg confidence: 0.82)
 - Token cost: 0 input · 0 output
 
 ## Community Hubs (Navigation)
-- [[_COMMUNITY_Game Characters & Combat|Game Characters & Combat]]
-- [[_COMMUNITY_Web3 & Frontend Integration|Web3 & Frontend Integration]]
-- [[_COMMUNITY_Backend Infrastructure|Backend Infrastructure]]
-- [[_COMMUNITY_Blender & Asset Pipeline|Blender & Asset Pipeline]]
+- [[_COMMUNITY_Animation State Management  Camera Shake Effects  Combat Animation System  Graphify Knowledge Graph  JavaScript-Godot Bridge|Animation State Management / Camera Shake Effects / Combat Animation System / Graphify Knowledge Graph / JavaScript-Godot Bridge]]
+- [[_COMMUNITY_Token Betting System  Docker Infrastructure  Duel Matchmaking System  Project Handover Document  Laravel Backend API|Token Betting System / Docker Infrastructure / Duel Matchmaking System / Project Handover Document / Laravel Backend API]]
+- [[_COMMUNITY_Battle Royale Lobby  Character Selection UI  Matchmaking UI Characters  QR Code Scanning  React Matchmaking UI|Battle Royale Lobby / Character Selection UI / Matchmaking UI Characters / QR Code Scanning / React Matchmaking UI]]
+- [[_COMMUNITY_Blender MCP Asset Pipeline  Godot Character Roster (p1-p4)  Blender Texture Extractor  Blender Mixamo to Godot Converter  Blender Mixamo Prep Tool|Blender MCP Asset Pipeline / Godot Character Roster (p1-p4) / Blender Texture Extractor / Blender Mixamo to Godot Converter / Blender Mixamo Prep Tool]]
 
 ## God Nodes (most connected - your core abstractions)
-1. `Godot Web3 Combat Game` - 8 edges
-2. `Docker Infrastructure` - 5 edges
-3. `main.gd` - 5 edges
-4. `Character Selection Screen` - 5 edges
-5. `Character Integration Workflow` - 4 edges
-6. `Godot 4` - 3 edges
-7. `Laravel API` - 3 edges
-8. `Vanilla JS Frontend` - 3 edges
-9. `MCP Protocol` - 3 edges
-10. `Web3 Authentication` - 2 edges
+1. `Main Godot Combat Script` - 16 edges
+2. `Duel Matchmaking System` - 9 edges
+3. `Enhanced HTML Matchmaking with Betting` - 8 edges
+4. `Architecture Handover Document` - 8 edges
+5. `HTML Matchmaking Interface` - 7 edges
+6. `React Matchmaking UI` - 6 edges
+7. `Project Handover Document` - 6 edges
+8. `Combat Animation System` - 6 edges
+9. `Character Selection UI` - 6 edges
+10. `Blender MCP Asset Pipeline` - 6 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `Godot Web3 Combat Game` --references--> `Character Integration Workflow`  [EXTRACTED]
-  HANDOVER.md → HANDOVER.md  _Bridges community 1 → community 3_
-- `Godot Web3 Combat Game` --references--> `Docker Infrastructure`  [EXTRACTED]
-  HANDOVER.md → HANDOVER.md  _Bridges community 1 → community 2_
+- `Main Godot Combat Script` --conceptually_related_to--> `React Matchmaking UI`  [INFERRED]
+  scripts/main.gd → flow_ui_menu_matchmaking.tsx
+- `Battle Royale Lobby` --conceptually_related_to--> `Duel Matchmaking System`  [INFERRED]
+  flow_ui_menu_matchmaking.tsx → inter_match2.html
+- `React Matchmaking UI` --implements--> `Duel Matchmaking System`  [EXTRACTED]
+  flow_ui_menu_matchmaking.tsx → inter_match2.html
+- `React Matchmaking UI` --conceptually_related_to--> `HTML Matchmaking Interface`  [INFERRED]
+  flow_ui_menu_matchmaking.tsx → interface_matchmaking.html
+- `Blender Texture Extractor` --implements--> `Blender MCP Asset Pipeline`  [EXTRACTED]
+  scripts/tools/blender_extract_texture.py → HANDOVER.md
 
-## Communities (7 total, 0 thin omitted)
+## Communities (8 total, 0 thin omitted)
 
-### Community 0 - "Game Characters & Combat"
-Cohesion: 0.22
-Nodes (10): Animation State Machine, Big Choco (p4), Character Selection Screen, Combat Logic, Dynamic Camera, Guerrier Ninja (p1), main.gd, Mutant Cyborg (p2) (+2 more)
+### Community 0 - "Animation State Management / Camera Shake Effects / Combat Animation System / Graphify Knowledge Graph / JavaScript-Godot Bridge"
+Cohesion: 0.31
+Nodes (10): Animation State Management, Camera Shake Effects, Combat Animation System, Graphify Knowledge Graph, JavaScript-Godot Bridge, Particle Effects System, Rock-Paper-Scissors Game Logic, FBX Animation Inspector (+2 more)
 
-### Community 1 - "Web3 & Frontend Integration"
-Cohesion: 0.38
-Nodes (7): Godot 4, Godot Web3 Combat Game, JSBridge Communication, Metamask Wallet, Vanilla JS Frontend, Web3 Authentication, WebAssembly Export
+### Community 1 - "Token Betting System / Docker Infrastructure / Duel Matchmaking System / Project Handover Document / Laravel Backend API"
+Cohesion: 0.42
+Nodes (9): Token Betting System, Docker Infrastructure, Duel Matchmaking System, Project Handover Document, Laravel Backend API, Laravel Reverb WebSockets, Smart Contract Escrow, Web3 Blockchain Integration (+1 more)
 
-### Community 2 - "Backend Infrastructure"
-Cohesion: 0.33
-Nodes (6): CORS Configuration, docker-compose.yml, Docker Infrastructure, Laravel API, MySQL Database, Nginx Server
+### Community 2 - "Battle Royale Lobby / Character Selection UI / Matchmaking UI Characters / QR Code Scanning / React Matchmaking UI"
+Cohesion: 0.62
+Nodes (7): Battle Royale Lobby, Character Selection UI, Matchmaking UI Characters, QR Code Scanning, React Matchmaking UI, Enhanced HTML Matchmaking with Betting, HTML Matchmaking Interface
 
-### Community 3 - "Blender & Asset Pipeline"
+### Community 3 - "Blender MCP Asset Pipeline / Godot Character Roster (p1-p4) / Blender Texture Extractor / Blender Mixamo to Godot Converter / Blender Mixamo Prep Tool"
 Cohesion: 0.40
-Nodes (5): Blender Pipeline, Character Integration Workflow, GLB 3D Models, MCP Protocol, Mixamo Pipeline
+Nodes (5): Blender MCP Asset Pipeline, Godot Character Roster (p1-p4), Blender Texture Extractor, Blender Mixamo to Godot Converter, Blender Mixamo Prep Tool
+
+## Ambiguous Edges - Review These
+- `Character Selection UI` → `Matchmaking UI Characters`  [AMBIGUOUS]
+  None · relation: conceptually_related_to
 
 ## Knowledge Gaps
-- **13 isolated node(s):** `Animation State Machine`, `Combat Logic`, `Dynamic Camera`, `Mutant Cyborg (p2)`, `Tom Frazer (p3)` (+8 more)
+- **5 isolated node(s):** `Blender Texture Extractor`, `Blender Mixamo to Godot Converter`, `Blender Mixamo Prep Tool`, `FBX Animation Inspector`, `GLB Animation Inspector`
   These have ≤1 connection - possible missing edges or undocumented components.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `Godot Web3 Combat Game` connect `Web3 & Frontend Integration` to `Backend Infrastructure`, `Blender & Asset Pipeline`?**
-  _High betweenness centrality (0.195) - this node is a cross-community bridge._
-- **Why does `Docker Infrastructure` connect `Backend Infrastructure` to `Web3 & Frontend Integration`?**
-  _High betweenness centrality (0.085) - this node is a cross-community bridge._
-- **Why does `Character Integration Workflow` connect `Blender & Asset Pipeline` to `Web3 & Frontend Integration`?**
-  _High betweenness centrality (0.069) - this node is a cross-community bridge._
-- **What connects `Animation State Machine`, `Combat Logic`, `Dynamic Camera` to the rest of the system?**
-  _13 weakly-connected nodes found - possible documentation gaps or missing edges._
+- **What is the exact relationship between `Character Selection UI` and `Matchmaking UI Characters`?**
+  _Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low._
+- **Why does `Main Godot Combat Script` connect `Animation State Management / Camera Shake Effects / Combat Animation System / Graphify Knowledge Graph / JavaScript-Godot Bridge` to `Token Betting System / Docker Infrastructure / Duel Matchmaking System / Project Handover Document / Laravel Backend API`, `Battle Royale Lobby / Character Selection UI / Matchmaking UI Characters / QR Code Scanning / React Matchmaking UI`, `Blender MCP Asset Pipeline / Godot Character Roster (p1-p4) / Blender Texture Extractor / Blender Mixamo to Godot Converter / Blender Mixamo Prep Tool`?**
+  _High betweenness centrality (0.324) - this node is a cross-community bridge._
+- **Why does `Blender MCP Asset Pipeline` connect `Blender MCP Asset Pipeline / Godot Character Roster (p1-p4) / Blender Texture Extractor / Blender Mixamo to Godot Converter / Blender Mixamo Prep Tool` to `Animation State Management / Camera Shake Effects / Combat Animation System / Graphify Knowledge Graph / JavaScript-Godot Bridge`, `Token Betting System / Docker Infrastructure / Duel Matchmaking System / Project Handover Document / Laravel Backend API`?**
+  _High betweenness centrality (0.122) - this node is a cross-community bridge._
+- **Why does `Enhanced HTML Matchmaking with Betting` connect `Battle Royale Lobby / Character Selection UI / Matchmaking UI Characters / QR Code Scanning / React Matchmaking UI` to `Animation State Management / Camera Shake Effects / Combat Animation System / Graphify Knowledge Graph / JavaScript-Godot Bridge`, `Token Betting System / Docker Infrastructure / Duel Matchmaking System / Project Handover Document / Laravel Backend API`?**
+  _High betweenness centrality (0.099) - this node is a cross-community bridge._
+- **Are the 3 inferred relationships involving `Main Godot Combat Script` (e.g. with `React Matchmaking UI` and `Enhanced HTML Matchmaking with Betting`) actually correct?**
+  _`Main Godot Combat Script` has 3 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 2 inferred relationships involving `Duel Matchmaking System` (e.g. with `Battle Royale Lobby` and `Web3 Blockchain Integration`) actually correct?**
+  _`Duel Matchmaking System` has 2 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 2 inferred relationships involving `Enhanced HTML Matchmaking with Betting` (e.g. with `HTML Matchmaking Interface` and `Main Godot Combat Script`) actually correct?**
+  _`Enhanced HTML Matchmaking with Betting` has 2 INFERRED edges - model-reasoned connections that need verification._

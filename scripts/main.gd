@@ -17,6 +17,10 @@ var rps_ui_container: HBoxContainer
 var selection_ui_container: VBoxContainer
 
 var _js_match_result_callback
+var _js_spawn_player_cb
+var _js_spawn_opponent_cb
+var _js_clear_opponent_cb
+
 var my_name = "Vous"
 var opponent_name = "Adversaire"
 var my_choice = -1
@@ -85,45 +89,54 @@ func _ready():
 	setup_particles()
 	setup_ui()
 	
-	# Afficher l'écran de sélection par défaut
+	# Afficher l'écran de sélection par défaut uniquement hors web
 	rps_ui_container.hide()
-	selection_ui_container.show()
-	status_label.text = "CHOISISSEZ VOTRE COMBATTANT"
 	
 	# Initialisation Web3 (Pont JS)
 	if OS.has_feature("web"):
+		selection_ui_container.hide()
+		status_label.hide()
+		
 		_js_match_result_callback = JavaScriptBridge.create_callback(_on_receive_match_result)
 		JavaScriptBridge.get_interface("window").receiveMatchResult = _js_match_result_callback
 		
-		# Vérifier si on est en ligne
-		var match_info_str = JavaScriptBridge.eval("JSON.stringify(window.getMatchInfo())")
-		if match_info_str:
-			var match_info = JSON.parse_string(match_info_str)
-			if match_info and match_info.has("my_char") and match_info.has("opponent_char"):
-				if match_info.has("my_name"): my_name = match_info.my_name
-				if match_info.has("opponent_name"): opponent_name = match_info.opponent_name
-				# Lancement direct du jeu avec les personnages réseau
-				_start_game(match_info.my_char, match_info.opponent_char)
+		_js_spawn_player_cb = JavaScriptBridge.create_callback(_on_spawn_player)
+		JavaScriptBridge.get_interface("window").godotSpawnPlayer = _js_spawn_player_cb
+		
+		_js_spawn_opponent_cb = JavaScriptBridge.create_callback(_on_spawn_opponent)
+		JavaScriptBridge.get_interface("window").godotSpawnOpponent = _js_spawn_opponent_cb
+		
+		_js_clear_opponent_cb = JavaScriptBridge.create_callback(_on_clear_opponent)
+		JavaScriptBridge.get_interface("window").godotClearOpponent = _js_clear_opponent_cb
+		
+		JavaScriptBridge.eval("if(window.onGodotReady) window.onGodotReady();")
+	else:
+		selection_ui_container.show()
+		status_label.text = "CHOISISSEZ VOTRE COMBATTANT"
 
-func _start_game(player_prefix: String, opponent_prefix: String = ""):
-	if opponent_prefix == "":
-		var keys = roster.keys()
-		opponent_prefix = keys[randi() % keys.size()]
+func _on_spawn_player(args):
+	if args.size() == 0: return
+	var player_prefix = str(args[0])
 	
-	# Clear old models if any
 	for child in player1_node.get_children():
 		child.queue_free()
-	for child in player2_node.get_children():
-		child.queue_free()
 	p1_models.clear()
-	p2_models.clear()
 	
-	# Load models
 	var p1_mat = null
 	if roster[player_prefix].texture != "":
 		p1_mat = StandardMaterial3D.new()
 		p1_mat.albedo_texture = load(roster[player_prefix].texture)
 	_load_models_for(player1_node, p1_models, p1_mat, roster[player_prefix].models)
+	
+	set_state(1, "idle")
+
+func _on_spawn_opponent(args):
+	if args.size() == 0: return
+	var opponent_prefix = str(args[0])
+	
+	for child in player2_node.get_children():
+		child.queue_free()
+	p2_models.clear()
 	
 	var p2_mat = null
 	if roster[opponent_prefix].texture != "":
@@ -131,13 +144,34 @@ func _start_game(player_prefix: String, opponent_prefix: String = ""):
 		p2_mat.albedo_texture = load(roster[opponent_prefix].texture)
 	_load_models_for(player2_node, p2_models, p2_mat, roster[opponent_prefix].models)
 	
-	set_state(1, "idle")
 	set_state(2, "idle")
 	
-	# Switch UI
-	selection_ui_container.hide()
+	# Réinitialiser l'état du combat pour que les boutons fonctionnent
+	is_fighting = false
+	for btn in rps_ui_container.get_children():
+		if btn is Button:
+			btn.disabled = false
+	
+	# Le combat commence
 	rps_ui_container.show()
+	status_label.show()
 	status_label.text = "Choisissez votre attaque !"
+
+func _on_clear_opponent(args):
+	for child in player2_node.get_children():
+		child.queue_free()
+	p2_models.clear()
+	
+	rps_ui_container.hide()
+	status_label.hide()
+
+func _start_game(player_prefix: String, opponent_prefix: String = ""):
+	selection_ui_container.hide()
+	_on_spawn_player([player_prefix])
+	if opponent_prefix == "":
+		var keys = roster.keys()
+		opponent_prefix = keys[randi() % keys.size()]
+	_on_spawn_opponent([opponent_prefix])
 
 func _load_models_for(parent: Node3D, model_dict: Dictionary, mat: Material, paths: Dictionary):
 	for state in paths.keys():
@@ -494,7 +528,10 @@ func _play_combat_animation(winner: int, final_result_text: String):
 		set_state(2, "idle")
 		
 		
-	rps_ui_container.show() # On réaffiche les boutons pour un nouveau match
+	# Après un match complet, si c'est pour l'animation locale :
+	# (Sur le web, c'est clear_opponent qui cachera l'UI)
+	if not OS.has_feature("web"):
+		rps_ui_container.show() # On réaffiche les boutons pour un nouveau match
 	is_fighting = false
 
 	if OS.has_feature("web"):

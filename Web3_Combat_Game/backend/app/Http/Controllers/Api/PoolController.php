@@ -96,6 +96,7 @@ class PoolController extends Controller
     {
         $request->validate([
             'pool_id' => 'required|integer',
+            'match_id' => 'required|string',
             'loser_wallet' => 'nullable|string|size:42',
             'winner_wallet' => 'nullable|string|size:42',
             'is_eliminated' => 'boolean'
@@ -110,13 +111,15 @@ class PoolController extends Controller
 
         $pool = Pool::findOrFail($request->pool_id);
 
-        // Decrement pending matches counter (atomic to avoid race conditions)
-        $pool->decrement('round_pending_matches');
-        $pool->refresh();
+        // Only decrement ONCE per match/bye to avoid double-decrement
+        if (\Illuminate\Support\Facades\Cache::add('pool_match_'.$request->match_id, true, 300)) {
+            $pool->decrement('round_pending_matches');
+            $pool->refresh();
 
-        // Only trigger next round when ALL matches of the current round are done
-        if ($pool->round_pending_matches <= 0) {
-            $this->triggerMatchmaking($pool->id);
+            // Only trigger next round when ALL matches of the current round are done
+            if ($pool->round_pending_matches <= 0) {
+                $this->triggerMatchmaking($pool->id);
+            }
         }
 
         return response()->json(['status' => 'success']);
@@ -140,7 +143,7 @@ class PoolController extends Controller
         $pairs = [];
         $waitingPlayer = null;
 
-        $playerList = $players->pluck('wallet_address')->toArray();
+        $playerList = array_values($players->pluck('wallet_address')->toArray());
 
         // If odd number, one player is exempt (bye) — counts as 1 pending "match"
         if (count($playerList) % 2 !== 0) {

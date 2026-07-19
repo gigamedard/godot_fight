@@ -8,8 +8,13 @@
 </head>
 <body>
 
-    <div class="phone-container">
-        <div class="notch"></div>
+    <!-- Le Canvas Godot en arrière-plan -->
+    <div id="godot-layer" style="position:fixed; top:0; left:0; width:100vw; height:100vh; z-index:0;">
+        <canvas id="canvas" style="display: block; width: 100%; height: 100%; border: none;"></canvas>
+    </div>
+
+    <div class="ui-overlay" id="ui-overlay">
+        <div class="ui-content">
 
         <!-- ECRAN 1 : SELECTION PERSONNAGE -->
         <div id="screen-character" class="screen active">
@@ -83,15 +88,25 @@
 
         <!-- ECRAN 4 : LOBBY BATTLE ROYALE -->
         <div id="screen-br" class="screen">
-            <button class="header-nav" onclick="navigateTo('screen-main')">
-                <i data-lucide="arrow-left" width="20"></i> Retour
-            </button>
-            <button class="header-nav" style="left: auto; right: 20px;" onclick="openCreatePoolModal()">
-                <i data-lucide="plus" width="20"></i> Créer Privée
-            </button>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                <button class="header-nav" onclick="navigateTo('screen-main')" style="margin-bottom: 0;">
+                    <i data-lucide="arrow-left" width="20"></i> Retour
+                </button>
+                <button class="header-nav" onclick="openCreatePoolModal()" style="margin-bottom: 0;">
+                    <i data-lucide="plus" width="20"></i> Créer Privée
+                </button>
+            </div>
             
-            <h1 style="text-align: left; font-size: 1.5rem; margin-bottom: 0.5rem; margin-top: 1rem;">Salons Battle Royale</h1>
-            <p class="subtitle" style="text-align: left; margin-bottom: 1.5rem;">Rejoins un tournoi en attente. Le combat commence quand le salon est plein.</p>
+            <h1 style="text-align: left; font-size: 1.5rem; margin-bottom: 0.5rem;">Salons Battle Royale</h1>
+            <p class="subtitle" style="text-align: left; margin-bottom: 1.5rem;">Rejoins un tournoi en attente ou utilise un code privé.</p>
+
+            <div class="search-bar" style="margin-bottom: 1rem;">
+                <div class="search-input-wrapper">
+                    <i data-lucide="key" width="20"></i>
+                    <input type="text" placeholder="Code d'invitation..." id="invite-code-input">
+                </div>
+                <button class="qr-btn" style="background-color: var(--color-yellow); color: black;" onclick="joinPoolByCode()"><i data-lucide="arrow-right" width="24"></i></button>
+            </div>
 
             <div class="list-container" id="br-list">
                 <!-- Injecté par JS -->
@@ -109,11 +124,11 @@
                 <p id="pool-room-status" class="subtitle" style="color: var(--color-yellow);">En attente de joueurs...</p>
             </div>
 
-            <div id="pool-invite-container" style="display: none; background: var(--bg-dark-secondary); padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; text-align: center; border: 1px solid var(--accent-blue);">
-                <p style="color: var(--text-gray-400); margin-bottom: 0.5rem; font-size: 0.85rem;">Lien d'invitation (Poule Privée)</p>
+            <div id="pool-invite-container" style="display: none; background: rgba(0,0,0,0.4); padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; text-align: center; border: 1px solid var(--border-gray-700);">
+                <p style="color: var(--text-gray-400); margin-bottom: 0.5rem; font-size: 0.85rem;">Code d'invitation (Poule Privée)</p>
                 <div style="display: flex; gap: 0.5rem; justify-content: center;">
-                    <input type="text" id="pool-invite-link" readonly style="background: var(--bg-dark); color: white; border: 1px solid var(--border-color); padding: 0.5rem; border-radius: 4px; width: 70%; font-size: 0.8rem;">
-                    <button class="btn btn-join-pool" style="padding: 0.5rem 1rem;" onclick="copyInviteLink()">Copier</button>
+                    <input type="text" id="pool-invite-link" readonly style="background: var(--bg-gray-900); color: var(--color-yellow); border: 1px solid var(--border-gray-700); padding: 0.5rem; border-radius: 4px; width: 70%; font-size: 1rem; text-align: center; font-weight: bold;">
+                    <button class="btn" style="background-color: var(--bg-gray-800); color: white; padding: 0.5rem 1rem;" onclick="copyInviteLink()">Copier</button>
                 </div>
             </div>
 
@@ -142,13 +157,7 @@
             <p id="loading-text" style="margin-top: 10px; color: var(--text-gray-400);">0 / 0 Mo</p>
         </div>
 
-        <!-- Le Canvas Godot sera injecté ou affiché ici -->
-        <div id="godot-layer" class="screen" style="padding:0; position:relative;">
-            <button class="header-nav" onclick="quitGodot()" style="position:absolute; top:20px; left:20px; z-index:100; background:rgba(0,0,0,0.5); padding:10px; border-radius:10px;">
-                <i data-lucide="arrow-left" width="20"></i> Quitter
-            </button>
-            <canvas id="canvas" style="display: block; width: 100%; height: 100%; border: none; border-radius: 3rem;"></canvas>
-        </div>
+
 
         <!-- MODAL SCANNER QR CODE -->
         <div id="qr-modal" class="overlay-modal">
@@ -231,6 +240,7 @@
                 <button class="btn" style="background: transparent; color: var(--text-gray-400); margin-top: 1rem; width: 100%;" onclick="closeCreatePoolModal()">Annuler</button>
             </div>
         </div>
+        </div>
     </div>
 
     <!-- Scripts CDN -->
@@ -238,13 +248,16 @@
     <script src="https://js.pusher.com/8.2.0/pusher.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/laravel-echo@1.16.1/dist/echo.iife.js"></script>
 
-    <div class="modal-overlay" id="invite-modal" style="display: none;">
-        <div class="modal-content">
-            <h3 style="color: white; margin-bottom: 1rem;">Invitation Reçue</h3>
-            <p style="color: var(--text-gray-400); margin-bottom: 1.5rem;" id="invite-message">Vous avez été invité à rejoindre la poule #X</p>
+    <div class="overlay-modal" id="invite-modal">
+        <div class="bet-card">
+            <div style="display: flex; justify-content: center; margin-bottom: 1rem; color: var(--color-yellow);">
+                <i data-lucide="mail" width="48" height="48"></i>
+            </div>
+            <h2 style="font-size: 1.25rem; font-weight: bold; color: white; margin-bottom: 1rem;">Invitation Reçue</h2>
+            <p style="color: var(--text-gray-400); margin-bottom: 1.5rem; text-align: center;" id="invite-message">Vous avez été invité à rejoindre la poule #X</p>
             <div style="display: flex; gap: 1rem;">
                 <button class="btn btn-bet-confirm" style="flex: 1" id="btn-accept-invite">Rejoindre</button>
-                <button class="btn" style="background: transparent; color: var(--text-gray-400); border: 1px solid var(--border-color); flex: 1" onclick="document.getElementById('invite-modal').style.display='none'">Ignorer</button>
+                <button class="btn" style="background: var(--bg-gray-800); color: white; flex: 1" onclick="document.getElementById('invite-modal').style.display='none'">Ignorer</button>
             </div>
         </div>
     </div>

@@ -57,7 +57,32 @@ function checkURLParameters() {
 function copyInviteLink() {
     const link = document.getElementById('pool-invite-link').value;
     navigator.clipboard.writeText(link);
-    showToast("Lien copié !", "success");
+    showToast("Code copié !", "success");
+}
+
+window.joinPoolByCode = function() {
+    const input = document.getElementById('invite-code-input');
+    if (input && input.value.trim() !== '') {
+        const code = input.value.trim();
+        fetch(`http://${window.location.hostname}:8000/api/pools/invite/${code}`)
+            .then(res => {
+                if(!res.ok) throw new Error("Poule introuvable");
+                return res.json();
+            })
+            .then(pool => {
+                document.getElementById('invite-message').innerText = `Vous êtes invité à la poule #${pool.id} (Mise: ${pool.entry_fee} TKN). Voulez-vous rejoindre ?`;
+                document.getElementById('btn-accept-invite').onclick = () => {
+                    document.getElementById('invite-modal').style.display = 'none';
+                    joinPool(pool.id);
+                };
+                document.getElementById('invite-modal').style.display = 'flex';
+            })
+            .catch(err => {
+                console.error(err);
+                showToast("Code d'invitation invalide", "error");
+            });
+        input.value = '';
+    }
 }
 
 // 3. FONCTIONS DE NAVIGATION ET D'INITIALISATION
@@ -116,8 +141,11 @@ async function initWeb3() {
         // Fetch balance
         updateBalance();
         
-        // Timeout Checker
+        // Timeout Checker and Pool Poller
         setInterval(async () => {
+            if (AppState.currentPoolId) {
+                renderPoolRoom();
+            }
             if (AppState.currentMatchId && AppState.lastActionTime) {
                 // If we are waiting for Godot, we check if 25 seconds passed
                 if (Date.now() - AppState.lastActionTime > 25000) {
@@ -194,7 +222,7 @@ async function initWeb3() {
                 showToast(msg, godotResult === 1 ? 'success' : (godotResult === 0 ? 'info' : 'error'));
                 
                 if (AppState.currentPoolId) {
-                    checkPoolElimination(godotResult);
+                    checkPoolElimination(godotResult, AppState.currentMatchId);
                 }
 
                 resetMatchState();
@@ -211,7 +239,7 @@ async function initWeb3() {
                 if (AppState.hasCommitted) {
                     try {
                         console.log("Révélation du mouvement...");
-                        const txReveal = await contract.revealMove(AppState.currentMatchId, AppState.currentMove, AppState.currentSecret);
+                        const txReveal = await contract.revealMove(AppState.currentMatchId, AppState.currentMove, AppState.currentSecret, { gasLimit: 500000 });
                         await txReveal.wait();
                         console.log("Révélation confirmée !");
                     } catch(e) {
@@ -262,7 +290,7 @@ async function initWeb3() {
                     updateBalance();
                     
                     if (AppState.currentPoolId) {
-                        checkPoolElimination(godotResult);
+                        checkPoolElimination(godotResult, AppState.currentMatchId);
                     }
 
                     // Réinitialisation complète des états (incluant le statut serveur online)
@@ -481,7 +509,11 @@ function performLogin() {
         AppState.pendingPoolParam = null;
     }
 
-    navigateTo('screen-main');
+    if (!engineInstance) {
+        initGodotEngine();
+    } else {
+        navigateTo('screen-main');
+    }
 }
 
 // --- CONFIRMATION ET CONNEXION WEB3/REVERB ---
@@ -536,13 +568,13 @@ window.resetMatchState = function() {
     AppState.currentChallenger = null;
     AppState.currentTargetId = null; // Reset so bye-player guard works next round
     
-    // In a pool, keep Godot alive for the next round
-    // Outside a pool (duel mode), destroy the engine to free memory
-    if (!AppState.currentPoolId) {
-        if (typeof engineInstance !== 'undefined' && engineInstance) {
-            try { engineInstance.requestQuit(); } catch(e){}
-            engineInstance = null;
-        }
+    // Réafficher l'UI Web
+    const overlay = document.getElementById('ui-overlay');
+    if (overlay) overlay.classList.remove('hidden');
+    
+    // Nettoyer l'adversaire dans Godot
+    if (window.godotClearOpponent) {
+        window.godotClearOpponent();
     }
     
     fetch(`http://${window.location.hostname}:8000/api/matchmaking/status`, {
@@ -859,8 +891,40 @@ async function renderBRLobby() {
 // --- LANCEMENT DU JEU GODOT ---
 let engineInstance = null;
 
+function initGodotEngine() {
+    navigateTo('screen-combat'); // Affiche l'écran de chargement
+    if (typeof Engine !== 'undefined') {
+        engineInstance = new Engine({"args":[],"canvasResizePolicy":2,"executable":"godot/jeu","experimentalVK":false,"fileSizes":{"godot/jeu.pck":12160,"godot/jeu.wasm":35649995},"focusCanvas":true,"gdextensionLibs":[]});
+        
+        engineInstance.startGame({
+            'onProgress': function (current, total) {
+                if (total > 0) {
+                    const statusProgress = current / total;
+                    const b = document.getElementById('loading-bar');
+                    const t = document.getElementById('loading-text');
+                    if(b) b.style.width = (statusProgress * 100) + '%';
+                    if(t) t.innerText = Math.round(current / 1024 / 1024) + " / " + Math.round(total / 1024 / 1024) + " Mo";
+                }
+            }
+        }).then(() => {
+            console.log("Moteur Godot démarré avec succès !");
+            // Sera géré par window.onGodotReady envoyé depuis Godot
+        }).catch(e => {
+            console.error("Erreur de lancement Godot :", e);
+        });
+    }
+}
+
+window.onGodotReady = function() {
+    console.log("Godot est prêt !");
+    navigateTo('screen-main');
+    if (window.godotSpawnPlayer) {
+        window.godotSpawnPlayer("p" + AppState.selectedCharacter.id);
+    }
+};
+
 function launchGodot(targetId) {
-    console.log("Lancement de Godot contre :", targetId);
+    console.log("Lancement du combat contre :", targetId);
     
     // Fermer la modale pour qu'elle ne bloque pas le jeu
     const challengeModal = document.getElementById('challenge-modal');
@@ -876,41 +940,13 @@ function launchGodot(targetId) {
         }
     }
 
-    navigateTo('screen-combat');
+    // Masquer complètement l'UI Web pour afficher Godot au premier plan
+    const overlay = document.getElementById('ui-overlay');
+    if (overlay) overlay.classList.add('hidden');
     
-    // If engine already running, just signal Godot with new match info — no restart needed
-    if (engineInstance) {
-        console.log("Godot déjà actif — notification du nouveau match sans redémarrage.");
-        setTimeout(() => {
-            navigateTo('godot-layer');
-            if (window.godotNewMatch) {
-                window.godotNewMatch(); // Signal Godot to fetch fresh match info
-            }
-        }, 500);
-        return;
+    if (window.godotSpawnOpponent) {
+        window.godotSpawnOpponent("p" + (AppState.opponentChar ? AppState.opponentChar.replace('p','') : "2"));
     }
-
-    // First time: actually start the engine
-    setTimeout(() => {
-        if (typeof Engine !== 'undefined') {
-            engineInstance = new Engine({"args":[],"canvasResizePolicy":2,"executable":"godot/jeu","experimentalVK":false,"fileSizes":{"godot/jeu.pck":12160,"godot/jeu.wasm":35649995},"focusCanvas":true,"gdextensionLibs":[]});
-            
-            engineInstance.startGame({
-                'onProgress': function (current, total) {
-                    if (total > 0) {
-                        const statusProgress = current / total;
-                        document.getElementById('loading-bar').style.width = (statusProgress * 100) + '%';
-                        document.getElementById('loading-text').innerText = Math.round(current / 1024 / 1024) + " / " + Math.round(total / 1024 / 1024) + " Mo";
-                    }
-                }
-            }).then(() => {
-                console.log("Moteur Godot démarré avec succès !");
-                navigateTo('godot-layer'); // Basculer sur le canvas
-            }).catch(e => {
-                console.error("Erreur de lancement Godot :", e);
-            });
-        }
-    }, 1500);
 }
 
 function endCombatSimulation() {
@@ -953,7 +989,7 @@ window.submitMove = async function(moveNum) {
             // Commit move (Hash)
             console.log(`Commit du mouvement ${move} avec le secret ${secret}...`);
             const hash = ethers.solidityPackedKeccak256(["uint8", "string"], [move, secret]);
-            const txCommit = await contract.commitMove(AppState.currentMatchId, hash);
+            const txCommit = await contract.commitMove(AppState.currentMatchId, hash, { gasLimit: 500000 });
             console.log("Tx commit envoyée :", txCommit.hash);
             await txCommit.wait();
             console.log("Commit confirmé !");
@@ -973,7 +1009,7 @@ window.submitMove = async function(moveNum) {
 
             if (opponentHasCommitted) {
                 console.log("L'adversaire a déjà commit, révélation immédiate...");
-                const txReveal = await contract.revealMove(AppState.currentMatchId, AppState.currentMove, AppState.currentSecret);
+                const txReveal = await contract.revealMove(AppState.currentMatchId, AppState.currentMove, AppState.currentSecret, { gasLimit: 500000 });
                 await txReveal.wait();
                 console.log("Révélation confirmée !");
             } else {
@@ -1138,7 +1174,7 @@ function subscribeToPoolRound(poolId) {
     }
     window.poolChannel = poolId;
     
-    window.echoInstance.join('pool.' + poolId)
+    window.echoInstance.channel('pool.' + poolId)
         .listen('PoolRoundStarted', (e) => {
             console.log("Pool Round Started!", e);
             handlePoolRoundStarted(e);
@@ -1173,7 +1209,8 @@ async function handlePoolRoundStarted(e) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
             body: JSON.stringify({
-                pool_id: AppState.currentPoolId,
+                pool_id: e.poolId,
+                match_id: "bye_" + AppState.walletAddress,
                 loser_wallet: null,
                 is_eliminated: false
             })
@@ -1225,7 +1262,7 @@ function renderPoolRoom() {
     
     if (AppState.currentInviteCode) {
         document.getElementById('pool-invite-container').style.display = 'block';
-        document.getElementById('pool-invite-link').value = `${window.location.origin}/?invite=${AppState.currentInviteCode}`;
+        document.getElementById('pool-invite-link').value = AppState.currentInviteCode;
     } else {
         document.getElementById('pool-invite-container').style.display = 'none';
     }
@@ -1252,7 +1289,7 @@ function renderPoolRoom() {
         }).catch(e => console.error(e));
 }
 
-async function checkPoolElimination(godotResult) {
+async function checkPoolElimination(godotResult, matchId) {
     // Determine if eliminated based on balance
     try {
         const bal = await contract.poolBalances(AppState.currentPoolId, AppState.walletAddress);
@@ -1262,6 +1299,7 @@ async function checkPoolElimination(godotResult) {
                 headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
                 body: JSON.stringify({
                     pool_id: AppState.currentPoolId,
+                    match_id: matchId.toString(),
                     loser_wallet: AppState.walletAddress,
                     is_eliminated: true
                 })
@@ -1274,6 +1312,7 @@ async function checkPoolElimination(godotResult) {
                 headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
                 body: JSON.stringify({
                     pool_id: AppState.currentPoolId,
+                    match_id: matchId.toString(),
                     loser_wallet: godotResult === 2 ? AppState.walletAddress : null,
                     is_eliminated: false
                 })

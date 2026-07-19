@@ -30,7 +30,7 @@ class PoolRoundStarted implements ShouldBroadcastNow
     {
         // Broadcast on a specific pool channel
         return [
-            new PresenceChannel('pool.'.$this->poolId),
+            new Channel('pool.'.$this->poolId),
         ];
     }
 }
