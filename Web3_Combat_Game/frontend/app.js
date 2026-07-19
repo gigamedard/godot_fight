@@ -34,10 +34,30 @@ function checkURLParameters() {
     if(challengeId) {
         AppState.pendingChallengeParam = challengeId;
     }
-    const poolId = urlParams.get('pool');
-    if(poolId) {
-        AppState.pendingPoolParam = poolId;
+    const inviteCode = urlParams.get('invite');
+    if (inviteCode) {
+        // Fetch pool by invite
+        fetch(`http://${window.location.hostname}:8000/api/pools/invite/${inviteCode}`)
+            .then(res => {
+                if(!res.ok) throw new Error("Poule introuvable");
+                return res.json();
+            })
+            .then(pool => {
+                document.getElementById('invite-message').innerText = `Vous êtes invité à la poule #${pool.id} (Mise: ${pool.entry_fee} TKN). Voulez-vous rejoindre ?`;
+                document.getElementById('btn-accept-invite').onclick = () => {
+                    document.getElementById('invite-modal').style.display = 'none';
+                    joinPool(pool.id);
+                };
+                document.getElementById('invite-modal').style.display = 'flex';
+            })
+            .catch(err => console.error(err));
     }
+}
+
+function copyInviteLink() {
+    const link = document.getElementById('pool-invite-link').value;
+    navigator.clipboard.writeText(link);
+    showToast("Lien copié !", "success");
 }
 
 // 3. FONCTIONS DE NAVIGATION ET D'INITIALISATION
@@ -59,7 +79,7 @@ function navigateTo(screenId) {
 let provider;
 let signer;
 let contract;
-const CONTRACT_ADDRESS = "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512";
+const CONTRACT_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3"; // Assurez-vous de mettre à jour si redéployé
 
 window.showToast = function(message, type = 'info') {
     const container = document.getElementById('toast-container');
@@ -124,9 +144,14 @@ async function initWeb3() {
                 AppState.currentBetAmount = betAmount;
                 AppState.opponentChar = "p" + challengerChar;
                 
-                // Si c'est un pool match
+                // Si c'est un pool match — vérifier qu'on est bien dans ce round (pas le bye player)
                 if (AppState.currentPoolId) {
-                    executeAcceptPoolOnChain(matchId);
+                    // Only accept if we have an opponent set (means we were paired in handlePoolRoundStarted)
+                    if (AppState.currentTargetId) {
+                        executeAcceptPoolOnChain(matchId);
+                    } else {
+                        console.log("ChallengeCreated ignoré : je suis le bye player ce round.");
+                    }
                 } else {
                     executeAcceptOnChain(matchId, betAmount);
                 }
@@ -372,7 +397,7 @@ function performLogin() {
         window.echoInstance = new Echo({
             broadcaster: 'reverb',
             key: 'web3combat',
-            wsHost: window.location.hostname,
+            wsHost: '127.0.0.1',
             wsPort: 8081,
             wssPort: 8081,
             forceTLS: false,
@@ -509,11 +534,15 @@ window.resetMatchState = function() {
     AppState.opponentChar = null;
     AppState.lastActionTime = null;
     AppState.currentChallenger = null;
-    AppState.currentTargetId = null;
+    AppState.currentTargetId = null; // Reset so bye-player guard works next round
     
-    if (typeof engineInstance !== 'undefined' && engineInstance) {
-        try { engineInstance.requestQuit(); } catch(e){}
-        engineInstance = null;
+    // In a pool, keep Godot alive for the next round
+    // Outside a pool (duel mode), destroy the engine to free memory
+    if (!AppState.currentPoolId) {
+        if (typeof engineInstance !== 'undefined' && engineInstance) {
+            try { engineInstance.requestQuit(); } catch(e){}
+            engineInstance = null;
+        }
     }
     
     fetch(`http://${window.location.hostname}:8000/api/matchmaking/status`, {
@@ -849,9 +878,21 @@ function launchGodot(targetId) {
 
     navigateTo('screen-combat');
     
-    // Petite pause pour laisser l'UI s'afficher
+    // If engine already running, just signal Godot with new match info — no restart needed
+    if (engineInstance) {
+        console.log("Godot déjà actif — notification du nouveau match sans redémarrage.");
+        setTimeout(() => {
+            navigateTo('godot-layer');
+            if (window.godotNewMatch) {
+                window.godotNewMatch(); // Signal Godot to fetch fresh match info
+            }
+        }, 500);
+        return;
+    }
+
+    // First time: actually start the engine
     setTimeout(() => {
-        if (!engineInstance && typeof Engine !== 'undefined') {
+        if (typeof Engine !== 'undefined') {
             engineInstance = new Engine({"args":[],"canvasResizePolicy":2,"executable":"godot/jeu","experimentalVK":false,"fileSizes":{"godot/jeu.pck":12160,"godot/jeu.wasm":35649995},"focusCanvas":true,"gdextensionLibs":[]});
             
             engineInstance.startGame({
@@ -869,7 +910,7 @@ function launchGodot(targetId) {
                 console.error("Erreur de lancement Godot :", e);
             });
         }
-    }, 1500); // Wait 1.5s as in the mockup before launching
+    }, 1500);
 }
 
 function endCombatSimulation() {
@@ -978,15 +1019,17 @@ async function confirmCreatePool() {
     const fee = document.getElementById('pool-entry-fee').value;
     const max = document.getElementById('pool-max-players').value;
     const mode = document.getElementById('pool-penalty-mode').value;
+    const isPrivate = document.getElementById('pool-is-private').checked;
     
     if(!fee || isNaN(fee) || Number(fee) <= 0) return showToast("Mise invalide", "error");
     
     try {
         const entryWei = ethers.parseEther(fee.toString());
+        const totalWei = entryWei + (entryWei * 25n / 1000n); // Include fee
         closeCreatePoolModal();
-        showToast("Création de la poule sur la blockchain...", "info");
+        showToast("Création et adhésion à la poule...", "info");
         
-        const tx = await contract.createPool(entryWei, max, mode);
+        const tx = await contract.createAndJoinPool(entryWei, max, mode, { value: totalWei });
         const receipt = await tx.wait();
         
         // Find PoolCreated event
@@ -1002,7 +1045,7 @@ async function confirmCreatePool() {
         
         if (poolId) {
             // Register on backend
-            await fetch(`http://${window.location.hostname}:8000/api/pools`, {
+            const res = await fetch(`http://${window.location.hostname}:8000/api/pools`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
                 body: JSON.stringify({
@@ -1010,12 +1053,32 @@ async function confirmCreatePool() {
                     entry_fee: Number(fee),
                     max_players: Number(max),
                     penalty_mode: Number(mode),
-                    is_private: true
+                    is_private: isPrivate
                 })
             });
-            showToast("Poule créée ! ID: " + poolId, "success");
+            const createdPool = await res.json();
+            
+            // Call join API to register player in the backend pool_players
+            await fetch(`http://${window.location.hostname}:8000/api/pools/join`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                body: JSON.stringify({ pool_id: Number(poolId), wallet_address: AppState.walletAddress })
+            });
+
+            showToast("Poule créée et rejointe ! ID: " + poolId, "success");
+            AppState.currentPoolId = Number(poolId);
+            AppState.currentPoolFee = Number(fee);
+            
+            if (isPrivate && createdPool.pool.invite_code) {
+                AppState.currentInviteCode = createdPool.pool.invite_code;
+            } else {
+                AppState.currentInviteCode = null;
+            }
+
             renderBRLobby();
-            joinPool(poolId);
+            navigateTo('screen-pool-room');
+            renderPoolRoom();
+            subscribeToPoolRound(Number(poolId));
         }
     } catch(e) {
         console.error(e);
@@ -1024,36 +1087,32 @@ async function confirmCreatePool() {
 }
 
 async function joinPool(poolId) {
-    if(!contract) return showToast("Veuillez vous connecter d'abord", "error");
+    if(!contract || !AppState.walletAddress) return showToast("Veuillez connecter votre wallet", "error");
     
     try {
-        // Fetch pool details from backend to know fee
-        const res = await fetch(`http://${window.location.hostname}:8000/api/pools`);
-        let pools = await res.json();
-        let pool = pools.find(p => p.id == poolId);
+        const poolRes = await fetch(`http://${window.location.hostname}:8000/api/pools/${poolId}`);
+        const pool = await poolRes.json();
         
-        if (!pool) {
-            // It might be private, try fetching by ID directly if we had a route, 
-            // for now let's assume it's in the list or we can get it.
-            // Simplified for prototype.
-            showToast("Vérification de la poule...", "info");
-            pool = { entry_fee: 10 }; // Fallback for prototype
-        }
+        if(pool.status !== 'open') return showToast("Cette poule n'est plus ouverte", "error");
         
         const entryWei = ethers.parseEther(pool.entry_fee.toString());
-        const feePercent = await contract.feePercent();
-        const txFee = (entryWei * feePercent) / 1000n;
-        const totalWei = entryWei + txFee;
+        const totalWei = entryWei + (entryWei * 25n / 1000n);
         
-        showToast("Paiement de la mise d'entrée...", "info");
+        showToast("Paiement de l'entrée en cours...", "info");
         const tx = await contract.joinPool(poolId, { value: totalWei });
         await tx.wait();
         
-        // Notify backend
+        // Subscribe to events BEFORE calling the backend, to ensure we catch PoolRoundStarted
+        // if our join triggers the start of the tournament.
+        subscribeToPoolRound(poolId);
+
         const joinRes = await fetch(`http://${window.location.hostname}:8000/api/pools/join`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-            body: JSON.stringify({ pool_id: Number(poolId), wallet_address: AppState.walletAddress })
+            body: JSON.stringify({
+                pool_id: poolId,
+                wallet_address: AppState.walletAddress
+            })
         });
         
         const joinData = await joinRes.json();
@@ -1063,7 +1122,6 @@ async function joinPool(poolId) {
             showToast("Poule rejointe !", "success");
             navigateTo('screen-pool-room');
             renderPoolRoom();
-            subscribeToPoolRound(poolId);
         } else {
             showToast(joinData.message || "Erreur lors de l'inscription", "error");
         }
@@ -1088,11 +1146,38 @@ function subscribeToPoolRound(poolId) {
 }
 
 async function handlePoolRoundStarted(e) {
+    // Pool has a winner — tournament is over
+    if (e.winner) {
+        const isWinner = e.winner.toLowerCase() === AppState.walletAddress.toLowerCase();
+        document.getElementById('pool-room-status').innerText = isWinner ? '🏆 Vous êtes le champion !' : `Champion : ${e.winner.slice(0,10)}...`;
+        document.getElementById('pool-room-status').style.color = isWinner ? 'gold' : 'var(--color-red)';
+        showToast(isWinner ? '🏆 Vous avez remporté la poule !' : `Poule terminée ! Vainqueur : ${e.winner.slice(0,10)}...`, isWinner ? 'success' : 'info');
+        
+        // Re-enable the back/quit button so players can leave the finished pool screen
+        const btnQuit = document.getElementById('btn-quit-pool');
+        const quitText = document.getElementById('quit-pool-text');
+        if (btnQuit && quitText) {
+            btnQuit.disabled = false;
+            quitText.innerText = isWinner ? '🏆 Réclamer les gains et Quitter' : '← Retour au lobby';
+        }
+        return;
+    }
+
     document.getElementById('pool-room-status').innerText = "Round en cours...";
     document.getElementById('pool-room-status').style.color = "var(--color-red)";
     
     if (e.waitingPlayer && e.waitingPlayer.toLowerCase() === AppState.walletAddress.toLowerCase()) {
-        showToast("Vous êtes exempté pour ce round !", "info");
+        showToast("Vous êtes exempté pour ce round ! Attendez le prochain.", "info");
+        // Immediately report "bye" to backend so the round counter is decremented
+        fetch(`http://${window.location.hostname}:8000/api/pools/match-finished`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({
+                pool_id: AppState.currentPoolId,
+                loser_wallet: null,
+                is_eliminated: false
+            })
+        }).catch(err => console.error('Bye report failed:', err));
         return;
     }
     
@@ -1138,14 +1223,33 @@ function renderPoolRoom() {
     if (!AppState.currentPoolId) return;
     document.getElementById('pool-room-title').innerText = "Poule #" + AppState.currentPoolId;
     
-    // In a real app we would fetch the players in the pool from backend to show them.
-    // For now we just show it's active.
-    fetch(`http://${window.location.hostname}:8000/api/pools`).then(r => r.json()).then(pools => {
-        const pool = pools.find(p => p.id == AppState.currentPoolId);
-        if(pool) {
+    if (AppState.currentInviteCode) {
+        document.getElementById('pool-invite-container').style.display = 'block';
+        document.getElementById('pool-invite-link').value = `${window.location.origin}/?invite=${AppState.currentInviteCode}`;
+    } else {
+        document.getElementById('pool-invite-container').style.display = 'none';
+    }
+
+    fetch(`http://${window.location.hostname}:8000/api/pools/${AppState.currentPoolId}`)
+        .then(r => r.json())
+        .then(pool => {
             document.getElementById('pool-room-count').innerText = pool.players_count + " / " + pool.max_players;
-        }
-    });
+            
+            const btnQuit = document.getElementById('btn-quit-pool');
+            const quitText = document.getElementById('quit-pool-text');
+            if (btnQuit && quitText) {
+                if (pool.players_count >= pool.max_players) {
+                    // Bloquer la sortie
+                    btnQuit.disabled = true;
+                    quitText.innerText = "Matchs en cours...";
+                    document.getElementById('pool-room-status').innerText = "La poule est pleine, la bataille commence !";
+                } else {
+                    btnQuit.disabled = false;
+                    quitText.innerText = "Quitter la poule";
+                    document.getElementById('pool-room-status').innerText = "En attente de joueurs...";
+                }
+            }
+        }).catch(e => console.error(e));
 }
 
 async function checkPoolElimination(godotResult) {
@@ -1181,22 +1285,36 @@ async function checkPoolElimination(godotResult) {
 let isQuitting = false;
 async function quitPool(claim = true) {
     if (isQuitting) return;
+    isQuitting = true;
+
     if (claim && contract && AppState.currentPoolId) {
-        isQuitting = true;
         try {
-            const tx = await contract.leavePool(AppState.currentPoolId);
-            await tx.wait();
-            showToast("Vous avez quitté la poule et récupéré vos fonds", "info");
+            const poolStatus = await fetch(`http://${window.location.hostname}:8000/api/pools/${AppState.currentPoolId}`)
+                .then(r => r.json()).then(p => p.status).catch(() => 'unknown');
+
+            if (poolStatus === 'finished') {
+                // If pool is finished, the winner claims their winnings
+                const tx = await contract.claimPoolWinnings(AppState.currentPoolId);
+                await tx.wait();
+                showToast("🏆 Gains de la poule réclamés avec succès !", "success");
+            } else {
+                // If pool is not finished (e.g. still waiting for players), just leave
+                const tx = await contract.leavePool(AppState.currentPoolId);
+                await tx.wait();
+                showToast("Vous avez quitté la poule et récupéré vos fonds", "info");
+            }
         } catch(e) {
-            console.error(e);
+            console.error("Erreur lors de la sortie de poule:", e);
         }
-        isQuitting = false;
     }
+
+    isQuitting = false;
     AppState.currentPoolId = null;
+    AppState.currentInviteCode = null;
     if(window.poolChannel) {
         window.echoInstance.leave('pool.' + window.poolChannel);
         window.poolChannel = null;
     }
-    navigateTo('screen-br-lobby');
+    navigateTo('screen-br');
     renderBRLobby();
 }

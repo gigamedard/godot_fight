@@ -16,12 +16,14 @@ class PoolRoundStarted implements ShouldBroadcastNow
     public $poolId;
     public $pairs;
     public $waitingPlayer;
+    public $winner;
 
-    public function __construct($poolId, $pairs, $waitingPlayer)
+    public function __construct($poolId, $pairs, $waitingPlayer, $winner = null)
     {
         $this->poolId = $poolId;
         $this->pairs = $pairs;
         $this->waitingPlayer = $waitingPlayer;
+        $this->winner = $winner;
     }
 
     public function broadcastOn(): array

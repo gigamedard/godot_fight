@@ -100,13 +100,21 @@
 
         <!-- ECRAN 4.5 : SALON DE POULE -->
         <div id="screen-pool-room" class="screen">
-            <button class="header-nav" onclick="quitPool()">
-                <i data-lucide="arrow-left" width="20"></i> Quitter Poule
+            <button id="btn-quit-pool" class="header-nav" onclick="quitPool()">
+                <i data-lucide="arrow-left" width="20"></i> <span id="quit-pool-text">Quitter Poule</span>
             </button>
             
             <div style="text-align: center; margin-top: 3rem; margin-bottom: 2rem;">
                 <h1 id="pool-room-title" style="font-size: 1.5rem; margin-bottom: 0.5rem;">Poule #ID</h1>
                 <p id="pool-room-status" class="subtitle" style="color: var(--color-yellow);">En attente de joueurs...</p>
+            </div>
+
+            <div id="pool-invite-container" style="display: none; background: var(--bg-dark-secondary); padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; text-align: center; border: 1px solid var(--accent-blue);">
+                <p style="color: var(--text-gray-400); margin-bottom: 0.5rem; font-size: 0.85rem;">Lien d'invitation (Poule Privée)</p>
+                <div style="display: flex; gap: 0.5rem; justify-content: center;">
+                    <input type="text" id="pool-invite-link" readonly style="background: var(--bg-dark); color: white; border: 1px solid var(--border-color); padding: 0.5rem; border-radius: 4px; width: 70%; font-size: 0.8rem;">
+                    <button class="btn btn-join-pool" style="padding: 0.5rem 1rem;" onclick="copyInviteLink()">Copier</button>
+                </div>
             </div>
 
             <div class="br-players" style="justify-content: center; margin-bottom: 2rem;">
@@ -170,7 +178,7 @@
                     <button class="btn-preset" onclick="setBetAmount(10)">10</button>
                     <button class="btn-preset" onclick="setBetAmount(50)">50</button>
                     <button class="btn-preset" onclick="setBetAmount(100)">100</button>
-                    <button class="btn-preset" onclick="setBetAmount(500)">Max</button>
+                <button class="btn-preset" onclick="setBetAmount(500)">Max</button>
                 </div>
                 
                 <button class="btn btn-bet-confirm" onclick="confirmBetAndChallenge()">Valider et Défier</button>
@@ -199,7 +207,7 @@
         <!-- MODAL CREATION POULE PRIVEE -->
         <div id="create-pool-modal" class="overlay-modal">
             <div class="bet-card">
-                <h2 style="font-size: 1.25rem; font-weight: bold; color: white; margin-bottom: 1rem;">Créer une Poule Privée</h2>
+                <h2 style="font-size: 1.25rem; font-weight: bold; color: white; margin-bottom: 1rem;">Créer une Poule</h2>
                 
                 <label style="color: var(--text-gray-400); font-size: 0.85rem; display:block; margin-bottom: 0.25rem;">Mise d'entrée (ETH)</label>
                 <input type="number" id="pool-entry-fee" value="10" min="0" step="0.1" style="width: 100%; padding: 0.5rem; margin-bottom: 1rem; background: var(--bg-gray-800); color: white; border: 1px solid var(--border-gray); border-radius: 5px;">
@@ -213,7 +221,13 @@
                     <option value="1">All-In (Perdre Tout)</option>
                 </select>
 
-                <button class="btn btn-bet-confirm" onclick="confirmCreatePool()">Créer sur Blockchain</button>
+                <label style="color: var(--text-gray-400); font-size: 0.9rem; margin-top: 1rem; display: block;">Visibilité</label>
+                <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1.5rem;">
+                    <input type="checkbox" id="pool-is-private" style="width: 1.2rem; height: 1.2rem; accent-color: var(--accent-blue);">
+                    <label for="pool-is-private" style="color: white; font-size: 0.9rem;">Poule Privée (Lien d'invitation requis)</label>
+                </div>
+
+                <button class="btn btn-bet-confirm" style="width: 100%" onclick="confirmCreatePool()">Créer et Rejoindre</button>
                 <button class="btn" style="background: transparent; color: var(--text-gray-400); margin-top: 1rem; width: 100%;" onclick="closeCreatePoolModal()">Annuler</button>
             </div>
         </div>
@@ -224,14 +238,24 @@
     <script src="https://js.pusher.com/8.2.0/pusher.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/laravel-echo@1.16.1/dist/echo.iife.js"></script>
 
+    <div class="modal-overlay" id="invite-modal" style="display: none;">
+        <div class="modal-content">
+            <h3 style="color: white; margin-bottom: 1rem;">Invitation Reçue</h3>
+            <p style="color: var(--text-gray-400); margin-bottom: 1.5rem;" id="invite-message">Vous avez été invité à rejoindre la poule #X</p>
+            <div style="display: flex; gap: 1rem;">
+                <button class="btn btn-bet-confirm" style="flex: 1" id="btn-accept-invite">Rejoindre</button>
+                <button class="btn" style="background: transparent; color: var(--text-gray-400); border: 1px solid var(--border-color); flex: 1" onclick="document.getElementById('invite-modal').style.display='none'">Ignorer</button>
+            </div>
+        </div>
+    </div>
     <!-- Scripts Web3 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.10.0/ethers.umd.min.js"></script>
     <script src="hardhat_keys.js"></script>
-    <script src="contract_abi.js"></script>
+    <script src="contract_abi.js?v=2"></script>
 
     <!-- Script principal exporté par Godot (à générer) -->
     <script src="godot/jeu.js"></script>
     <div id="toast-container" style="position: fixed; bottom: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 10px;"></div>
-    <script src="app.js?v=2"></script>
+    <script src="app.js?v=11" defer></script>
 </body>
 </html>

@@ -20,7 +20,8 @@ class Pool extends Model
         'penalty_mode',
         'is_private',
         'invite_code',
-        'status'
+        'status',
+        'round_pending_matches'
     ];
 
     public function players()

@@ -18,6 +18,13 @@ class PoolController extends Controller
         return response()->json($pools);
     }
 
+    // Get a specific pool by id
+    public function show($id)
+    {
+        $pool = Pool::withCount('players')->findOrFail($id);
+        return response()->json($pool);
+    }
+
     // Get a specific pool by invite code
     public function showByInviteCode($code)
     {
@@ -89,24 +96,29 @@ class PoolController extends Controller
     {
         $request->validate([
             'pool_id' => 'required|integer',
-            'loser_wallet' => 'nullable|string|size:42', // If null, it was a draw
+            'loser_wallet' => 'nullable|string|size:42',
             'winner_wallet' => 'nullable|string|size:42',
             'is_eliminated' => 'boolean'
         ]);
 
-        // Note: In a production app, we should verify the on-chain event instead of trusting the client.
-        // But for this hybrid prototype, we use the client API.
+        // Eliminate the loser if specified
         if ($request->loser_wallet && $request->is_eliminated) {
             PoolPlayer::where('pool_id', $request->pool_id)
                 ->where('wallet_address', $request->loser_wallet)
                 ->update(['status' => 'eliminated']);
         }
 
-        // Wait a bit and check if all matches are done to trigger next round
-        // A full implementation would track each match status in DB. 
-        // For simplicity, we can trigger matchmaking again. It will only match players who are not 'in-game'.
-        
-        // Return success
+        $pool = Pool::findOrFail($request->pool_id);
+
+        // Decrement pending matches counter (atomic to avoid race conditions)
+        $pool->decrement('round_pending_matches');
+        $pool->refresh();
+
+        // Only trigger next round when ALL matches of the current round are done
+        if ($pool->round_pending_matches <= 0) {
+            $this->triggerMatchmaking($pool->id);
+        }
+
         return response()->json(['status' => 'success']);
     }
 
@@ -119,8 +131,9 @@ class PoolController extends Controller
         $players = $pool->players()->where('status', 'alive')->get()->shuffle();
 
         if ($players->count() <= 1) {
-            // Pool is finished
-            $pool->update(['status' => 'finished']);
+            // Pool is finished — broadcast winner
+            $pool->update(['status' => 'finished', 'round_pending_matches' => 0]);
+            broadcast(new PoolRoundStarted($poolId, [], null, $players->first()?->wallet_address));
             return response()->json(['status' => 'finished', 'winner' => $players->first()]);
         }
 
@@ -129,7 +142,7 @@ class PoolController extends Controller
 
         $playerList = $players->pluck('wallet_address')->toArray();
 
-        // If odd number, one player waits
+        // If odd number, one player is exempt (bye) — counts as 1 pending "match"
         if (count($playerList) % 2 !== 0) {
             $waitingPlayer = array_pop($playerList);
         }
@@ -141,6 +154,10 @@ class PoolController extends Controller
                 'player2' => $playerList[$i+1]
             ];
         }
+
+        // Number of pending resolutions = matches + 1 bye (if any)
+        $pendingCount = count($pairs) + ($waitingPlayer ? 1 : 0);
+        $pool->update(['round_pending_matches' => $pendingCount]);
 
         // Broadcast the matches to clients
         broadcast(new PoolRoundStarted($poolId, $pairs, $waitingPlayer));

@@ -1,4 +1,4 @@
-const COMBAT_GAME_ABI = [
+[
   {
     "inputs": [],
     "stateMutability": "nonpayable",
@@ -777,4 +777,4 @@ const COMBAT_GAME_ABI = [
     "stateMutability": "nonpayable",
     "type": "function"
   }
-];
+]

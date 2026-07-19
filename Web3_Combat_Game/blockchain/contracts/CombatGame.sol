@@ -11,6 +11,7 @@ contract CombatGame {
         PenaltyMode penaltyMode;
         bool isActive;
         address owner; // 0x0 for auto pools
+        uint256 playersCount;
     }
 
     struct Match {
@@ -134,9 +135,27 @@ contract CombatGame {
             maxPlayers: maxPlayers,
             penaltyMode: penaltyMode,
             isActive: true,
-            owner: msg.sender
+            owner: msg.sender,
+            playersCount: 0
         });
         emit PoolCreated(poolCounter, entryFee, maxPlayers, penaltyMode, msg.sender);
+    }
+
+    function createAndJoinPool(uint256 entryFee, uint256 maxPlayers, PenaltyMode penaltyMode) external payable {
+        require(entryFee > 0, "Entry fee must be > 0");
+        poolCounter++;
+        pools[poolCounter] = Pool({
+            entryFee: entryFee,
+            maxPlayers: maxPlayers,
+            penaltyMode: penaltyMode,
+            isActive: true,
+            owner: msg.sender,
+            playersCount: 0
+        });
+        emit PoolCreated(poolCounter, entryFee, maxPlayers, penaltyMode, msg.sender);
+        
+        // Immediately join the newly created pool
+        _joinPoolInternal(poolCounter, msg.sender, msg.value);
     }
 
     function createAutoPool(uint256 entryFee, uint256 maxPlayers, PenaltyMode penaltyMode) external onlyOwner {
@@ -147,22 +166,29 @@ contract CombatGame {
             maxPlayers: maxPlayers,
             penaltyMode: penaltyMode,
             isActive: true,
-            owner: address(0)
+            owner: address(0),
+            playersCount: 0
         });
         emit PoolCreated(poolCounter, entryFee, maxPlayers, penaltyMode, address(0));
     }
 
     function joinPool(uint256 poolId) external payable {
+        _joinPoolInternal(poolId, msg.sender, msg.value);
+    }
+
+    function _joinPoolInternal(uint256 poolId, address player, uint256 value) internal {
         Pool storage p = pools[poolId];
         require(p.isActive, "Pool not active");
+        require(p.playersCount < p.maxPlayers, "Pool is full");
         
         uint256 fee = (p.entryFee * feePercent) / 1000;
-        require(msg.value == p.entryFee + fee, "Incorrect value sent (must include fee)");
+        require(value == p.entryFee + fee, "Incorrect value sent (must include fee)");
 
         pendingWithdrawals[owner] += fee;
-        poolBalances[poolId][msg.sender] += p.entryFee;
+        poolBalances[poolId][player] += p.entryFee;
+        p.playersCount++;
 
-        emit PoolJoined(poolId, msg.sender);
+        emit PoolJoined(poolId, player);
     }
 
     function challengePool(address target, uint8 charId, uint256 poolId) external {
@@ -210,11 +236,27 @@ contract CombatGame {
     }
 
     function leavePool(uint256 poolId) external {
+        Pool storage p = pools[poolId];
+        require(p.playersCount < p.maxPlayers, "Pool has already started");
+        
         uint256 bal = poolBalances[poolId][msg.sender];
         require(bal > 0, "No balance in pool");
         
         poolBalances[poolId][msg.sender] = 0;
         pendingWithdrawals[msg.sender] += bal;
+        p.playersCount--;
+    }
+
+    function claimPoolWinnings(uint256 poolId) external {
+        Pool storage p = pools[poolId];
+        uint256 expectedTotal = p.entryFee * p.maxPlayers;
+        uint256 bal = poolBalances[poolId][msg.sender];
+        
+        require(bal == expectedTotal, "You have not won the entire pool yet");
+        
+        poolBalances[poolId][msg.sender] = 0;
+        pendingWithdrawals[msg.sender] += bal;
+        p.isActive = false; // Mark pool as completely finished on-chain
     }
 
     // --- SHARED GAME LOGIC ---
@@ -318,7 +360,9 @@ contract CombatGame {
         m.state = MatchState.Finished;
         
         if (m.isPoolMatch) {
-            _applyPoolPenalty(m.poolId, m.challenger, m.target, winner);
+            if (winner != address(0)) {
+                _applyPoolPenalty(m.poolId, m.challenger, m.target, winner);
+            }
             emit TimeoutClaimed(matchId, winner);
             emit PoolMatchFinished(m.poolId, matchId, winner);
         } else {

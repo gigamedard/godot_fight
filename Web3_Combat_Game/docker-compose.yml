@@ -15,30 +15,37 @@ services:
     volumes:
       - db_data:/var/lib/mysql
 
+  blockchain:
+    build:
+      context: ./blockchain
+    container_name: web3_combat_blockchain
+    restart: unless-stopped
+    ports:
+      - "8545:8545"
+    volumes:
+      - ./blockchain:/app
+      - /app/node_modules
+
   api:
-    image: laravelsail/php82-composer:latest
+    build:
+      context: ./backend
     container_name: web3_combat_api
+    restart: unless-stopped
     working_dir: /var/www/html
     volumes:
       - ./backend:/var/www/html
     ports:
       - "8000:8000"
       - "8081:8081"
-    command: >
-      bash -c "if [ ! -f artisan ]; then
-                 echo 'Initialisation du projet Laravel...';
-                 composer create-project --prefer-dist laravel/laravel tmp_app;
-                 mv tmp_app/* tmp_app/.[!.]* . 2>/dev/null;
-                 rmdir tmp_app;
-               fi;
-               php artisan reverb:start --host=0.0.0.0 --port=8081 &
-               php artisan serve --host=0.0.0.0 --port=8000"
     depends_on:
       - db
+      - blockchain
 
   frontend:
-    image: nginx:alpine
+    build:
+      context: ./frontend
     container_name: web3_combat_frontend
+    restart: unless-stopped
     ports:
       - "8080:80"
     volumes:
