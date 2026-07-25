@@ -38,7 +38,7 @@ function checkURLParameters() {
     const inviteCode = urlParams.get('invite');
     if (inviteCode) {
         // Fetch pool by invite
-        fetch(`http://${window.location.hostname}:8000/api/pools/invite/${inviteCode}`)
+        fetch(`${APP_CONFIG.API_BASE_URL}/pools/invite/${inviteCode}`)
             .then(res => {
                 if(!res.ok) throw new Error("Poule introuvable");
                 return res.json();
@@ -65,7 +65,7 @@ window.joinPoolByCode = function() {
     const input = document.getElementById('invite-code-input');
     if (input && input.value.trim() !== '') {
         const code = input.value.trim();
-        fetch(`http://${window.location.hostname}:8000/api/pools/invite/${code}`)
+        fetch(`${APP_CONFIG.API_BASE_URL}/pools/invite/${code}`)
             .then(res => {
                 if(!res.ok) throw new Error("Poule introuvable");
                 return res.json();
@@ -151,7 +151,7 @@ async function initWeb3() {
                 AppState.isRevealing = true;
                 console.log("Révélation du mouvement au backend (Gasless)...");
                 
-                const res = await fetch(`http://${window.location.hostname}:8000/api/battle/reveal`, {
+                const res = await fetch(`${APP_CONFIG.API_BASE_URL}/battle/reveal`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json", "Accept": "application/json" },
                     body: JSON.stringify({
@@ -196,7 +196,7 @@ async function initSessionKey() {
         savedSignature = await signer.signMessage(authMessage);
         localStorage.setItem('web3combat_session_sig_' + AppState.walletAddress, savedSignature);
         
-        await fetch(`http://${window.location.hostname}:8000/api/auth/session-key`, {
+        await fetch(`${APP_CONFIG.API_BASE_URL}/auth/session-key`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
             body: JSON.stringify({
@@ -208,7 +208,7 @@ async function initSessionKey() {
         showToast("Clé de session autorisée ! Mode 100% sans Gas activé.", "success");
     } else {
         // Optionnel : s'assurer que le backend la connaît, on la renvoie silencieusement
-        fetch(`http://${window.location.hostname}:8000/api/auth/session-key`, {
+        fetch(`${APP_CONFIG.API_BASE_URL}/auth/session-key`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
             body: JSON.stringify({
@@ -361,13 +361,13 @@ function performLogin() {
         window.echoInstance = new Echo({
             broadcaster: 'reverb',
             key: 'web3combat',
-            wsHost: window.location.hostname,
-            wsPort: 8081,
-            wssPort: 8081,
+            wsHost: APP_CONFIG.REVERB_HOST,
+            wsPort: APP_CONFIG.REVERB_PORT,
+            wssPort: APP_CONFIG.REVERB_PORT,
             forceTLS: false,
             disableStats: true,
             enabledTransports: ['ws', 'wss'],
-            authEndpoint: `http://${window.location.hostname}:8000/api/broadcasting/auth`,
+            authEndpoint: `${APP_CONFIG.API_BASE_URL}/broadcasting/auth`,
             auth: {
                 headers: {
                     'X-Wallet-Address': AppState.walletAddress,
@@ -513,7 +513,7 @@ window.resetMatchState = function() {
         window.godotClearOpponent();
     }
     
-    fetch(`http://${window.location.hostname}:8000/api/matchmaking/status`, {
+    fetch(`${APP_CONFIG.API_BASE_URL}/matchmaking/status`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
         body: JSON.stringify({ player_id: AppState.walletAddress, status: 'online' })
@@ -634,7 +634,7 @@ async function initiateChallenge(playerId, betAmount) {
     }
 
     try {
-        const response = await fetch(`http://${window.location.hostname}:8000/api/matchmaking/challenge`, {
+        const response = await fetch(`${APP_CONFIG.API_BASE_URL}/matchmaking/challenge`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
             body: JSON.stringify({
@@ -669,7 +669,7 @@ document.getElementById('btn-accept-challenge').addEventListener('click', async 
     document.getElementById('challenge-text').innerText = "Acceptation en cours...";
     
     try {
-        const response = await fetch(`http://${window.location.hostname}:8000/api/matchmaking/accept`, {
+        const response = await fetch(`${APP_CONFIG.API_BASE_URL}/matchmaking/accept`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
             body: JSON.stringify({
@@ -692,7 +692,7 @@ document.getElementById('btn-modify-challenge').addEventListener('click', () => 
     document.getElementById('challenge-modal').style.display = 'none';
     
     // Decline the current off-chain offer silently with is_negotiation = true
-    fetch(`http://${window.location.hostname}:8000/api/matchmaking/decline`, {
+    fetch(`${APP_CONFIG.API_BASE_URL}/matchmaking/decline`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
         body: JSON.stringify({ challenger_id: AppState.currentChallenger, target_id: AppState.walletAddress, is_negotiation: true })
@@ -706,7 +706,7 @@ document.getElementById('btn-decline-challenge').addEventListener('click', async
     document.getElementById('challenge-modal').style.display = 'none';
     
     try {
-        await fetch(`http://${window.location.hostname}:8000/api/matchmaking/decline`, {
+        await fetch(`${APP_CONFIG.API_BASE_URL}/matchmaking/decline`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
             body: JSON.stringify({
@@ -751,7 +751,7 @@ async function renderBRLobby() {
     list.innerHTML = '<p class="empty-state">Recherche de poules...</p>';
 
     try {
-        const res = await fetch(`http://${window.location.hostname}:8000/api/pools`);
+        const res = await fetch(`${APP_CONFIG.API_BASE_URL}/pools`);
         const pools = await res.json();
         
         list.innerHTML = '';
@@ -912,7 +912,7 @@ window.submitMove = async function(moveNum) {
             const sessionSignature = await AppState.sessionWallet.signMessage(messageToSign);
 
             console.log("Envoi au backend pour validation (Gasless)...");
-            fetch(`http://${window.location.hostname}:8000/api/battle/commit`, {
+            fetch(`${APP_CONFIG.API_BASE_URL}/battle/commit`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "Accept": "application/json" },
                 body: JSON.stringify({
@@ -956,7 +956,7 @@ function startUnifiedMatchPolling() {
             return;
         }
         try {
-            const res = await fetch(`http://${window.location.hostname}:8000/api/battle/status/${AppState.currentMatchId}`);
+            const res = await fetch(`${APP_CONFIG.API_BASE_URL}/battle/status/${AppState.currentMatchId}`);
             const data = await res.json();
             const currentStatus = data.fight_status || data.status;
 
@@ -1050,7 +1050,7 @@ async function confirmCreatePool() {
         showToast("Création et adhésion à la poule...", "info");
         
         // Register on backend
-        const res = await fetch(`http://${window.location.hostname}:8000/api/pools`, {
+        const res = await fetch(`${APP_CONFIG.API_BASE_URL}/pools`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
             body: JSON.stringify({
@@ -1072,7 +1072,7 @@ async function confirmCreatePool() {
         // Since Laravel is managing it, we assume we need to call join endpoint
         const poolId = createdPool.pool.id;
         
-        const joinRes = await fetch(`http://${window.location.hostname}:8000/api/pools/${poolId}/join`, {
+        const joinRes = await fetch(`${APP_CONFIG.API_BASE_URL}/pools/${poolId}/join`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
             body: JSON.stringify({ player_wallet: AppState.walletAddress })
@@ -1109,7 +1109,7 @@ async function joinPool(poolId) {
     try {
         showToast("Paiement de l'entrée en cours (Backend)...", "info");
         
-        const joinRes = await fetch(`http://${window.location.hostname}:8000/api/pools/${poolId}/join`, {
+        const joinRes = await fetch(`${APP_CONFIG.API_BASE_URL}/pools/${poolId}/join`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
             body: JSON.stringify({ player_wallet: AppState.walletAddress })
@@ -1121,7 +1121,7 @@ async function joinPool(poolId) {
         }
         
         // Fetch pool details to get fee
-        const detailsRes = await fetch(`http://${window.location.hostname}:8000/api/pools/${poolId}`);
+        const detailsRes = await fetch(`${APP_CONFIG.API_BASE_URL}/pools/${poolId}`);
         const poolData = await detailsRes.json();
 
         subscribeToPoolRound(poolId);
@@ -1207,7 +1207,7 @@ async function renderPoolRoom() {
     document.getElementById('pool-room-title').innerText = "Poule #" + AppState.currentPoolId;
     
     try {
-        const res = await fetch(`http://${window.location.hostname}:8000/api/pools/${AppState.currentPoolId}`);
+        const res = await fetch(`${APP_CONFIG.API_BASE_URL}/pools/${AppState.currentPoolId}`);
         const poolData = await res.json();
 
         if (poolData.invite_code) {
@@ -1253,7 +1253,7 @@ async function renderPoolRoom() {
 async function checkPoolElimination(godotResult, matchId) {
     try {
         if (godotResult === 2) { // Loser
-            const res = await fetch(`http://${window.location.hostname}:8000/api/pools/${AppState.currentPoolId}`);
+            const res = await fetch(`${APP_CONFIG.API_BASE_URL}/pools/${AppState.currentPoolId}`);
             const data = await res.json();
             
             const me = data.players.find(p => p.player_wallet.toLowerCase() === AppState.walletAddress.toLowerCase());
@@ -1272,7 +1272,7 @@ async function quitPool(claim = true) {
 
     if (AppState.currentPoolId) {
         try {
-            const poolStatus = await fetch(`http://${window.location.hostname}:8000/api/pools/${AppState.currentPoolId}`)
+            const poolStatus = await fetch(`${APP_CONFIG.API_BASE_URL}/pools/${AppState.currentPoolId}`)
                 .then(r => r.json()).then(p => p.status).catch(() => 'unknown');
 
             if (poolStatus === 'finished') {
