@@ -840,30 +840,31 @@ window.animationFinished = function() {
     console.log("Animation de combat terminée !");
     document.getElementById('ui-overlay').classList.remove('hidden');
     
-    if (AppState.pendingResult) {
-        const { godotResult, ethPayout } = AppState.pendingResult;
-        
-        if (godotResult === 1) {
-            showToast(`Victoire ! Vous avez gagné ${ethPayout} ETH !`, 'success');
-        } else if (godotResult === 0) {
-            showToast(`Égalité ! Vous récupérez votre mise.`, 'info');
-        } else {
-            showToast(`Défaite... Vous avez perdu le match.`, 'error');
-        }
-        updateBalance();
-        
-        if (AppState.currentPoolId) {
-            checkPoolElimination(godotResult, AppState.currentMatchId);
-        }
-
-        // Réinitialisation complète des états (incluant le statut serveur online)
-        resetMatchState();
-        navigateTo(AppState.currentPoolId ? 'screen-pool-room' : 'screen-duel');
-        
-        AppState.pendingResult = null;
-    } else {
-        resetMatchState();
+    if (!AppState.pendingResult) {
+        console.log("animationFinished ignoré car pas de pendingResult.");
+        return;
     }
+
+    const { godotResult, ethPayout } = AppState.pendingResult;
+    
+    if (godotResult === 1) {
+        showToast(`Victoire ! Vous avez gagné ${ethPayout} ETH !`, 'success');
+    } else if (godotResult === 0) {
+        showToast(`Égalité ! Vous récupérez votre mise.`, 'info');
+    } else {
+        showToast(`Défaite... Vous avez perdu le match.`, 'error');
+    }
+    updateBalance();
+    
+    if (AppState.currentPoolId) {
+        checkPoolElimination(godotResult, AppState.currentMatchId);
+    }
+
+    // Réinitialisation complète des états (incluant le statut serveur online)
+    resetMatchState();
+    navigateTo(AppState.currentPoolId ? 'screen-pool-room' : 'screen-duel');
+    
+    AppState.pendingResult = null;
     
     // Traiter le prochain round s'il était en attente
     if (AppState.pendingPoolRoundEvent) {
@@ -888,6 +889,11 @@ window.getMatchInfo = function() {
 window.submitMove = async function(moveNum) {
     console.log("Godot a soumis le mouvement :", moveNum);
     
+    if (AppState.hasCommitted) {
+        console.log("Mouvement déjà soumis.");
+        return;
+    }
+
     if (AppState.currentMatchId) {
         try {
             const move = parseInt(moveNum);
@@ -1256,8 +1262,8 @@ async function checkPoolElimination(godotResult, matchId) {
             const res = await fetch(`${APP_CONFIG.API_BASE_URL}/pools/${AppState.currentPoolId}`);
             const data = await res.json();
             
-            const me = data.players.find(p => p.player_wallet.toLowerCase() === AppState.walletAddress.toLowerCase());
-            if (!me || me.is_eliminated) {
+            const me = data.players.find(p => p.wallet_address.toLowerCase() === AppState.walletAddress.toLowerCase());
+            if (!me || me.status === 'eliminated') {
                 showToast("Vous êtes éliminé de la poule !", "error");
                 quitPool(false);
             }
