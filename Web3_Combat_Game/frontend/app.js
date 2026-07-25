@@ -1172,6 +1172,8 @@ function subscribeToPoolRound(poolId) {
 }
 
 async function handlePoolRoundStarted(e) {
+    AppState.pendingPoolRoundEvent = null; // Clear it to prevent duplicate execution later
+    
     try {
         if (e.winner) {
             const isWinner = e.winner.toLowerCase() === AppState.walletAddress.toLowerCase();
@@ -1199,6 +1201,11 @@ async function handlePoolRoundStarted(e) {
         const myPair = e.pairs.find(p => p.player1.toLowerCase() === AppState.walletAddress.toLowerCase() || p.player2.toLowerCase() === AppState.walletAddress.toLowerCase());
         
         if (myPair) {
+            if (AppState.currentMatchId === myPair.matchId) {
+                console.log("Round déjà en cours de traitement, ignoré.");
+                return;
+            }
+
             const isChallenger = myPair.player1.toLowerCase() === AppState.walletAddress.toLowerCase();
             const opponent = isChallenger ? myPair.player2 : myPair.player1;
             

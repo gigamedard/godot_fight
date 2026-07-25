@@ -26,14 +26,19 @@ class PoolController extends Controller
         $response = $pool->toArray();
 
         if ($pool->status === 'active') {
+            $playersCache = $pool->players->keyBy(function($p) { return strtolower($p->wallet_address); });
             $response['active_pairs'] = Fight::where('pool_id', $id)
                 ->whereIn('status', ['waiting_for_commits', 'waiting_for_reveals'])
                 ->get()
-                ->map(function($f) {
+                ->map(function($f) use ($playersCache) {
+                    $p1 = $playersCache[strtolower($f->player1_wallet)] ?? null;
+                    $p2 = $playersCache[strtolower($f->player2_wallet)] ?? null;
                     return [
                         'matchId' => $f->id,
                         'player1' => $f->player1_wallet,
                         'player2' => $f->player2_wallet,
+                        'p1_char' => $p1 ? $p1->character_id : 2,
+                        'p2_char' => $p2 ? $p2->character_id : 2,
                     ];
                 });
         }
