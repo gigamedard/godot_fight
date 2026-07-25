@@ -852,7 +852,6 @@ window.onGodotReady = function() {
 
 window.animationFinished = function() {
     console.log("Animation de combat terminée !");
-    document.getElementById('ui-overlay').classList.remove('hidden');
     
     if (!AppState.pendingResult) {
         console.log("animationFinished ignoré car pas de pendingResult.");
@@ -979,6 +978,21 @@ function startUnifiedMatchPolling() {
             const res = await fetch(`${APP_CONFIG.API_BASE_URL}/battle/status/${AppState.currentMatchId}`);
             const data = await res.json();
             const currentStatus = data.fight_status || data.status;
+
+            if (currentStatus === 'waiting_for_commits' || currentStatus === 'waiting_for_reveals') {
+                if (AppState.lastActionTime && (Date.now() - AppState.lastActionTime > 35000)) {
+                    console.log("Timeout de 35s atteint, demande de résolution forcée...");
+                    try {
+                        await fetch(`${APP_CONFIG.API_BASE_URL}/battle/timeout`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ match_id: AppState.currentMatchId })
+                        });
+                    } catch(e) {
+                        console.error("Erreur appel timeout:", e);
+                    }
+                }
+            }
 
             if (currentStatus === 'waiting_for_reveals' && !AppState.hasRevealed) {
                 await window.attemptReveal();
