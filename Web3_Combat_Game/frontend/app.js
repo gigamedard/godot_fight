@@ -837,6 +837,9 @@ function launchGodot(targetId) {
     if (window.godotSpawnPlayer) {
         window.godotSpawnPlayer("p" + (AppState.myChar ? AppState.myChar.replace('p','') : AppState.selectedCharacter.id));
     }
+
+    // Commencer le polling immédiatement pour s'assurer de recevoir les timeouts ou la fin de match
+    startUnifiedMatchPolling();
 }
 
 function endCombatSimulation() {
@@ -997,6 +1000,7 @@ function startUnifiedMatchPolling() {
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ match_id: AppState.currentMatchId })
                         });
+                        AppState.lastActionTime = Date.now();
                     } catch(e) {
                         console.error("Erreur appel timeout:", e);
                     }
