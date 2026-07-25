@@ -8,6 +8,9 @@ var p1_models = {}
 var p2_models = {}
 
 var is_fighting = false
+var is_waiting_for_result = false
+var final_combat_result = -1
+var final_result_text = ""
 var sparks_node: CPUParticles3D
 var dust_node: CPUParticles3D
 var status_label: Label
@@ -331,8 +334,12 @@ func _on_choice_made(player_choice: Choice):
 	is_fighting = true
 	my_choice = player_choice
 	
-	status_label.text = "ATTENTE DE L'ADVERSAIRE..."
+	status_label.text = "COMBAT EN COURS..."
 	rps_ui_container.hide() # On cache les boutons de combat
+	
+	is_waiting_for_result = true
+	final_combat_result = -1
+	_start_endless_combat_loop()
 	
 	if OS.has_feature("web"):
 		# On envoie le choix au JavaScript et on attend
@@ -349,7 +356,7 @@ func _on_choice_made(player_choice: Choice):
 		if winner == 0: result_text += "ÉGALITÉ !"
 		elif winner == 1: result_text += "VOUS GAGNEZ !"
 		else: result_text += "L'ORDI GAGNE !"
-		_play_combat_animation(winner, result_text)
+		_on_receive_match_result([winner, p2_choice + 1])
 
 func _on_receive_match_result(args):
 	var godotResult = args[0] # 0: draw, 1: win, 2: loss
@@ -364,8 +371,9 @@ func _on_receive_match_result(args):
 		else:
 			txt += "DÉFAITE PAR INACTIVITÉ !"
 			
-		status_label.text = "COMBAT EN COURS..."
-		_play_combat_animation(godotResult, txt)
+		final_combat_result = godotResult
+		final_result_text = txt
+		is_waiting_for_result = false
 		return
 		
 	var opponent_choice = opponentMove - 1
@@ -378,8 +386,9 @@ func _on_receive_match_result(args):
 	else:
 		result_text += "VOUS PERDEZ !"
 		
-	status_label.text = "COMBAT EN COURS..."
-	_play_combat_animation(godotResult, result_text)
+	final_combat_result = godotResult
+	final_result_text = result_text
+	is_waiting_for_result = false
 
 func _shake_camera(intensity: float):
 	var shake = create_tween()
@@ -395,12 +404,10 @@ func _flash_screen():
 	var tween = create_tween()
 	tween.tween_property(flash_rect, "color:a", 0.0, 1.0)
 
-func _play_combat_animation(winner: int, final_result_text: String):
+func _start_endless_combat_loop():
 	if not player1_node or not player2_node or not player1_camera:
 		return
 		
-	var base_fov = 60.0
-	
 	# -- ÉTAPE 0 : RAPPROCHEMENT INITIAL --
 	var t0 = create_tween().set_parallel(true)
 	t0.tween_property(player1_node, "position", Vector3(-0.4, 0, 0), 0.5).set_trans(Tween.TRANS_CUBIC)
@@ -410,23 +417,9 @@ func _play_combat_animation(winner: int, final_result_text: String):
 	t0.tween_property(player1_camera, "fov", 45.0, 0.5).set_trans(Tween.TRANS_CUBIC)
 	await t0.finished
 	
-	# -- ÉTAPE 1 : ÉCHANGE DE COUPS ALÉATOIRES --
-	var sequence = []
-	if winner != 0:
-		var w_hits = randi_range(1, 3)
-		var l_hits = randi_range(1, 3)
-		var loser = 2 if winner == 1 else 1
-		for i in range(w_hits): sequence.append(winner)
-		for i in range(l_hits): sequence.append(loser)
-	else:
-		var p1_hits = randi_range(1, 3)
-		var p2_hits = randi_range(1, 3)
-		for i in range(p1_hits): sequence.append(1)
-		for i in range(p2_hits): sequence.append(2)
-		
-	sequence.shuffle()
-	
-	for attacker in sequence:
+	# -- ÉTAPE 1 : BOUCLE INFINIE D'ÉCHANGE DE COUPS --
+	while is_waiting_for_result:
+		var attacker = randi_range(1, 2)
 		var defender = 2 if attacker == 1 else 1
 		
 		var attack_num = randi_range(1, 3)
@@ -434,6 +427,7 @@ func _play_combat_animation(winner: int, final_result_text: String):
 		set_state(defender, "idle")
 		
 		await get_tree().create_timer(0.7).timeout
+		if not is_waiting_for_result: break
 		
 		sparks_node.amount = 20
 		sparks_node.emitting = true
@@ -441,10 +435,18 @@ func _play_combat_animation(winner: int, final_result_text: String):
 		
 		set_state(defender, "reaction")
 		await get_tree().create_timer(0.5).timeout
+		if not is_waiting_for_result: break
 		
 		set_state(attacker, "idle")
 		set_state(defender, "idle")
 		await get_tree().create_timer(0.1).timeout
+
+	# -- QUAND LA BOUCLE S'ARRÊTE, ON JOUE LE CLIMAX --
+	_play_combat_climax(final_combat_result, final_result_text)
+
+func _play_combat_climax(winner: int, final_result_txt: String):
+	if not player1_node or not player2_node or not player1_camera:
+		return
 		
 	# -- ÉTAPE 2 : LE COUP DE GRÂCE (CLIMAX) --
 	var effect = randi() % 3
@@ -483,7 +485,7 @@ func _play_combat_animation(winner: int, final_result_text: String):
 		
 		await get_tree().create_timer(1.0).timeout
 		
-		status_label.text = final_result_text
+		status_label.text = final_result_txt
 		if effect == 0: create_tween().tween_property(player1_camera, "fov", 60.0, 0.5)
 		
 		await get_tree().create_timer(1.5).timeout
@@ -519,19 +521,18 @@ func _play_combat_animation(winner: int, final_result_text: String):
 		tfall.tween_property(player1_node, "position:x", -2.0, 0.5).set_trans(Tween.TRANS_SINE)
 		tfall.tween_property(player2_node, "position:x", 2.0, 0.5).set_trans(Tween.TRANS_SINE)
 		
+		await get_tree().create_timer(0.4).timeout
+		dust_node.position = Vector3(0, -0.5, 0)
+		dust_node.emitting = true
+		
 		await get_tree().create_timer(1.0).timeout
-		status_label.text = final_result_text
+		
+		status_label.text = final_result_txt
 		if effect == 0: create_tween().tween_property(player1_camera, "fov", 60.0, 0.5)
 		
 		await get_tree().create_timer(1.5).timeout
 		set_state(1, "idle")
 		set_state(2, "idle")
-		
-		
-	# Après un match complet, si c'est pour l'animation locale :
-	# (Sur le web, c'est clear_opponent qui cachera l'UI)
-	if not OS.has_feature("web"):
-		rps_ui_container.show() # On réaffiche les boutons pour un nouveau match
 	is_fighting = false
 
 	if OS.has_feature("web"):
