@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Pool;
 use App\Models\PoolPlayer;
+use App\Models\Fight;
 use App\Events\PoolRoundStarted;
 use Illuminate\Support\Str;
 
@@ -21,8 +22,43 @@ class PoolController extends Controller
     // Get a specific pool by id
     public function show($id)
     {
-        $pool = Pool::withCount('players')->findOrFail($id);
-        return response()->json($pool);
+        $pool = Pool::withCount('players')->with('players')->findOrFail($id);
+        $response = $pool->toArray();
+
+        if ($pool->status === 'active') {
+            $response['active_pairs'] = Fight::where('pool_id', $id)
+                ->whereIn('status', ['waiting_for_commits', 'waiting_for_reveals'])
+                ->get()
+                ->map(function($f) {
+                    return [
+                        'matchId' => $f->id,
+                        'player1' => $f->player1_wallet,
+                        'player2' => $f->player2_wallet,
+                    ];
+                });
+        }
+
+        return response()->json($response);
+    }
+
+    public function getUserActivePool($wallet)
+    {
+        $player = \App\Models\PoolPlayer::where('wallet_address', strtolower($wallet))
+            ->where('status', 'alive')
+            ->whereHas('pool', function($q) {
+                $q->whereIn('status', ['open', 'active']);
+            })
+            ->latest()
+            ->first();
+
+        if (!$player) {
+            return response()->json(['active' => false]);
+        }
+
+        return response()->json([
+            'active' => true,
+            'pool_id' => $player->pool_id
+        ]);
     }
 
     // Get a specific pool by invite code
@@ -36,7 +72,6 @@ class PoolController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'id' => 'required|integer', // The on-chain poolId
             'entry_fee' => 'required|numeric',
             'max_players' => 'required|integer',
             'penalty_mode' => 'required|integer',
@@ -46,7 +81,6 @@ class PoolController extends Controller
         $inviteCode = $request->is_private ? Str::random(8) : null;
 
         $pool = Pool::create([
-            'id' => $request->id,
             'entry_fee' => $request->entry_fee,
             'max_players' => $request->max_players,
             'penalty_mode' => $request->penalty_mode,
@@ -58,73 +92,31 @@ class PoolController extends Controller
         return response()->json(['status' => 'success', 'pool' => $pool]);
     }
 
-    // Join a pool (called after on-chain joinPool)
-    public function join(Request $request)
+    public function join(Request $request, $id)
     {
         $request->validate([
-            'pool_id' => 'required|integer',
-            'wallet_address' => 'required|string|size:42',
+            'player_wallet' => 'required|string',
         ]);
 
-        $pool = Pool::findOrFail($request->pool_id);
+        $pool = Pool::findOrFail($id);
 
-        if ($pool->status !== 'open') {
-            return response()->json(['status' => 'error', 'message' => 'Poule fermée'], 400);
-        }
-
-        $playerCount = $pool->players()->count();
-        if ($playerCount >= $pool->max_players) {
-            return response()->json(['status' => 'error', 'message' => 'Poule complète'], 400);
+        if ($pool->players()->count() >= $pool->max_players) {
+            return response()->json(['error' => 'Pool is full'], 400);
         }
 
         PoolPlayer::firstOrCreate([
-            'pool_id' => $pool->id,
-            'wallet_address' => $request->wallet_address
+            'pool_id' => $id,
+            'wallet_address' => strtolower($request->player_wallet),
         ]);
 
-        // If pool is full, we can trigger the matchmaking immediately
-        if ($pool->players()->count() >= $pool->max_players) {
+        $currentCount = $pool->players()->count();
+        if ($currentCount >= $pool->max_players && $pool->status == 'open') {
             $pool->update(['status' => 'active']);
-            $this->triggerMatchmaking($pool->id);
+            $this->triggerMatchmaking($id);
         }
 
         return response()->json(['status' => 'success']);
     }
-
-    // Inform backend that a match has finished, so backend can update status and check for next round
-    public function matchFinished(Request $request)
-    {
-        $request->validate([
-            'pool_id' => 'required|integer',
-            'match_id' => 'required|string',
-            'loser_wallet' => 'nullable|string|size:42',
-            'winner_wallet' => 'nullable|string|size:42',
-            'is_eliminated' => 'boolean'
-        ]);
-
-        // Eliminate the loser if specified
-        if ($request->loser_wallet && $request->is_eliminated) {
-            PoolPlayer::where('pool_id', $request->pool_id)
-                ->where('wallet_address', $request->loser_wallet)
-                ->update(['status' => 'eliminated']);
-        }
-
-        $pool = Pool::findOrFail($request->pool_id);
-
-        // Only decrement ONCE per match/bye to avoid double-decrement
-        if (\Illuminate\Support\Facades\Cache::add('pool_match_'.$request->match_id, true, 300)) {
-            $pool->decrement('round_pending_matches');
-            $pool->refresh();
-
-            // Only trigger next round when ALL matches of the current round are done
-            if ($pool->round_pending_matches <= 0) {
-                $this->triggerMatchmaking($pool->id);
-            }
-        }
-
-        return response()->json(['status' => 'success']);
-    }
-
     // Trigger Matchmaking manually or after a round
     public function triggerMatchmaking($poolId)
     {
@@ -150,16 +142,25 @@ class PoolController extends Controller
             $waitingPlayer = array_pop($playerList);
         }
 
-        // Create pairs
+        // Create pairs and corresponding Fight records
         for ($i = 0; $i < count($playerList); $i += 2) {
+            $fight = Fight::create([
+                'pool_id' => $poolId,
+                'player1_wallet' => strtolower($playerList[$i]),
+                'player2_wallet' => strtolower($playerList[$i+1]),
+                'status' => 'waiting_for_commits',
+                'base_bet_amount' => $pool->entry_fee,
+            ]);
+
             $pairs[] = [
+                'matchId' => $fight->id,
                 'player1' => $playerList[$i],
                 'player2' => $playerList[$i+1]
             ];
         }
 
-        // Number of pending resolutions = matches + 1 bye (if any)
-        $pendingCount = count($pairs) + ($waitingPlayer ? 1 : 0);
+        // Number of pending resolutions = matches only (bye doesn't need resolution via indexer)
+        $pendingCount = count($pairs);
         $pool->update(['round_pending_matches' => $pendingCount]);
 
         // Broadcast the matches to clients

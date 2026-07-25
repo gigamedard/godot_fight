@@ -41,6 +41,21 @@ services:
       - db
       - blockchain
 
+  indexer:
+    build:
+      context: ./indexer
+    container_name: web3_combat_indexer
+    restart: unless-stopped
+    environment:
+      - RPC_URL=ws://blockchain:8545
+      - API_URL=http://api:8000/api/internal
+      - INDEXER_SECRET=super_secret_indexer_token
+    volumes:
+      - ./blockchain/artifacts:/app/artifacts:ro
+    depends_on:
+      - blockchain
+      - api
+
   frontend:
     build:
       context: ./frontend

@@ -12,7 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('pools', function (Blueprint $table) {
-            $table->unsignedBigInteger('id')->primary(); // Matches on-chain poolId
+            $table->id();
             $table->decimal('entry_fee', 20, 0); // In Wei
             $table->integer('max_players');
             $table->integer('penalty_mode'); // 0 = OneBaseBet, 1 = AllBalance

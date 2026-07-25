@@ -9,7 +9,8 @@ const AppState = {
     defaultBetAmount: localStorage.getItem('web3combat_bet_amount') || '10',
     currentPoolId: null,
     currentPoolFee: 0,
-    pendingPoolParam: null
+    pendingPoolParam: null,
+    pendingPoolRoundEvent: null
 };
 
 let onlinePlayers = []; // Mis à jour via Reverb
@@ -57,7 +58,7 @@ function checkURLParameters() {
 function copyInviteLink() {
     const link = document.getElementById('pool-invite-link').value;
     navigator.clipboard.writeText(link);
-    showToast("Code copié !", "success");
+    showToast("Lien copié !", "success");
 }
 
 window.joinPoolByCode = function() {
@@ -73,6 +74,8 @@ window.joinPoolByCode = function() {
                 document.getElementById('invite-message').innerText = `Vous êtes invité à la poule #${pool.id} (Mise: ${pool.entry_fee} TKN). Voulez-vous rejoindre ?`;
                 document.getElementById('btn-accept-invite').onclick = () => {
                     document.getElementById('invite-modal').style.display = 'none';
+                    // No more automatic polling of BRLobby to prevent php artisan serve crash in tests.
+                    // The user must click the refresh button manually or it will just be loaded once.
                     joinPool(pool.id);
                 };
                 document.getElementById('invite-modal').style.display = 'flex';
@@ -104,7 +107,6 @@ function navigateTo(screenId) {
 let provider;
 let signer;
 let contract;
-const CONTRACT_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3"; // Assurez-vous de mettre à jour si redéployé
 
 window.showToast = function(message, type = 'info') {
     const container = document.getElementById('toast-container');
@@ -133,174 +135,88 @@ window.changeCharacter = function() {
 };
 
 async function initWeb3() {
-    if (typeof ethers !== 'undefined' && typeof COMBAT_GAME_ABI !== 'undefined') {
-        provider = new ethers.JsonRpcProvider("http://127.0.0.1:8545");
+    const abi = typeof CONTRACT_ABI !== 'undefined' ? CONTRACT_ABI : (typeof COMBAT_GAME_ABI !== 'undefined' ? COMBAT_GAME_ABI : null);
+    if (typeof ethers !== 'undefined' && abi) {
+        const providerUrl = "http://127.0.0.1:8545";
+        provider = new ethers.JsonRpcProvider(providerUrl);
         signer = new ethers.Wallet(AppState.privateKey, provider);
-        contract = new ethers.Contract(CONTRACT_ADDRESS, COMBAT_GAME_ABI, signer);
+        contract = new ethers.Contract(CONTRACT_ADDRESS, abi, signer);
         
-        // Fetch balance
+        await initSessionKey();
         updateBalance();
         
-        // Timeout Checker and Pool Poller
-        setInterval(async () => {
-            if (AppState.currentPoolId) {
-                renderPoolRoom();
-            }
-            if (AppState.currentMatchId && AppState.lastActionTime) {
-                // If we are waiting for Godot, we check if 25 seconds passed
-                if (Date.now() - AppState.lastActionTime > 25000) {
-                    try {
-                        const m = await contract.matches(AppState.currentMatchId);
-                        if(m[9] != 4 && m[9] != 5) { // not Finished, not Canceled
-                            console.log("Tentative de réclamation de forfait (Timeout)...");
-                            const tx = await contract.claimTimeout(AppState.currentMatchId);
-                            await tx.wait();
-                            console.log("Transaction Timeout confirmée !");
-                            // Ne SURTOUT PAS mettre currentMatchId à null ici, l'Event s'en charge !
-                        }
-                    } catch(e) {}
-                }
-            }
-        }, 5000);
-
-        // Listen to events
-        contract.on("ChallengeCreated", (matchId, challenger, target, betAmount, challengerChar) => {
-            if (target.toLowerCase() === AppState.walletAddress.toLowerCase()) {
-                console.log("Web3: Défi reçu !", matchId);
-                AppState.currentMatchId = matchId;
-                AppState.currentChallenger = challenger;
-                AppState.currentBetAmount = betAmount;
-                AppState.opponentChar = "p" + challengerChar;
+        window.attemptReveal = async function() {
+            if (AppState.isRevealing || AppState.hasRevealed) return;
+            try {
+                AppState.isRevealing = true;
+                console.log("Révélation du mouvement au backend (Gasless)...");
                 
-                // Si c'est un pool match — vérifier qu'on est bien dans ce round (pas le bye player)
-                if (AppState.currentPoolId) {
-                    // Only accept if we have an opponent set (means we were paired in handlePoolRoundStarted)
-                    if (AppState.currentTargetId) {
-                        executeAcceptPoolOnChain(matchId);
-                    } else {
-                        console.log("ChallengeCreated ignoré : je suis le bye player ce round.");
-                    }
-                } else {
-                    executeAcceptOnChain(matchId, betAmount);
-                }
-            } else if (challenger.toLowerCase() === AppState.walletAddress.toLowerCase()) {
-                console.log("Web3: Mon défi a été créé sur la blockchain !", matchId);
-                AppState.currentMatchId = matchId;
-                AppState.currentTargetId = target;
-                AppState.currentBetAmount = betAmount;
-                AppState.myChar = "p" + challengerChar;
-            }
-        });
-        
-        contract.on("ChallengeAccepted", (matchId, targetChar) => {
-            if (AppState.currentMatchId == matchId) {
-                console.log("Web3: Match accepté, lancement de Godot !");
-                AppState.lastActionTime = Date.now();
-                if (!AppState.opponentChar) {
-                    // Si nous sommes le challenger, l'adversaire est la target
-                    AppState.opponentChar = "p" + targetChar;
-                }
-                launchGodot(AppState.currentTargetId || AppState.currentChallenger);
-            }
-        });
-
-        contract.on("TimeoutClaimed", (matchId, winner) => {
-            if (AppState.currentMatchId == matchId) {
-                let msg = "";
-                let godotResult = 0;
+                const res = await fetch(`http://${window.location.hostname}:8000/api/battle/reveal`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "Accept": "application/json" },
+                    body: JSON.stringify({
+                        match_id: AppState.currentMatchId,
+                        wallet_address: AppState.walletAddress,
+                        move: AppState.currentMove,
+                        secret: AppState.currentSecret
+                    })
+                });
                 
-                if (winner === ethers.ZeroAddress) {
-                    msg = "Match annulé (Délai d'attente expiré).";
-                    godotResult = 0;
-                } else if (winner.toLowerCase() === AppState.walletAddress.toLowerCase()) {
-                    msg = "Vous avez gagné par forfait !";
-                    godotResult = 1;
-                } else {
-                    msg = "Vous avez perdu par forfait (Inactivité).";
-                    godotResult = 2;
-                }
-                showToast(msg, godotResult === 1 ? 'success' : (godotResult === 0 ? 'info' : 'error'));
+                const data = await res.json();
+                console.log("Backend Reveal OK:", data);
                 
-                if (AppState.currentPoolId) {
-                    checkPoolElimination(godotResult, AppState.currentMatchId);
-                }
-
-                resetMatchState();
-                navigateTo(AppState.currentPoolId ? 'screen-pool-room' : 'screen-duel');
-                
-                updateBalance();
+                AppState.hasRevealed = true;
+            } catch(e) {
+                console.error("Erreur lors de la révélation:", e);
+            } finally {
+                AppState.isRevealing = false;
             }
-        });
-
-        contract.on("MoveCommitted", async (matchId, player) => {
-            if (AppState.currentMatchId == matchId && player.toLowerCase() !== AppState.walletAddress.toLowerCase()) {
-                console.log("Web3: L'adversaire a soumis son choix !");
-                // Si nous avons aussi déjà commit, nous pouvons révéler
-                if (AppState.hasCommitted) {
-                    try {
-                        console.log("Révélation du mouvement...");
-                        const txReveal = await contract.revealMove(AppState.currentMatchId, AppState.currentMove, AppState.currentSecret, { gasLimit: 500000 });
-                        await txReveal.wait();
-                        console.log("Révélation confirmée !");
-                    } catch(e) {
-                        console.error("Erreur lors de la révélation:", e);
-                    }
-                }
-            }
-        });
-
-        contract.on("MatchFinished", async (matchId, winner, payout) => {
-            if (AppState.currentMatchId == matchId) {
-                console.log("Web3: MatchFinished reçu !");
-                
-                // Récupération des détails du match depuis le contrat pour connaître le coup de l'adversaire
-                const matchDetails = await contract.matches(matchId);
-                let opponentMove = 0;
-                let isChallenger = (matchDetails[0].toLowerCase() === AppState.walletAddress.toLowerCase());
-                if (isChallenger) {
-                    opponentMove = matchDetails[6]; // targetMove
-                } else {
-                    opponentMove = matchDetails[5]; // challengerMove
-                }
-
-                // Déterminer le code de victoire pour Godot (0: draw, 1: win, 2: loss)
-                let godotResult = 0;
-                if (winner === ethers.ZeroAddress) {
-                    godotResult = 0;
-                } else if (winner.toLowerCase() === AppState.walletAddress.toLowerCase()) {
-                    godotResult = 1;
-                } else {
-                    godotResult = 2;
-                }
-
-                // Appel au callback Godot
-                if (window.receiveMatchResult) {
-                    window.receiveMatchResult(godotResult, parseInt(opponentMove));
-                }
-
-                const ethPayout = ethers.formatEther(payout);
-                setTimeout(() => {
-                    if (godotResult === 1) {
-                        showToast(`Victoire ! Vous avez gagné ${ethPayout} ETH !`, 'success');
-                    } else if (godotResult === 0) {
-                        showToast(`Égalité ! Vous récupérez votre mise.`, 'info');
-                    } else {
-                        showToast(`Défaite... Vous avez perdu le match.`, 'error');
-                    }
-                    updateBalance();
-                    
-                    if (AppState.currentPoolId) {
-                        checkPoolElimination(godotResult, AppState.currentMatchId);
-                    }
-
-                    // Réinitialisation complète des états (incluant le statut serveur online)
-                    resetMatchState();
-                    navigateTo(AppState.currentPoolId ? 'screen-pool-room' : 'screen-duel');
-                }, 3000); // Wait for Godot animation before alert
-            }
-        });
+        };
     } else {
         console.error("Ethers.js ou ABI manquant.");
+    }
+}
+
+async function initSessionKey() {
+    let sessionPk = localStorage.getItem('web3combat_session_pk');
+    if (!sessionPk) {
+        const sw = ethers.Wallet.createRandom();
+        sessionPk = sw.privateKey;
+        localStorage.setItem('web3combat_session_pk', sessionPk);
+    }
+    AppState.sessionWallet = new ethers.Wallet(sessionPk);
+    
+    const message = "Commit: " + AppState.sessionWallet.address.toLowerCase(); // Wait, the AuthController checks: "Authorize session key: "
+    const authMessage = "Authorize session key: " + AppState.sessionWallet.address.toLowerCase();
+    
+    let savedSignature = localStorage.getItem('web3combat_session_sig_' + AppState.walletAddress);
+    
+    if (!savedSignature) {
+        showToast("Signature de la clé de session requise (MetaMask va s'ouvrir une seule fois)...", "info");
+        savedSignature = await signer.signMessage(authMessage);
+        localStorage.setItem('web3combat_session_sig_' + AppState.walletAddress, savedSignature);
+        
+        await fetch(`http://${window.location.hostname}:8000/api/auth/session-key`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({
+                wallet_address: AppState.walletAddress,
+                session_public_key: AppState.sessionWallet.address,
+                signature: savedSignature
+            })
+        });
+        showToast("Clé de session autorisée ! Mode 100% sans Gas activé.", "success");
+    } else {
+        // Optionnel : s'assurer que le backend la connaît, on la renvoie silencieusement
+        fetch(`http://${window.location.hostname}:8000/api/auth/session-key`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({
+                wallet_address: AppState.walletAddress,
+                session_public_key: AppState.sessionWallet.address,
+                signature: savedSignature
+            })
+        }).catch(e => console.error(e));
     }
 }
 
@@ -311,9 +227,9 @@ function updateBalance() {
             if(el) el.innerText = parseFloat(ethers.formatEther(bal)).toFixed(2) + " ETH";
         });
         
-        // Fetch pending withdrawals
-        if(contract) {
-            contract.pendingWithdrawals(AppState.walletAddress).then(pending => {
+        // Fetch pending withdrawals / user balances on-chain
+        if(contract && typeof contract.userBalances === 'function') {
+            contract.userBalances(AppState.walletAddress).then(pending => {
                 const container = document.getElementById('pending-funds-container');
                 const amt = document.getElementById('pending-amount');
                 if(container && amt) {
@@ -324,7 +240,7 @@ function updateBalance() {
                         container.style.display = 'none';
                     }
                 }
-            });
+            }).catch(e => console.error("Error fetching userBalances:", e));
         }
     }
 }
@@ -377,19 +293,39 @@ function selectCharacter(char) {
 function performLogin() {
     window.gameConfig = { character: AppState.selectedCharacter.name };
     
+    const urlParams = new URLSearchParams(window.location.search);
+    const playerParam = urlParams.get('player');
+    
     let savedWallet = localStorage.getItem('web3combat_wallet');
     let savedPk = localStorage.getItem('web3combat_pk');
+    
+    if (playerParam !== null) {
+        // Ignorer le localStorage si un joueur spécifique est demandé via l'URL
+        savedWallet = null;
+        savedPk = null;
+    }
     
     if (savedWallet && savedPk) {
         AppState.walletAddress = savedWallet;
         AppState.privateKey = savedPk;
     } else if (typeof HARDHAT_ACCOUNTS !== 'undefined' && HARDHAT_ACCOUNTS.length > 0) {
-        const randomIndex = Math.floor(Math.random() * HARDHAT_ACCOUNTS.length);
-        const account = HARDHAT_ACCOUNTS[randomIndex];
+        let accIndex = 1; // Par défaut, joueur de test #1
+        if (playerParam !== null && !isNaN(playerParam)) {
+            accIndex = parseInt(playerParam);
+            if (accIndex < 0 || accIndex >= HARDHAT_ACCOUNTS.length) accIndex = 1;
+        } else {
+            // Aléatoire entre 1 et 4 si non spécifié
+            accIndex = Math.floor(Math.random() * 4) + 1;
+        }
+        
+        const account = HARDHAT_ACCOUNTS[accIndex];
         AppState.walletAddress = account.address;
         AppState.privateKey = account.privateKey;
-        localStorage.setItem('web3combat_wallet', account.address);
-        localStorage.setItem('web3combat_pk', account.privateKey);
+        
+        if (playerParam === null) {
+            localStorage.setItem('web3combat_wallet', account.address);
+            localStorage.setItem('web3combat_pk', account.privateKey);
+        }
     } else {
         showToast("Les clés Hardhat ne sont pas chargées. Veuillez générer le fichier hardhat_keys.js.", "error");
         return;
@@ -425,7 +361,7 @@ function performLogin() {
         window.echoInstance = new Echo({
             broadcaster: 'reverb',
             key: 'web3combat',
-            wsHost: '127.0.0.1',
+            wsHost: window.location.hostname,
             wsPort: 8081,
             wssPort: 8081,
             forceTLS: false,
@@ -509,10 +445,9 @@ function performLogin() {
         AppState.pendingPoolParam = null;
     }
 
-    if (!engineInstance) {
-        initGodotEngine();
-    } else {
-        navigateTo('screen-main');
+    navigateTo('screen-main');
+    if (window.godotSpawnPlayer) {
+        window.godotSpawnPlayer("p" + AppState.selectedCharacter.id);
     }
 }
 
@@ -561,6 +496,7 @@ function renderDuelLobby(playersToRender = onlinePlayers) {
 window.resetMatchState = function() {
     AppState.currentMatchId = null;
     AppState.hasCommitted = false;
+    AppState.hasRevealed = false;
     AppState.currentMove = null;
     AppState.currentSecret = null;
     AppState.opponentChar = null;
@@ -783,62 +719,29 @@ document.getElementById('btn-decline-challenge').addEventListener('click', async
     AppState.currentChallenger = null;
 });
 
-// --- EXÉCUTION ON-CHAIN ---
+// --- EXÉCUTION ON-CHAIN (Devenu Gasless via Backend) ---
 async function executeMatchOnChain(e) {
     const isChallenger = (e.player1.toLowerCase() === AppState.walletAddress.toLowerCase());
+    const opponent = isChallenger ? e.player2 : e.player1;
     
+    document.getElementById('challenge-text').innerText = "Match validé ! Lancement du combat...";
+    document.getElementById('challenge-modal-actions').style.display = 'none';
+    
+    AppState.currentMatchId = e.matchId;
+    AppState.currentTargetId = opponent;
+    
+    // Si on a l'info du perso de l'adversaire via l'event
     if (isChallenger) {
-        document.getElementById('challenge-text').innerText = "L'adversaire a accepté ! Dépôt des fonds...";
-        document.getElementById('challenge-modal-actions').style.display = 'none';
-        document.getElementById('challenge-modal').style.display = 'flex';
-        
-        try {
-            const betWei = ethers.parseEther(AppState.defaultBetAmount.toString());
-            const feePercent = await contract.feePercent();
-            const feeWei = (betWei * feePercent) / 1000n;
-            const totalWei = betWei + feeWei;
-
-            const charId = AppState.selectedCharacter.id;
-            console.log("Envoi challenge on-chain...");
-            const tx = await contract.challenge(e.player2, charId, betWei, { value: totalWei });
-            
-            document.getElementById('challenge-text').innerText = "Transaction en cours de confirmation...";
-            await tx.wait();
-            
-            document.getElementById('challenge-text').innerText = "Fonds déposés ! Attente du dépôt de l'adversaire...";
-        } catch(err) {
-            console.error(err);
-            showToast("Erreur lors du dépôt. Match annulé.", "error");
-            document.getElementById('challenge-modal').style.display = 'none';
-            resetMatchState();
-        }
+        AppState.opponentChar = "p" + (e.p2_char || 2);
     } else {
-        document.getElementById('challenge-modal-actions').style.display = 'none';
-        document.getElementById('challenge-text').innerText = "Attente du dépôt du challenger sur la blockchain...";
-        document.getElementById('challenge-modal').style.display = 'flex';
+        AppState.opponentChar = "p" + (e.p1_char || 2);
     }
-}
 
-async function executeAcceptOnChain(matchId, betWei) {
-    try {
-        const feePercent = await contract.feePercent();
-        const feeWei = (betWei * feePercent) / 1000n;
-        const totalWei = betWei + feeWei;
-        const charId = AppState.selectedCharacter.id;
-
-        document.getElementById('challenge-text').innerText = "L'adversaire a déposé ses fonds ! À vous de déposer...";
-        
-        const tx = await contract.acceptChallenge(matchId, charId, betWei, { value: totalWei });
-        document.getElementById('challenge-text').innerText = "Transaction en cours de confirmation...";
-        await tx.wait();
-        
+    setTimeout(() => {
         document.getElementById('challenge-modal').style.display = 'none';
-    } catch(err) {
-        console.error(err);
-        showToast("Transaction refusée ou erreur. Le match est annulé.", "error");
-        document.getElementById('challenge-modal').style.display = 'none';
-        resetMatchState();
-    }
+        AppState.lastActionTime = Date.now();
+        launchGodot(opponent);
+    }, 1000);
 }
 
 
@@ -889,39 +792,7 @@ async function renderBRLobby() {
 }
 
 // --- LANCEMENT DU JEU GODOT ---
-let engineInstance = null;
-
-function initGodotEngine() {
-    navigateTo('screen-combat'); // Affiche l'écran de chargement
-    if (typeof Engine !== 'undefined') {
-        engineInstance = new Engine({"args":[],"canvasResizePolicy":2,"executable":"godot/jeu","experimentalVK":false,"fileSizes":{"godot/jeu.pck":12160,"godot/jeu.wasm":35649995},"focusCanvas":true,"gdextensionLibs":[]});
-        
-        engineInstance.startGame({
-            'onProgress': function (current, total) {
-                if (total > 0) {
-                    const statusProgress = current / total;
-                    const b = document.getElementById('loading-bar');
-                    const t = document.getElementById('loading-text');
-                    if(b) b.style.width = (statusProgress * 100) + '%';
-                    if(t) t.innerText = Math.round(current / 1024 / 1024) + " / " + Math.round(total / 1024 / 1024) + " Mo";
-                }
-            }
-        }).then(() => {
-            console.log("Moteur Godot démarré avec succès !");
-            // Sera géré par window.onGodotReady envoyé depuis Godot
-        }).catch(e => {
-            console.error("Erreur de lancement Godot :", e);
-        });
-    }
-}
-
-window.onGodotReady = function() {
-    console.log("Godot est prêt !");
-    navigateTo('screen-main');
-    if (window.godotSpawnPlayer) {
-        window.godotSpawnPlayer("p" + AppState.selectedCharacter.id);
-    }
-};
+// (Le moteur Godot est maintenant chargé nativement depuis index.html au lancement de la page)
 
 function launchGodot(targetId) {
     console.log("Lancement du combat contre :", targetId);
@@ -956,6 +827,53 @@ function endCombatSimulation() {
 // --- PONT GODOT <-> JAVASCRIPT ---
 
 // Appelé par Godot au lancement de la scène
+window.onGodotReady = function() {
+    console.log("Godot est prêt !");
+    if (AppState.selectedCharacter) {
+        if (window.godotSpawnPlayer) {
+            window.godotSpawnPlayer("p" + AppState.selectedCharacter.id);
+        }
+    }
+};
+
+window.animationFinished = function() {
+    console.log("Animation de combat terminée !");
+    document.getElementById('ui-overlay').classList.remove('hidden');
+    
+    if (AppState.pendingResult) {
+        const { godotResult, ethPayout } = AppState.pendingResult;
+        
+        if (godotResult === 1) {
+            showToast(`Victoire ! Vous avez gagné ${ethPayout} ETH !`, 'success');
+        } else if (godotResult === 0) {
+            showToast(`Égalité ! Vous récupérez votre mise.`, 'info');
+        } else {
+            showToast(`Défaite... Vous avez perdu le match.`, 'error');
+        }
+        updateBalance();
+        
+        if (AppState.currentPoolId) {
+            checkPoolElimination(godotResult, AppState.currentMatchId);
+        }
+
+        // Réinitialisation complète des états (incluant le statut serveur online)
+        resetMatchState();
+        navigateTo(AppState.currentPoolId ? 'screen-pool-room' : 'screen-duel');
+        
+        AppState.pendingResult = null;
+    } else {
+        resetMatchState();
+    }
+    
+    // Traiter le prochain round s'il était en attente
+    if (AppState.pendingPoolRoundEvent) {
+        console.log("Traitement du round mis en attente...");
+        const e = AppState.pendingPoolRoundEvent;
+        AppState.pendingPoolRoundEvent = null;
+        setTimeout(() => handlePoolRoundStarted(e), 1500); // Petit délai pour laisser l'UI respirer
+    }
+};
+
 window.getMatchInfo = function() {
     let opponentAddr = AppState.currentTargetId || AppState.currentChallenger || "0xOpponent";
     return {
@@ -978,7 +896,6 @@ window.submitMove = async function(moveNum) {
                 return;
             }
 
-            // Génération d'un secret aléatoire de manière cryptographique forte
             const randomBytes = new Uint8Array(16);
             window.crypto.getRandomValues(randomBytes);
             const secret = Array.from(randomBytes).map(b => b.toString(16).padStart(2, '0')).join('');
@@ -986,41 +903,110 @@ window.submitMove = async function(moveNum) {
             AppState.currentSecret = secret;
             AppState.currentMove = move;
 
-            // Commit move (Hash)
-            console.log(`Commit du mouvement ${move} avec le secret ${secret}...`);
+            if (!AppState.sessionWallet) {
+                await initSessionKey();
+            }
+
             const hash = ethers.solidityPackedKeccak256(["uint8", "string"], [move, secret]);
-            const txCommit = await contract.commitMove(AppState.currentMatchId, hash, { gasLimit: 500000 });
-            console.log("Tx commit envoyée :", txCommit.hash);
-            await txCommit.wait();
-            console.log("Commit confirmé !");
-            
+            const messageToSign = "Commit: " + hash;
+            const sessionSignature = await AppState.sessionWallet.signMessage(messageToSign);
+
+            console.log("Envoi au backend pour validation (Gasless)...");
+            fetch(`http://${window.location.hostname}:8000/api/battle/commit`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Accept": "application/json" },
+                body: JSON.stringify({
+                    match_id: AppState.currentMatchId,
+                    wallet_address: AppState.walletAddress,
+                    commit_hash: hash,
+                    signature: sessionSignature
+                })
+            }).then(res => res.json())
+              .then(data => {
+                  console.log("Backend Commit OK:", data);
+                  if(data.fight_status === 'waiting_for_reveals') {
+                      window.attemptReveal();
+                  }
+              })
+              .catch(e => console.error("Erreur Backend Commit:", e));
+
             AppState.hasCommitted = true;
 
-            // Vérifier si l'adversaire a déjà commit en lisant le contrat
-            const matchDetails = await contract.matches(AppState.currentMatchId);
-            let opponentHasCommitted = false;
-            let isChallenger = (matchDetails[0].toLowerCase() === AppState.walletAddress.toLowerCase());
-            
-            if (isChallenger) {
-                opponentHasCommitted = (matchDetails[4] !== "0x0000000000000000000000000000000000000000000000000000000000000000"); // targetCommit
-            } else {
-                opponentHasCommitted = (matchDetails[3] !== "0x0000000000000000000000000000000000000000000000000000000000000000"); // challengerCommit
-            }
-
-            if (opponentHasCommitted) {
-                console.log("L'adversaire a déjà commit, révélation immédiate...");
-                const txReveal = await contract.revealMove(AppState.currentMatchId, AppState.currentMove, AppState.currentSecret, { gasLimit: 500000 });
-                await txReveal.wait();
-                console.log("Révélation confirmée !");
-            } else {
-                console.log("En attente du commit de l'adversaire...");
-            }
+            startUnifiedMatchPolling();
 
         } catch (e) {
             console.error("Erreur Web3 (Commit/Reveal) :", e);
         }
     }
 };
+
+function stopUnifiedMatchPolling() {
+    if (window._unifiedMatchPollInterval) {
+        clearInterval(window._unifiedMatchPollInterval);
+        window._unifiedMatchPollInterval = null;
+    }
+}
+
+function startUnifiedMatchPolling() {
+    stopUnifiedMatchPolling();
+    
+    window._unifiedMatchPollInterval = setInterval(async () => {
+        if (!AppState.currentMatchId || AppState.pendingResult) {
+            stopUnifiedMatchPolling();
+            return;
+        }
+        try {
+            const res = await fetch(`http://${window.location.hostname}:8000/api/battle/status/${AppState.currentMatchId}`);
+            const data = await res.json();
+            const currentStatus = data.fight_status || data.status;
+
+            if (currentStatus === 'waiting_for_reveals' && !AppState.hasRevealed) {
+                await window.attemptReveal();
+            }
+
+            if (currentStatus === 'completed' || currentStatus === 'finished') {
+                stopUnifiedMatchPolling();
+                const wallet = AppState.walletAddress.toLowerCase();
+                
+                let godotResult = 0;
+                if (!data.winner_wallet) {
+                    godotResult = 0;
+                } else if (data.winner_wallet.toLowerCase() === wallet) {
+                    godotResult = 1;
+                } else {
+                    godotResult = 2;
+                }
+
+                AppState.pendingResult = {
+                    godotResult: godotResult,
+                    ethPayout: data.payout
+                };
+
+                let opponentMoveStr = null;
+                if (data.player1_wallet && data.player1_wallet.toLowerCase() === wallet) {
+                    opponentMoveStr = data.player2_move;
+                } else {
+                    opponentMoveStr = data.player1_move;
+                }
+
+                let opponentMoveInt = 0;
+                if (opponentMoveStr === 'pierre') opponentMoveInt = 1;
+                else if (opponentMoveStr === 'feuille') opponentMoveInt = 2;
+                else if (opponentMoveStr === 'ciseaux') opponentMoveInt = 3;
+
+                if (window.receiveMatchResult) {
+                    window.receiveMatchResult(godotResult, opponentMoveInt);
+                }
+
+                setTimeout(() => {
+                    if (AppState.pendingResult && typeof window.animationFinished === 'function') {
+                        window.animationFinished();
+                    }
+                }, 4000);
+            }
+        } catch(e) {}
+    }, 2000);
+}
 
 
 // --- INITIALISATION AU CHARGEMENT ---
@@ -1060,62 +1046,54 @@ async function confirmCreatePool() {
     if(!fee || isNaN(fee) || Number(fee) <= 0) return showToast("Mise invalide", "error");
     
     try {
-        const entryWei = ethers.parseEther(fee.toString());
-        const totalWei = entryWei + (entryWei * 25n / 1000n); // Include fee
         closeCreatePoolModal();
         showToast("Création et adhésion à la poule...", "info");
         
-        const tx = await contract.createAndJoinPool(entryWei, max, mode, { value: totalWei });
-        const receipt = await tx.wait();
+        // Register on backend
+        const res = await fetch(`http://${window.location.hostname}:8000/api/pools`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({
+                entry_fee: Number(fee),
+                max_players: Number(max),
+                penalty_mode: Number(mode),
+                is_private: isPrivate,
+                owner_wallet: AppState.walletAddress
+            })
+        });
         
-        // Find PoolCreated event
-        let poolId = null;
-        for (const log of receipt.logs) {
-            try {
-                const event = contract.interface.parseLog(log);
-                if (event && event.name === 'PoolCreated') {
-                    poolId = event.args[0];
-                }
-            } catch(e) {}
+        if (!res.ok) {
+            const errText = await res.text();
+            throw new Error("Failed to create pool on backend: " + errText);
         }
+        const createdPool = await res.json();
+
+        // Join pool in backend automatically via create (or explicit join endpoint)
+        // Since Laravel is managing it, we assume we need to call join endpoint
+        const poolId = createdPool.pool.id;
         
-        if (poolId) {
-            // Register on backend
-            const res = await fetch(`http://${window.location.hostname}:8000/api/pools`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-                body: JSON.stringify({
-                    id: Number(poolId),
-                    entry_fee: Number(fee),
-                    max_players: Number(max),
-                    penalty_mode: Number(mode),
-                    is_private: isPrivate
-                })
-            });
-            const createdPool = await res.json();
-            
-            // Call join API to register player in the backend pool_players
-            await fetch(`http://${window.location.hostname}:8000/api/pools/join`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-                body: JSON.stringify({ pool_id: Number(poolId), wallet_address: AppState.walletAddress })
-            });
+        const joinRes = await fetch(`http://${window.location.hostname}:8000/api/pools/${poolId}/join`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({ player_wallet: AppState.walletAddress })
+        });
 
-            showToast("Poule créée et rejointe ! ID: " + poolId, "success");
-            AppState.currentPoolId = Number(poolId);
-            AppState.currentPoolFee = Number(fee);
-            
-            if (isPrivate && createdPool.pool.invite_code) {
-                AppState.currentInviteCode = createdPool.pool.invite_code;
-            } else {
-                AppState.currentInviteCode = null;
-            }
+        if(!joinRes.ok) throw new Error("Failed to join pool");
 
-            renderBRLobby();
-            navigateTo('screen-pool-room');
-            renderPoolRoom();
-            subscribeToPoolRound(Number(poolId));
+        showToast("Poule créée et rejointe ! ID: " + poolId, "success");
+        AppState.currentPoolId = Number(poolId);
+        AppState.currentPoolFee = Number(fee);
+        
+        if (isPrivate && createdPool.pool.invite_code) {
+            AppState.currentInviteCode = createdPool.pool.invite_code;
+        } else {
+            AppState.currentInviteCode = null;
         }
+
+        renderBRLobby();
+        navigateTo('screen-pool-room');
+        renderPoolRoom();
+        subscribeToPoolRound(Number(poolId));
     } catch(e) {
         console.error(e);
         showToast("Erreur lors de la création de la poule", "error");
@@ -1123,48 +1101,40 @@ async function confirmCreatePool() {
 }
 
 async function joinPool(poolId) {
-    if(!contract || !AppState.walletAddress) return showToast("Veuillez connecter votre wallet", "error");
+    console.log("joinPool called with ID:", poolId);
+    if(!AppState.walletAddress) {
+        return showToast("Veuillez connecter votre wallet", "error");
+    }
     
     try {
-        const poolRes = await fetch(`http://${window.location.hostname}:8000/api/pools/${poolId}`);
-        const pool = await poolRes.json();
+        showToast("Paiement de l'entrée en cours (Backend)...", "info");
         
-        if(pool.status !== 'open') return showToast("Cette poule n'est plus ouverte", "error");
-        
-        const entryWei = ethers.parseEther(pool.entry_fee.toString());
-        const totalWei = entryWei + (entryWei * 25n / 1000n);
-        
-        showToast("Paiement de l'entrée en cours...", "info");
-        const tx = await contract.joinPool(poolId, { value: totalWei });
-        await tx.wait();
-        
-        // Subscribe to events BEFORE calling the backend, to ensure we catch PoolRoundStarted
-        // if our join triggers the start of the tournament.
-        subscribeToPoolRound(poolId);
-
-        const joinRes = await fetch(`http://${window.location.hostname}:8000/api/pools/join`, {
+        const joinRes = await fetch(`http://${window.location.hostname}:8000/api/pools/${poolId}/join`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-            body: JSON.stringify({
-                pool_id: poolId,
-                wallet_address: AppState.walletAddress
-            })
+            body: JSON.stringify({ player_wallet: AppState.walletAddress })
         });
-        
-        const joinData = await joinRes.json();
-        if(joinData.status === 'success') {
-            AppState.currentPoolId = poolId;
-            AppState.currentPoolFee = pool.entry_fee;
-            showToast("Poule rejointe !", "success");
-            navigateTo('screen-pool-room');
-            renderPoolRoom();
-        } else {
-            showToast(joinData.message || "Erreur lors de l'inscription", "error");
+
+        if(!joinRes.ok) {
+            const err = await joinRes.json();
+            throw new Error(err.error || "Failed to join pool");
         }
+        
+        // Fetch pool details to get fee
+        const detailsRes = await fetch(`http://${window.location.hostname}:8000/api/pools/${poolId}`);
+        const poolData = await detailsRes.json();
+
+        subscribeToPoolRound(poolId);
+
+        AppState.currentPoolId = poolId;
+        AppState.currentPoolFee = poolData.entry_fee;
+        showToast("Poule rejointe !", "success");
+        navigateTo('screen-pool-room');
+        renderPoolRoom();
         
     } catch(e) {
         console.error(e);
-        showToast("Erreur lors de l'intégration à la poule", "error");
+        showToast(e.message || "Erreur lors de l'intégration à la poule", "error");
     }
 }
 
@@ -1176,147 +1146,121 @@ function subscribeToPoolRound(poolId) {
     
     window.echoInstance.channel('pool.' + poolId)
         .listen('PoolRoundStarted', (e) => {
-            console.log("Pool Round Started!", e);
-            handlePoolRoundStarted(e);
+            console.log("Pool Round Started!", JSON.stringify(e));
+            if (AppState.pendingResult || document.getElementById('ui-overlay').classList.contains('hidden')) {
+                console.log("Godot est actif (ui-overlay hidden ou pendingResult). Mise en attente du prochain round...");
+                AppState.pendingPoolRoundEvent = e;
+            } else {
+                handlePoolRoundStarted(e);
+            }
         });
 }
 
 async function handlePoolRoundStarted(e) {
-    // Pool has a winner — tournament is over
-    if (e.winner) {
-        const isWinner = e.winner.toLowerCase() === AppState.walletAddress.toLowerCase();
-        document.getElementById('pool-room-status').innerText = isWinner ? '🏆 Vous êtes le champion !' : `Champion : ${e.winner.slice(0,10)}...`;
-        document.getElementById('pool-room-status').style.color = isWinner ? 'gold' : 'var(--color-red)';
-        showToast(isWinner ? '🏆 Vous avez remporté la poule !' : `Poule terminée ! Vainqueur : ${e.winner.slice(0,10)}...`, isWinner ? 'success' : 'info');
-        
-        // Re-enable the back/quit button so players can leave the finished pool screen
-        const btnQuit = document.getElementById('btn-quit-pool');
-        const quitText = document.getElementById('quit-pool-text');
-        if (btnQuit && quitText) {
-            btnQuit.disabled = false;
-            quitText.innerText = isWinner ? '🏆 Réclamer les gains et Quitter' : '← Retour au lobby';
-        }
-        return;
-    }
-
-    document.getElementById('pool-room-status').innerText = "Round en cours...";
-    document.getElementById('pool-room-status').style.color = "var(--color-red)";
-    
-    if (e.waitingPlayer && e.waitingPlayer.toLowerCase() === AppState.walletAddress.toLowerCase()) {
-        showToast("Vous êtes exempté pour ce round ! Attendez le prochain.", "info");
-        // Immediately report "bye" to backend so the round counter is decremented
-        fetch(`http://${window.location.hostname}:8000/api/pools/match-finished`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-            body: JSON.stringify({
-                pool_id: e.poolId,
-                match_id: "bye_" + AppState.walletAddress,
-                loser_wallet: null,
-                is_eliminated: false
-            })
-        }).catch(err => console.error('Bye report failed:', err));
-        return;
-    }
-    
-    // Find my pair
-    const myPair = e.pairs.find(p => p.player1.toLowerCase() === AppState.walletAddress.toLowerCase() || p.player2.toLowerCase() === AppState.walletAddress.toLowerCase());
-    
-    if (myPair) {
-        const isChallenger = myPair.player1.toLowerCase() === AppState.walletAddress.toLowerCase();
-        const opponent = isChallenger ? myPair.player2 : myPair.player1;
-        
-        AppState.currentTargetId = opponent;
-        
-        if (isChallenger) {
-            showToast("Défi de l'adversaire de la poule...", "info");
-            try {
-                const charId = AppState.selectedCharacter.id;
-                const tx = await contract.challengePool(opponent, charId, AppState.currentPoolId);
-                await tx.wait();
-                // Wait for ChallengeAccepted event to launch Godot
-            } catch(e) {
-                console.error(e);
-                showToast("Erreur défi poule", "error");
-            }
-        } else {
-            showToast("Attente du défi du round...", "info");
-            // Handled in ChallengeCreated event
-        }
-    }
-}
-
-async function executeAcceptPoolOnChain(matchId) {
     try {
-        const charId = AppState.selectedCharacter.id;
-        const tx = await contract.acceptPoolChallenge(matchId, charId);
-        await tx.wait();
-    } catch(err) {
-        console.error(err);
-        showToast("Erreur acceptation round", "error");
-    }
-}
-
-function renderPoolRoom() {
-    if (!AppState.currentPoolId) return;
-    document.getElementById('pool-room-title').innerText = "Poule #" + AppState.currentPoolId;
-    
-    if (AppState.currentInviteCode) {
-        document.getElementById('pool-invite-container').style.display = 'block';
-        document.getElementById('pool-invite-link').value = AppState.currentInviteCode;
-    } else {
-        document.getElementById('pool-invite-container').style.display = 'none';
-    }
-
-    fetch(`http://${window.location.hostname}:8000/api/pools/${AppState.currentPoolId}`)
-        .then(r => r.json())
-        .then(pool => {
-            document.getElementById('pool-room-count').innerText = pool.players_count + " / " + pool.max_players;
+        if (e.winner) {
+            const isWinner = e.winner.toLowerCase() === AppState.walletAddress.toLowerCase();
+            document.getElementById('pool-room-status').innerText = isWinner ? '🏆 Vous êtes le champion !' : `Champion : ${e.winner.slice(0,10)}...`;
+            document.getElementById('pool-room-status').style.color = isWinner ? 'gold' : 'var(--color-red)';
+            showToast(isWinner ? '🏆 Vous avez remporté la poule !' : `Poule terminée ! Vainqueur : ${e.winner.slice(0,10)}...`, isWinner ? 'success' : 'info');
             
             const btnQuit = document.getElementById('btn-quit-pool');
             const quitText = document.getElementById('quit-pool-text');
             if (btnQuit && quitText) {
-                if (pool.players_count >= pool.max_players) {
-                    // Bloquer la sortie
-                    btnQuit.disabled = true;
-                    quitText.innerText = "Matchs en cours...";
-                    document.getElementById('pool-room-status').innerText = "La poule est pleine, la bataille commence !";
-                } else {
-                    btnQuit.disabled = false;
-                    quitText.innerText = "Quitter la poule";
-                    document.getElementById('pool-room-status').innerText = "En attente de joueurs...";
-                }
+                btnQuit.disabled = false;
+                quitText.innerText = isWinner ? '🏆 Réclamer les gains et Quitter' : '← Retour au lobby';
             }
-        }).catch(e => console.error(e));
+            return;
+        }
+
+        document.getElementById('pool-room-status').innerText = "Round en cours...";
+        document.getElementById('pool-room-status').style.color = "var(--color-red)";
+        
+        if (e.waitingPlayer && e.waitingPlayer.toLowerCase() === AppState.walletAddress.toLowerCase()) {
+            showToast("Vous êtes exempté pour ce round ! Attendez le prochain.", "info");
+            return;
+        }
+        
+        const myPair = e.pairs.find(p => p.player1.toLowerCase() === AppState.walletAddress.toLowerCase() || p.player2.toLowerCase() === AppState.walletAddress.toLowerCase());
+        
+        if (myPair) {
+            const isChallenger = myPair.player1.toLowerCase() === AppState.walletAddress.toLowerCase();
+            const opponent = isChallenger ? myPair.player2 : myPair.player1;
+            
+            AppState.currentTargetId = opponent;
+            AppState.currentMatchId = myPair.matchId;
+            
+            // On peut recevoir les chars si le backend les envoie. Sinon, défaut p2
+            AppState.opponentChar = "p" + (isChallenger ? (myPair.p2_char || 2) : (myPair.p1_char || 2));
+            
+            console.log("Lancement du round contre", opponent, "Match ID:", AppState.currentMatchId);
+            AppState.lastActionTime = Date.now();
+            launchGodot(opponent);
+        }
+    } catch(err) {
+        console.error("FATAL ERROR IN handlePoolRoundStarted:", err);
+    }
+}
+
+async function renderPoolRoom() {
+    if (!AppState.currentPoolId) return;
+    document.getElementById('pool-room-title').innerText = "Poule #" + AppState.currentPoolId;
+    
+    try {
+        const res = await fetch(`http://${window.location.hostname}:8000/api/pools/${AppState.currentPoolId}`);
+        const poolData = await res.json();
+
+        if (poolData.invite_code) {
+            AppState.currentInviteCode = poolData.invite_code;
+            document.getElementById('pool-invite-container').style.display = 'block';
+            const inviteUrl = window.location.origin + window.location.pathname + "?invite=" + poolData.invite_code;
+            document.getElementById('pool-invite-link').value = inviteUrl;
+        } else {
+            document.getElementById('pool-invite-container').style.display = 'none';
+        }
+        
+        const pCount = poolData.players_count || 1;
+        const mPlayers = poolData.max_players;
+
+        document.getElementById('pool-room-count').innerText = pCount + " / " + mPlayers;
+        
+        const btnQuit = document.getElementById('btn-quit-pool');
+        const quitText = document.getElementById('quit-pool-text');
+        if (btnQuit && quitText) {
+            if (pCount >= mPlayers) {
+                btnQuit.disabled = true;
+                quitText.innerText = "Matchs en cours...";
+                document.getElementById('pool-room-status').innerText = "La poule est pleine, la bataille commence !";
+            } else {
+                btnQuit.disabled = false;
+                quitText.innerText = "Quitter la poule";
+                document.getElementById('pool-room-status').innerText = "En attente de joueurs...";
+            }
+        }
+
+        if (poolData.status === 'active' && poolData.active_pairs && poolData.active_pairs.length > 0) {
+            handlePoolRoundStarted({
+                poolId: AppState.currentPoolId,
+                pairs: poolData.active_pairs,
+                waitingPlayer: null
+            });
+        }
+    } catch(e) {
+        console.error(e);
+    }
 }
 
 async function checkPoolElimination(godotResult, matchId) {
-    // Determine if eliminated based on balance
     try {
-        const bal = await contract.poolBalances(AppState.currentPoolId, AppState.walletAddress);
-        if (bal == 0n) {
-            fetch(`http://${window.location.hostname}:8000/api/pools/match-finished`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-                body: JSON.stringify({
-                    pool_id: AppState.currentPoolId,
-                    match_id: matchId.toString(),
-                    loser_wallet: AppState.walletAddress,
-                    is_eliminated: true
-                })
-            });
-            showToast("Vous êtes éliminé de la poule !", "error");
-            quitPool(false);
-        } else {
-            fetch(`http://${window.location.hostname}:8000/api/pools/match-finished`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-                body: JSON.stringify({
-                    pool_id: AppState.currentPoolId,
-                    match_id: matchId.toString(),
-                    loser_wallet: godotResult === 2 ? AppState.walletAddress : null,
-                    is_eliminated: false
-                })
-            });
+        if (godotResult === 2) { // Loser
+            const res = await fetch(`http://${window.location.hostname}:8000/api/pools/${AppState.currentPoolId}`);
+            const data = await res.json();
+            
+            const me = data.players.find(p => p.player_wallet.toLowerCase() === AppState.walletAddress.toLowerCase());
+            if (!me || me.is_eliminated) {
+                showToast("Vous êtes éliminé de la poule !", "error");
+                quitPool(false);
+            }
         }
     } catch(e) { console.error(e); }
 }
@@ -1326,21 +1270,15 @@ async function quitPool(claim = true) {
     if (isQuitting) return;
     isQuitting = true;
 
-    if (claim && contract && AppState.currentPoolId) {
+    if (AppState.currentPoolId) {
         try {
             const poolStatus = await fetch(`http://${window.location.hostname}:8000/api/pools/${AppState.currentPoolId}`)
                 .then(r => r.json()).then(p => p.status).catch(() => 'unknown');
 
             if (poolStatus === 'finished') {
-                // If pool is finished, the winner claims their winnings
-                const tx = await contract.claimPoolWinnings(AppState.currentPoolId);
-                await tx.wait();
-                showToast("🏆 Gains de la poule réclamés avec succès !", "success");
+                showToast("🏆 Vous pouvez fermer ce panneau, vos gains sont sur votre compte !", "success");
             } else {
-                // If pool is not finished (e.g. still waiting for players), just leave
-                const tx = await contract.leavePool(AppState.currentPoolId);
-                await tx.wait();
-                showToast("Vous avez quitté la poule et récupéré vos fonds", "info");
+                showToast("Vous avez quitté l'interface de la poule.", "info");
             }
         } catch(e) {
             console.error("Erreur lors de la sortie de poule:", e);

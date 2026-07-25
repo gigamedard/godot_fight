@@ -13,6 +13,29 @@ Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');
 
+Route::get('/test-pool', function() {
+    \App\Models\Pool::truncate();
+    \App\Models\Pool::create([
+        'id' => 9999,
+        'entry_fee' => 0,
+        'max_players' => 3,
+        'status' => 'open',
+        'penalty_mode' => 0,
+    ]);
+    
+    $pool = \App\Models\Pool::firstOrCreate(
+        ['id' => 9999],
+        [
+            'entry_fee' => 0,
+            'max_players' => 3,
+            'status' => 'waiting',
+            'round_pending_matches' => 0,
+            'penalty_mode' => 0,
+        ]
+    );
+    return response()->json(['pool' => $pool, 'is_null' => is_null($pool), 'id' => $pool->id]);
+});
+
 Route::post('/match-result', [MatchController::class, 'store']);
 
 // Mock d'authentification pour Laravel Echo / Reverb
@@ -42,10 +65,27 @@ Route::post('/matchmaking/status', [MatchmakingController::class, 'updateStatus'
 
 // Routes de Pool / Battle Royale
 use App\Http\Controllers\Api\PoolController;
+use App\Http\Controllers\Api\InternalController;
+
 Route::get('/pools', [PoolController::class, 'index']);
+Route::get('/pools/user/{wallet}', [PoolController::class, 'getUserActivePool']);
 Route::get('/pools/{id}', [PoolController::class, 'show'])->where('id', '[0-9]+');
 Route::get('/pools/invite/{code}', [PoolController::class, 'showByInviteCode']);
 Route::post('/pools', [PoolController::class, 'store']);
-Route::post('/pools/join', [PoolController::class, 'join']);
-Route::post('/pools/match-finished', [PoolController::class, 'matchFinished']);
+Route::post('/pools/{id}/join', [PoolController::class, 'join']);
 Route::post('/pools/{id}/matchmake', [PoolController::class, 'triggerMatchmaking']);
+
+// Routes internes pour l'Indexeur Blockchain
+Route::post('/internal/pool-started', [InternalController::class, 'poolStarted']);
+Route::post('/internal/match-finished', [InternalController::class, 'matchFinished']);
+
+// Off-Chain Hybrid Battle API
+use App\Http\Controllers\Api\BattleController;
+use App\Http\Controllers\Api\AuthController;
+
+Route::post('/auth/session-key', [AuthController::class, 'registerSessionKey']);
+
+Route::post('/battle/commit', [BattleController::class, 'commitMove']);
+Route::post('/battle/reveal', [BattleController::class, 'revealMove']);
+Route::post('/battle/timeout', [BattleController::class, 'claimTimeout']);
+Route::get('/battle/status/{match_id}', [BattleController::class, 'getMatchStatus']);

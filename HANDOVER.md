@@ -1,35 +1,58 @@
-# Projet : Godot Web3 Combat Game
-**Document de Handover (Passation)**
-**Date de dernière mise à jour** : 16 Juillet 2026
+# HANDOVER: Suivi du Projet Web3 Combat Game (Godot & Laravel)
 
-## 1. Description Générale
-Ce projet est un jeu de combat 3D hybride utilisant **Godot 4** pour le moteur de jeu, intégré dans un portail web **Vanilla JS** et propulsé par une API **Laravel** pour la gestion des combats et l'authentification Web3 (Wallet).
+## État actuel du projet
 
-## 2. Architecture du Répertoire
-- `/` (Racine) : Contient le projet Godot 4 (fichiers `.tscn`, `project.godot`, `assets/`, `scripts/`).
-- `/scripts/main.gd` : Script principal gérant la machine à états des animations, la logique de combat, la caméra dynamique, et l'écran de sélection de personnages.
-- `/scripts/tools/` : Scripts Python/Blender pour automatiser le nettoyage des modèles 3D et l'extraction de textures (pipeline Mixamo).
-- `/Web3_Combat_Game/` : Le dossier de l'infrastructure web.
-  - `/docker-compose.yml` : Définit les services `db` (MySQL), `api` (PHP/Laravel) et `frontend` (Nginx).
-  - `/frontend/` : Interface Vanilla JS (`index.html`, `style.css`, `app.js`). Prêt à accueillir l'export WebAssembly de Godot. L'objet `window.gameConfig` sert de pont JSBridge avec Godot.
-  - `/backend/` : Dossier destiné à recevoir le projet vierge Laravel (qui sera généré automatiquement par le conteneur `api`).
+L'application tourne avec une architecture repensée (Single Instance) où le jeu Godot est chargé une seule fois en arrière-plan afin d'éviter les rechargements pénibles du moteur 3D à chaque nouvelle page ou match.
+Le système gère les duels classiques et les Poules (tournois à élimination avec N joueurs).
 
-## 3. L'Usine à Personnages & Outils (MCP)
-Un protocole d'intégration de personnage très strict a été mis en place pour éviter le cumul d'animations et les conflits de squelettes. Les scripts se trouvent dans `/scripts/tools/`.
-- **Serveurs MCP** : Le projet repose fortement sur les serveurs MCP **Blender** et **Godot**. L'agent IA DOIT utiliser ces serveurs (via `call_mcp_tool`) pour exécuter les scripts Python Blender en mode headless et interagir avec le moteur Godot.
-- **Modèles actuels intégrés** : Guerrier Ninja (p1), Mutant Cyborg (p2), Tom Frazer (p3), Big Choco (p4).
-- Les modèles finaux sont dans `assets/models/` en format `.glb` avec leurs textures séparées (ex: `p3_0.png`) appliquées dynamiquement dans `main.gd` via le dictionnaire `roster`.
+Cependant, il reste un problème de synchronisation ("Race Condition" ou état incohérent) lors de l'enchaînement des matchs d'une poule, ce qui fige la partie pour les joueurs restants après le premier combat.
 
-## 4. Statut Actuel et Bloquants
-- **Le Moteur Godot** : Fonctionnel en local. Les combats se lancent, l'écran de sélection marche, les cinématiques sont fluides.
-- **Le Serveur Web / Docker** : 
-  - Docker Desktop vient d'être démarré. 
-  - La commande `docker compose up -d` a échoué au premier essai car Docker n'était pas encore allumé. Il faut la relancer.
-  - L'image de l'API est programmée pour installer Laravel d'elle-même dans `/backend/` au démarrage.
-- **Graphify** : Une tentative d'extraction de graphe de connaissance a été annulée. Un fichier `.graphifyignore` a été créé pour filtrer les assets 3D si besoin de relancer.
+## Ce qui a été fait et les problèmes résolus
 
-## 5. Prochaines Étapes (À FAIRE)
-1. **Lancer Docker** : S'assurer que Docker Desktop est prêt et exécuter `docker compose up -d` dans `Web3_Combat_Game/`.
-2. **Configurer les CORS Laravel** : Une fois Laravel généré par le conteneur, aller dans `Web3_Combat_Game/backend/config/cors.php` et autoriser `http://localhost:8080`.
-3. **Export WebAssembly** : Exporter le projet Godot pour le Web, déposer les fichiers résultants dans `Web3_Combat_Game/frontend/`, et relier le lancement de l'instance Godot au bouton "Lancer le Jeu" dans `app.js`.
-4. **Logique Web3** : Implémenter l'authentification (Metamask ou autre) dans l'API Laravel et la relier aux appels `fetch` du frontend.
+Ces derniers jours, plusieurs problèmes importants ont été identifiés et résolus :
+
+1.  **Refonte en Single Instance (HTML/CSS & Godot)**
+    *   Godot est désormais chargé en arrière-plan avec un `z-index` négatif ou caché, et n'est ramené au premier plan que lorsqu'un combat démarre.
+    *   L'interface web (RPS, Poules, etc.) vient se superposer (Glassmorphism) sur le canvas Godot sans recharger la page.
+
+2.  **Partage de l'Invitation aux Poules**
+    *   Au lieu de partager une URL complète qui rechargeait la page et réinitialisait le moteur Godot, le système utilise désormais un simple "Code d'invitation" généré à la création de la poule.
+    *   Les joueurs peuvent rejoindre la poule via ce code de l'intérieur de l'application sans interrompre le processus de Godot.
+
+3.  **Problèmes de Gas (Smart Contract)**
+    *   Le nœud local générait une erreur "Transaction ran out of gas" lors du `revealMove`.
+    *   **Solution :** Un `gasLimit` explicite de 500000 a été rajouté à `commitMove` et `revealMove` dans `app.js`.
+
+4.  **Conflits de l'Interface Godot (Boutons désactivés)**
+    *   À l'apparition d'un nouvel adversaire, les boutons de coups (Pierre/Papier/Ciseaux) restaient inactifs.
+    *   **Solution :** La variable `is_fighting` dans le script `main.gd` est désormais explicitement remise à `false` à l'apparition de l'adversaire via `_on_spawn_opponent`.
+
+5.  **Poule : Le Crash du Joueur Exempté (Erreur 422)**
+    *   Le backend Laravel a été repassé sur des `Channel` publics (au lieu de `PresenceChannel`).
+    *   La fonction `shuffle()` de Laravel préservait les clés du tableau, causant un renvoi d'un joueur `null` et le crash du Javascript `toLowerCase()`. Résolu avec un `array_values()`.
+    *   Le joueur "en attente" (exempté pour le round) faisait sa requête `match-finished` trop rapidement avant que `AppState.currentPoolId` ne soit défini, résultant en une erreur 422. Résolu en récupérant le `pool_id` directement via le WebSocket (`e.poolId`).
+
+6.  **Poule : L'erreur du CurrentMatchId (TypeError toString)**
+    *   À la fin du match, `resetMatchState()` effaçait `AppState.currentMatchId` de manière asynchrone pendant que `checkPoolElimination` en avait encore besoin, provoquant un plantage et l'arrêt du déroulement de la poule. Résolu en passant `matchId` en argument direct.
+
+7.  **Poule : Double Décrémentation des Matchs Restants**
+    *   Le vainqueur et le perdant rapportaient tous les deux au serveur la fin du match, provoquant une soustraction de 2 au compteur `round_pending_matches` au lieu de 1.
+    *   **Solution :** Mise en place d'un système de cadenas (`Cache::add`) dans Laravel basé sur le `match_id` pour que le serveur ne décrémente qu'une seule fois par match.
+
+## Problème actuel (NON RÉSOLU)
+
+Malgré toutes les corrections apportées aux race conditions asynchrones et aux WebSockets, **la poule se fige après que le premier match se termine et que le perdant ait été éliminé**.
+Il n'y a pas de lancement de match pour les deux personnes restantes.
+
+### Symptômes et Pistes d'investigation :
+*   Les joueurs reçoivent bien la fin du combat.
+*   Le joueur vainqueur a probablement un problème pour informer correctement le réseau, ou bien Laravel ne déclenche pas l'événement `PoolRoundStarted` du round 2.
+*   **Piste 1 (Frontend):** L'événement `MoveCommitted` de Ethers.js génère une erreur "nonce has already been used", ce qui implique qu'une double transaction s'est peut-être produite. Il faut s'assurer que le bouton d'action n'envoie qu'une seule transaction au Smart Contract.
+*   **Piste 2 (Backend):** Vérifier si `$pool->round_pending_matches` atteint bel et bien `0` dans `PoolController::matchFinished`. Si pour une raison ou une autre, un combat ou un joueur "exempté" ne fait pas sa requête de fin, le compteur restera à 1 et le tournoi sera bloqué pour toujours.
+*   **Piste 3 (Smart Contract):** Le smart contract n'émet peut-être pas les bons événements ou bien une transaction `challengePool` n'est pas acceptée pour le 2ème round.
+
+### Les Outils à Disposition du Prochain Agent
+*   **Les Serveurs MCP `godot` et `blender`** : Sont configurés et disponibles. Pense à utiliser `call_mcp_tool` pour lire les logs de Godot (`get_debug_output`), compiler le jeu, interagir avec la scène 3D, ou exporter des modèles si nécessaire (bien que l'essentiel du problème semble être lié à JS/Laravel).
+*   **Graphify** : Outil permettant d'explorer le graphe du projet Web3 Combat Game situé dans le dossier `graphify-out/` si une vision d'ensemble des dépendances (fichiers, classes PHP, fonctions JS) est nécessaire.
+
+**Mission Principale :** Tracer la boucle d'événements à la fin d'un match (du `godotResult` jusqu'à Laravel `triggerMatchmaking()`) pour voir quel maillon de la chaîne casse silencieusement et empêche le déclenchement de la manche suivante.

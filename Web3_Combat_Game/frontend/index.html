@@ -11,6 +11,10 @@
     <!-- Le Canvas Godot en arrière-plan -->
     <div id="godot-layer" style="position:fixed; top:0; left:0; width:100vw; height:100vh; z-index:0;">
         <canvas id="canvas" style="display: block; width: 100%; height: 100%; border: none;"></canvas>
+        <div id="godot-status" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1; text-align: center; color: white; display: none; background: rgba(0,0,0,0.8); padding: 20px; border-radius: 10px;">
+            <p style="margin-bottom: 10px; font-weight: bold;">Chargement du Moteur 3D...</p>
+            <progress id="godot-progress" value="0" max="1" style="width: 200px;"></progress>
+        </div>
     </div>
 
     <div class="ui-overlay" id="ui-overlay">
@@ -225,10 +229,9 @@
                 <input type="number" id="pool-max-players" value="8" min="2" max="64" style="width: 100%; padding: 0.5rem; margin-bottom: 1rem; background: var(--bg-gray-800); color: white; border: 1px solid var(--border-gray); border-radius: 5px;">
 
                 <label style="color: var(--text-gray-400); font-size: 0.85rem; display:block; margin-bottom: 0.25rem;">Règle d'élimination</label>
-                <select id="pool-penalty-mode" style="width: 100%; padding: 0.5rem; margin-bottom: 1.5rem; background: var(--bg-gray-800); color: white; border: 1px solid var(--border-gray); border-radius: 5px;">
-                    <option value="0">Perdre 1 Vie (1 Mise)</option>
-                    <option value="1">All-In (Perdre Tout)</option>
-                </select>
+                  <select id="pool-penalty-mode" style="width: 100%; padding: 0.5rem; margin-bottom: 1.5rem; background: var(--bg-gray-800); color: white; border: 1px solid var(--border-gray); border-radius: 5px;">
+                      <option value="1">Mort Subite (1 Défaite = Élimination)</option>
+                  </select>
 
                 <label style="color: var(--text-gray-400); font-size: 0.9rem; margin-top: 1rem; display: block;">Visibilité</label>
                 <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1.5rem;">
@@ -243,10 +246,10 @@
         </div>
     </div>
 
-    <!-- Scripts CDN -->
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="https://js.pusher.com/8.2.0/pusher.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/laravel-echo@1.16.1/dist/echo.iife.js"></script>
+    <!-- Scripts Locaux (pour éviter les TIMEOUT) -->
+    <script src="lucide.min.js"></script>
+    <script src="pusher.min.js"></script>
+    <script src="echo.iife.js"></script>
 
     <div class="overlay-modal" id="invite-modal">
         <div class="bet-card">
@@ -262,13 +265,51 @@
         </div>
     </div>
     <!-- Scripts Web3 -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.10.0/ethers.umd.min.js"></script>
+    <script src="ethers.min.js"></script>
     <script src="hardhat_keys.js"></script>
     <script src="contract_abi.js?v=2"></script>
 
-    <!-- Script principal exporté par Godot (à générer) -->
+    <!-- Script principal exporté par Godot -->
     <script src="godot/jeu.js"></script>
+    <script>
+        const GODOT_CONFIG = {
+            "args":[],
+            "canvasResizePolicy":2,
+            "executable":"godot/jeu",
+            "experimentalVK":false,
+            "focusCanvas":false,
+            "gdextensionLibs":[]
+        };
+        const engine = new Engine(GODOT_CONFIG);
+
+        window.addEventListener('load', () => {
+            const statusOverlay = document.getElementById('godot-status');
+            const statusProgress = document.getElementById('godot-progress');
+            
+            engine.startGame({
+                'onProgress': function (current, total) {
+                    if (total > 0) {
+                        if(statusOverlay) statusOverlay.style.display = 'block';
+                        if(statusProgress) {
+                            statusProgress.value = current;
+                            statusProgress.max = total;
+                        }
+                    } else {
+                        if(statusProgress) {
+                            statusProgress.removeAttribute('value');
+                            statusProgress.removeAttribute('max');
+                        }
+                    }
+                }
+            }).then(() => {
+                if(statusOverlay) statusOverlay.style.display = 'none';
+            }).catch(err => {
+                console.error("Erreur chargement Godot:", err);
+            });
+        });
+    </script>
+    
     <div id="toast-container" style="position: fixed; bottom: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 10px;"></div>
-    <script src="app.js?v=11" defer></script>
+    <script src="app.js?v=15" defer></script>
 </body>
 </html>

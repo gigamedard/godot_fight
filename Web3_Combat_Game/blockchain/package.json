@@ -15,7 +15,8 @@
     "@nomicfoundation/hardhat-toolbox": "^4.0.0",
     "chai": "^4.3.7",
     "ethers": "^6.17.0",
-    "hardhat": "^2.22.1"
+    "hardhat": "^2.22.1",
+    "puppeteer": "^25.3.0"
   },
   "type": "module"
 }
