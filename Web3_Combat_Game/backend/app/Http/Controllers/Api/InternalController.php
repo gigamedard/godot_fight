@@ -49,7 +49,7 @@ class InternalController extends Controller
         foreach ($participants as $wallet) {
             PoolPlayer::firstOrCreate(
                 ['pool_id' => $pool->id, 'wallet_address' => strtolower($wallet)],
-                ['status' => 'alive']
+                ['status' => 'alive', 'character_id' => 2]
             );
         }
 

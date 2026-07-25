@@ -19,15 +19,17 @@ class ChallengeSent implements ShouldBroadcastNow
     public $challengerId;
     public $targetId;
     public $betAmount;
+    public $challengerChar;
 
     /**
      * Create a new event instance.
      */
-    public function __construct($challengerId, $targetId, $betAmount = 0)
+    public function __construct($challengerId, $targetId, $betAmount = 0, $challengerChar = 2)
     {
         $this->challengerId = $challengerId;
         $this->targetId = $targetId;
         $this->betAmount = $betAmount;
+        $this->challengerChar = $challengerChar;
     }
 
     /**

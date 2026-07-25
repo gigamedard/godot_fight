@@ -19,9 +19,10 @@ class MatchmakingController extends Controller
             'challenger_id' => 'required|string|size:42',
             'target_id' => 'required|string|size:42',
             'bet_amount' => 'required|numeric|min:0',
+            'challenger_char' => 'nullable|integer',
         ]);
 
-        broadcast(new ChallengeSent($request->challenger_id, $request->target_id, $request->bet_amount));
+        broadcast(new ChallengeSent($request->challenger_id, $request->target_id, $request->bet_amount, $request->challenger_char ?? 2));
 
         return response()->json(['status' => 'success', 'message' => 'Défi envoyé']);
     }
@@ -31,6 +32,8 @@ class MatchmakingController extends Controller
         $request->validate([
             'challenger_id' => 'required|string|size:42',
             'target_id' => 'required|string|size:42',
+            'challenger_char' => 'nullable|integer',
+            'target_char' => 'nullable|integer',
         ]);
 
         // Générer un ID de match unique
@@ -41,7 +44,13 @@ class MatchmakingController extends Controller
         broadcast(new PlayerStatusChanged($request->target_id, 'in-game'));
 
         // Le target_id est celui qui a reçu le défi et l'accepte
-        broadcast(new MatchStarted($matchId, $request->challenger_id, $request->target_id));
+        broadcast(new MatchStarted(
+            $matchId, 
+            $request->challenger_id, 
+            $request->target_id,
+            $request->challenger_char ?? 2,
+            $request->target_char ?? 2
+        ));
 
         return response()->json(['status' => 'success', 'match_id' => $matchId]);
     }

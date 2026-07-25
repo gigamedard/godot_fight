@@ -412,6 +412,7 @@ function performLogin() {
                 console.log("Défi reçu de :", e.challengerId, "Pari :", e.betAmount);
                 AppState.currentChallenger = e.challengerId;
                 AppState.currentBetAmountOffchain = e.betAmount;
+                AppState.currentChallengerChar = e.challengerChar || 2;
                 
                 const shortId = e.challengerId.substring(0,6) + '...' + e.challengerId.substring(e.challengerId.length - 4);
                 document.getElementById('challenge-text').innerText = `${shortId} vous met au défi pour ${e.betAmount} ETH !`;
@@ -423,6 +424,11 @@ function performLogin() {
             .listen('MatchStarted', (e) => {
                 console.log("Accord Off-Chain atteint ! Exécution On-Chain...", e);
                 window.gameConfig.matchId = e.matchId;
+                
+                // Déterminer qui est le challenger et qui est le target pour assigner le bon personnage adverse
+                const isChallenger = (AppState.walletAddress.toLowerCase() === e.player1.toLowerCase());
+                AppState.opponentChar = "p" + (isChallenger ? (e.p2Char || 2) : (e.p1Char || 2));
+                
                 executeMatchOnChain(e);
             })
             .listen('ChallengeDeclined', (e) => {
@@ -640,7 +646,8 @@ async function initiateChallenge(playerId, betAmount) {
             body: JSON.stringify({
                 challenger_id: AppState.walletAddress,
                 target_id: playerId,
-                bet_amount: betAmount
+                bet_amount: betAmount,
+                challenger_char: AppState.selectedCharacter.id
             })
         });
 
@@ -675,7 +682,9 @@ document.getElementById('btn-accept-challenge').addEventListener('click', async 
             body: JSON.stringify({
                 challenger_id: AppState.currentChallenger,
                 target_id: AppState.walletAddress,
-                bet_amount: AppState.currentBetAmountOffchain
+                bet_amount: AppState.currentBetAmountOffchain,
+                target_char: AppState.selectedCharacter.id,
+                challenger_char: AppState.currentChallengerChar || 2
             })
         });
         
@@ -1081,7 +1090,7 @@ async function confirmCreatePool() {
         const joinRes = await fetch(`${APP_CONFIG.API_BASE_URL}/pools/${poolId}/join`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-            body: JSON.stringify({ player_wallet: AppState.walletAddress })
+            body: JSON.stringify({ player_wallet: AppState.walletAddress, character_id: AppState.selectedCharacter.id })
         });
 
         if(!joinRes.ok) throw new Error("Failed to join pool");
@@ -1118,7 +1127,7 @@ async function joinPool(poolId) {
         const joinRes = await fetch(`${APP_CONFIG.API_BASE_URL}/pools/${poolId}/join`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-            body: JSON.stringify({ player_wallet: AppState.walletAddress })
+            body: JSON.stringify({ player_wallet: AppState.walletAddress, character_id: AppState.selectedCharacter.id })
         });
 
         if(!joinRes.ok) {

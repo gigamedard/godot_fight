@@ -12,6 +12,7 @@ class PoolPlayer extends Model
     protected $fillable = [
         'pool_id',
         'wallet_address',
+        'character_id',
         'status'
     ];
 

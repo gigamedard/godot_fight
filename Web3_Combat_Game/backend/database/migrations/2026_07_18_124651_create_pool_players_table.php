@@ -15,6 +15,7 @@ return new class extends Migration
             $table->id();
             $table->unsignedBigInteger('pool_id');
             $table->string('wallet_address', 42);
+            $table->integer('character_id')->default(2);
             $table->string('status')->default('alive'); // alive, eliminated, waiting
             $table->timestamps();
             

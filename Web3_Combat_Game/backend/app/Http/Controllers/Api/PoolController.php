@@ -75,7 +75,8 @@ class PoolController extends Controller
             'entry_fee' => 'required|numeric',
             'max_players' => 'required|integer',
             'penalty_mode' => 'required|integer',
-            'is_private' => 'boolean'
+            'is_private' => 'boolean',
+            'character_id' => 'nullable|integer'
         ]);
 
         $inviteCode = $request->is_private ? Str::random(8) : null;
@@ -89,6 +90,10 @@ class PoolController extends Controller
             'status' => 'open'
         ]);
 
+        // Note: Le store n'ajoute pas le créateur automatiquement dans pool_players
+        // Le frontend fait un appel à join() juste après la création
+
+
         return response()->json(['status' => 'success', 'pool' => $pool]);
     }
 
@@ -96,6 +101,7 @@ class PoolController extends Controller
     {
         $request->validate([
             'player_wallet' => 'required|string',
+            'character_id' => 'nullable|integer',
         ]);
 
         $pool = Pool::findOrFail($id);
@@ -104,10 +110,10 @@ class PoolController extends Controller
             return response()->json(['error' => 'Pool is full'], 400);
         }
 
-        PoolPlayer::firstOrCreate([
-            'pool_id' => $id,
-            'wallet_address' => strtolower($request->player_wallet),
-        ]);
+        PoolPlayer::firstOrCreate(
+            ['pool_id' => $id, 'wallet_address' => strtolower($request->player_wallet)],
+            ['character_id' => $request->character_id ?? 2]
+        );
 
         $currentCount = $pool->players()->count();
         if ($currentCount >= $pool->max_players && $pool->status == 'open') {
@@ -135,27 +141,35 @@ class PoolController extends Controller
         $pairs = [];
         $waitingPlayer = null;
 
-        $playerList = array_values($players->pluck('wallet_address')->toArray());
+        // Les joueurs et leurs personnages
+        $playerList = array_values($players->map(function($p) {
+            return [
+                'wallet' => $p->wallet_address,
+                'char' => $p->character_id
+            ];
+        })->toArray());
 
         // If odd number, one player is exempt (bye) — counts as 1 pending "match"
         if (count($playerList) % 2 !== 0) {
-            $waitingPlayer = array_pop($playerList);
+            $waitingPlayer = array_pop($playerList)['wallet'];
         }
 
         // Create pairs and corresponding Fight records
         for ($i = 0; $i < count($playerList); $i += 2) {
             $fight = Fight::create([
                 'pool_id' => $poolId,
-                'player1_wallet' => strtolower($playerList[$i]),
-                'player2_wallet' => strtolower($playerList[$i+1]),
+                'player1_wallet' => strtolower($playerList[$i]['wallet']),
+                'player2_wallet' => strtolower($playerList[$i+1]['wallet']),
                 'status' => 'waiting_for_commits',
                 'base_bet_amount' => $pool->entry_fee,
             ]);
 
             $pairs[] = [
                 'matchId' => $fight->id,
-                'player1' => $playerList[$i],
-                'player2' => $playerList[$i+1]
+                'player1' => $playerList[$i]['wallet'],
+                'player2' => $playerList[$i+1]['wallet'],
+                'p1_char' => $playerList[$i]['char'],
+                'p2_char' => $playerList[$i+1]['char']
             ];
         }
 
