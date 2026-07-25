@@ -1286,14 +1286,25 @@ async function renderPoolRoom() {
         const btnQuit = document.getElementById('btn-quit-pool');
         const quitText = document.getElementById('quit-pool-text');
         if (btnQuit && quitText) {
-            if (pCount >= mPlayers) {
+            if (poolData.status === 'finished') {
+                const winnerPlayer = poolData.players ? poolData.players.find(p => p.status === 'alive') : null;
+                const winnerWallet = winnerPlayer ? winnerPlayer.wallet_address.toLowerCase() : null;
+                const isWinner = winnerWallet === AppState.walletAddress.toLowerCase();
+                
+                btnQuit.disabled = false;
+                quitText.innerText = isWinner ? '🏆 Réclamer les gains et Quitter' : '← Retour au lobby';
+                document.getElementById('pool-room-status').innerText = isWinner ? '🏆 Vous êtes le champion !' : `Champion : ${winnerWallet ? winnerWallet.slice(0,10) : 'Inconnu'}...`;
+                document.getElementById('pool-room-status').style.color = isWinner ? 'gold' : 'var(--color-red)';
+            } else if (pCount >= mPlayers) {
                 btnQuit.disabled = true;
                 quitText.innerText = "Matchs en cours...";
                 document.getElementById('pool-room-status').innerText = "La poule est pleine, la bataille commence !";
+                document.getElementById('pool-room-status').style.color = '';
             } else {
                 btnQuit.disabled = false;
                 quitText.innerText = "Quitter la poule";
                 document.getElementById('pool-room-status').innerText = "En attente de joueurs...";
+                document.getElementById('pool-room-status').style.color = '';
             }
         }
 
