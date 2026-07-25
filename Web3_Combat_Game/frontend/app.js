@@ -147,6 +147,10 @@ async function initWeb3() {
         
         window.attemptReveal = async function() {
             if (AppState.isRevealing || AppState.hasRevealed) return;
+            if (!AppState.currentMove || !AppState.currentSecret) {
+                console.warn("attemptReveal ignoré : mouvement ou secret manquant.");
+                return;
+            }
             try {
                 AppState.isRevealing = true;
                 console.log("Révélation du mouvement au backend (Gasless)...");
@@ -500,6 +504,7 @@ function renderDuelLobby(playersToRender = onlinePlayers) {
     lucide.createIcons();
 }
 window.resetMatchState = function() {
+    stopUnifiedMatchPolling();
     AppState.currentMatchId = null;
     AppState.hasCommitted = false;
     AppState.hasRevealed = false;
