@@ -747,8 +747,10 @@ async function executeMatchOnChain(e) {
     // Si on a l'info du perso de l'adversaire via l'event
     if (isChallenger) {
         AppState.opponentChar = "p" + (e.p2_char || 2);
+        AppState.myChar = "p" + (e.p1_char || 2);
     } else {
         AppState.opponentChar = "p" + (e.p1_char || 2);
+        AppState.myChar = "p" + (e.p2_char || 2);
     }
 
     setTimeout(() => {
@@ -831,6 +833,9 @@ function launchGodot(targetId) {
     
     if (window.godotSpawnOpponent) {
         window.godotSpawnOpponent("p" + (AppState.opponentChar ? AppState.opponentChar.replace('p','') : "2"));
+    }
+    if (window.godotSpawnPlayer) {
+        window.godotSpawnPlayer("p" + (AppState.myChar ? AppState.myChar.replace('p','') : AppState.selectedCharacter.id));
     }
 }
 
@@ -960,6 +965,7 @@ window.submitMove = async function(moveNum) {
 };
 
 function stopUnifiedMatchPolling() {
+    window._isPolling = false;
     if (window._unifiedMatchPollInterval) {
         clearInterval(window._unifiedMatchPollInterval);
         window._unifiedMatchPollInterval = null;
@@ -974,6 +980,9 @@ function startUnifiedMatchPolling() {
             stopUnifiedMatchPolling();
             return;
         }
+        if (window._isPolling) return;
+        window._isPolling = true;
+
         try {
             const res = await fetch(`${APP_CONFIG.API_BASE_URL}/battle/status/${AppState.currentMatchId}`);
             const data = await res.json();
@@ -1038,7 +1047,11 @@ function startUnifiedMatchPolling() {
                     }
                 }, 4000);
             }
-        } catch(e) {}
+        } catch(e) {
+            console.error("Polling error:", e);
+        } finally {
+            window._isPolling = false;
+        }
     }, 2000);
 }
 
@@ -1233,6 +1246,7 @@ async function handlePoolRoundStarted(e) {
             
             // On peut recevoir les chars si le backend les envoie. Sinon, défaut p2
             AppState.opponentChar = "p" + (isChallenger ? (myPair.p2_char || 2) : (myPair.p1_char || 2));
+            AppState.myChar = "p" + (isChallenger ? (myPair.p1_char || 2) : (myPair.p2_char || 2));
             
             console.log("Lancement du round contre", opponent, "Match ID:", AppState.currentMatchId);
             AppState.lastActionTime = Date.now();
