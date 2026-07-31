@@ -1,58 +1,47 @@
-# HANDOVER: Suivi du Projet Web3 Combat Game (Godot & Laravel)
+﻿# HANDOVER: Suivi du Projet Web3 Combat Game (Godot & Laravel)
 
 ## État actuel du projet
 
 L'application tourne avec une architecture repensée (Single Instance) où le jeu Godot est chargé une seule fois en arrière-plan afin d'éviter les rechargements pénibles du moteur 3D à chaque nouvelle page ou match.
 Le système gère les duels classiques et les Poules (tournois à élimination avec N joueurs).
 
-Cependant, il reste un problème de synchronisation ("Race Condition" ou état incohérent) lors de l'enchaînement des matchs d'une poule, ce qui fige la partie pour les joueurs restants après le premier combat.
+**Toutes les problématiques majeures de blocage des poules et de désynchronisation ont été résolues.** L'architecture repose désormais sur un système Gasless où le backend Laravel orchestre et valide la logique des combats pour garantir la fluidité temps-réel requise par Godot, tout en synchronisant les états via Websockets (Reverb) et Polling sécurisé.
 
-## Ce qui a été fait et les problèmes résolus
+## Bilan des Conflits de Vitesse (Race Conditions) Résolus
 
-Ces derniers jours, plusieurs problèmes importants ont été identifiés et résolus :
+De nombreux problèmes de désynchronisation asynchrones ont été corrigés. Voici la classification des anomalies rencontrées et réglées :
 
-1.  **Refonte en Single Instance (HTML/CSS & Godot)**
-    *   Godot est désormais chargé en arrière-plan avec un `z-index` négatif ou caché, et n'est ramené au premier plan que lorsqu'un combat démarre.
-    *   L'interface web (RPS, Poules, etc.) vient se superposer (Glassmorphism) sur le canvas Godot sans recharger la page.
+### 1. Couche Frontend (Javascript / DOM)
+*   **Le conflit d'écrasement d'interface (UI Overwrite) :** 
+    Lors du retour au lobby de poule, l'interface mettait à jour le statut du vainqueur via Websocket, mais une requête réseau parallèle (enderPoolRoom) arrivait en retard et écrasait brutalement le texte de victoire par un faux message Matchs en cours... si la requête réseau prenait plus d'une seconde. **Correction :** enderPoolRoom vérifie désormais explicitement le statut inished de la poule et déduit le vainqueur directement depuis la base de données pour empêcher tout écrasement.
+*   **Le Spam DDoS du Timeout (Infinite Loop) :** 
+    Au bout de 35s d'inactivité, le client envoyait une requête /battle/timeout. Le chronomètre n'étant pas réinitialisé, la requête était spammée toutes les 2 secondes, engorgeant le réseau. **Correction :** Ajout d'une réinitialisation stricte AppState.lastActionTime = Date.now().
+*   **La boucle de Polling schizophrène (Duplicate Triggers) :** 
+    La boucle de vérification des matchs manquait de verrouillage. En cas de latence, plusieurs requêtes /battle/status se chevauchaient et déclenchaient de multiples alertes Vous êtes éliminé en double. **Correction :** Implémentation d'un mutex global window._isPolling = true/false.
+*   **La transition de statut invisible (Ghost Matches) :** 
+    Un joueur inactif ne démarrait jamais sa boucle de vérification et restait figé sur Godot à l'infini pendant que le reste de la poule avançait. **Correction :** Le polling startUnifiedMatchPolling() démarre désormais obligatoirement dès l'apparition de Godot.
 
-2.  **Partage de l'Invitation aux Poules**
-    *   Au lieu de partager une URL complète qui rechargeait la page et réinitialisait le moteur Godot, le système utilise désormais un simple "Code d'invitation" généré à la création de la poule.
-    *   Les joueurs peuvent rejoindre la poule via ce code de l'intérieur de l'application sans interrompre le processus de Godot.
+### 2. Couche Reverb (Websockets) vs Godot (WebGL)
+*   **L'événement du Futur (Time Travel Bug) :** 
+    Les alertes de fin de poule (PoolRoundStarted) arrivaient instantanément via Websocket (< 100ms) et s'affichaient par-dessus le match Godot de l'utilisateur, alors que l'animation du coup de grâce (climax) de Godot nécessitait encore 4 secondes pour se terminer. **Correction :** Création d'une file d'attente (AppState.pendingPoolRoundEvent) qui intercepte les Websockets si Godot est actif et ne les libère qu'après l'appel natif nimationFinished().
 
-3.  **Problèmes de Gas (Smart Contract)**
-    *   Le nœud local générait une erreur "Transaction ran out of gas" lors du `revealMove`.
-    *   **Solution :** Un `gasLimit` explicite de 500000 a été rajouté à `commitMove` et `revealMove` dans `app.js`.
+### 3. Couche Backend (Laravel) & Base de Données (DB)
+*   **La désynchronisation des Personnages (State Mismatch) :** 
+    Le frontend instanciait les personnages 3D en se basant sur sa RAM locale, causant l'apparition de mauvais combattants lors des reconnexions. **Correction :** Le Backend impose désormais formellement les identifiants de personnages lors de l'émission du matchmaking (e.pairs), transformant l'interface en pur terminal d'affichage.
+*   **Matchmaking Concurrency (Double Round Trigger) :** 
+    Le contrôleur déclenchait le tour suivant plusieurs fois si deux combats se finissaient à la même milliseconde exacte, en lisant pendingFights === 0 en parallèle. **Correction :** Ajout de sécurités d'état et gestion atomique lors de la résolution des hybridFight.
 
-4.  **Conflits de l'Interface Godot (Boutons désactivés)**
-    *   À l'apparition d'un nouvel adversaire, les boutons de coups (Pierre/Papier/Ciseaux) restaient inactifs.
-    *   **Solution :** La variable `is_fighting` dans le script `main.gd` est désormais explicitement remise à `false` à l'apparition de l'adversaire via `_on_spawn_opponent`.
+### 4. Couche Blockchain / Node
+*   **L'échappatoire Gasless (Bypass complet) :**
+    Aucun problème de race condition n'a affecté la blockchain elle-même sur cette itération. L'intégration du système Gasless a permis de déléguer la résolution des combats hybrides au Backend, contournant l'imprévisibilité du temps de minage (Block Time) qui aurait fatalement brisé l'expérience en temps réel sur Godot.
 
-5.  **Poule : Le Crash du Joueur Exempté (Erreur 422)**
-    *   Le backend Laravel a été repassé sur des `Channel` publics (au lieu de `PresenceChannel`).
-    *   La fonction `shuffle()` de Laravel préservait les clés du tableau, causant un renvoi d'un joueur `null` et le crash du Javascript `toLowerCase()`. Résolu avec un `array_values()`.
-    *   Le joueur "en attente" (exempté pour le round) faisait sa requête `match-finished` trop rapidement avant que `AppState.currentPoolId` ne soit défini, résultant en une erreur 422. Résolu en récupérant le `pool_id` directement via le WebSocket (`e.poolId`).
+## Prochaines étapes suggérées
 
-6.  **Poule : L'erreur du CurrentMatchId (TypeError toString)**
-    *   À la fin du match, `resetMatchState()` effaçait `AppState.currentMatchId` de manière asynchrone pendant que `checkPoolElimination` en avait encore besoin, provoquant un plantage et l'arrêt du déroulement de la poule. Résolu en passant `matchId` en argument direct.
+*   **Nettoyage du code :** Certaines anciennes routes API de validation de match pourraient être dépréciées suite au passage complet au système Gasless/Hybride.
+*   **Sécurisation :** Ajouter une authentification robuste ou une validation des signatures cryptographiques sur la route /battle/commit pour certifier les actions des joueurs.
+*   **Feedback Visuel :** Améliorer l'interface pour afficher explicitement les chronomètres de 35s dans l'UI web (superposée à Godot) pour que le joueur comprenne l'imminence du Timeout.
 
-7.  **Poule : Double Décrémentation des Matchs Restants**
-    *   Le vainqueur et le perdant rapportaient tous les deux au serveur la fin du match, provoquant une soustraction de 2 au compteur `round_pending_matches` au lieu de 1.
-    *   **Solution :** Mise en place d'un système de cadenas (`Cache::add`) dans Laravel basé sur le `match_id` pour que le serveur ne décrémente qu'une seule fois par match.
+## Les Outils à Disposition du Prochain Agent
+*   **Les Serveurs MCP godot et lender** : Sont configurés et disponibles. Utiliser call_mcp_tool pour lire les logs de Godot (get_debug_output), compiler le jeu ou interagir avec la scène 3D.
+*   **Graphify** : Outil permettant d'explorer le graphe du projet Web3 Combat Game situé dans le dossier graphify-out/ si une vision d'ensemble des dépendances (fichiers, classes PHP, fonctions JS) est nécessaire.
 
-## Problème actuel (NON RÉSOLU)
-
-Malgré toutes les corrections apportées aux race conditions asynchrones et aux WebSockets, **la poule se fige après que le premier match se termine et que le perdant ait été éliminé**.
-Il n'y a pas de lancement de match pour les deux personnes restantes.
-
-### Symptômes et Pistes d'investigation :
-*   Les joueurs reçoivent bien la fin du combat.
-*   Le joueur vainqueur a probablement un problème pour informer correctement le réseau, ou bien Laravel ne déclenche pas l'événement `PoolRoundStarted` du round 2.
-*   **Piste 1 (Frontend):** L'événement `MoveCommitted` de Ethers.js génère une erreur "nonce has already been used", ce qui implique qu'une double transaction s'est peut-être produite. Il faut s'assurer que le bouton d'action n'envoie qu'une seule transaction au Smart Contract.
-*   **Piste 2 (Backend):** Vérifier si `$pool->round_pending_matches` atteint bel et bien `0` dans `PoolController::matchFinished`. Si pour une raison ou une autre, un combat ou un joueur "exempté" ne fait pas sa requête de fin, le compteur restera à 1 et le tournoi sera bloqué pour toujours.
-*   **Piste 3 (Smart Contract):** Le smart contract n'émet peut-être pas les bons événements ou bien une transaction `challengePool` n'est pas acceptée pour le 2ème round.
-
-### Les Outils à Disposition du Prochain Agent
-*   **Les Serveurs MCP `godot` et `blender`** : Sont configurés et disponibles. Pense à utiliser `call_mcp_tool` pour lire les logs de Godot (`get_debug_output`), compiler le jeu, interagir avec la scène 3D, ou exporter des modèles si nécessaire (bien que l'essentiel du problème semble être lié à JS/Laravel).
-*   **Graphify** : Outil permettant d'explorer le graphe du projet Web3 Combat Game situé dans le dossier `graphify-out/` si une vision d'ensemble des dépendances (fichiers, classes PHP, fonctions JS) est nécessaire.
-
-**Mission Principale :** Tracer la boucle d'événements à la fin d'un match (du `godotResult` jusqu'à Laravel `triggerMatchmaking()`) pour voir quel maillon de la chaîne casse silencieusement et empêche le déclenchement de la manche suivante.
