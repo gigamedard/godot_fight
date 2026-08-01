@@ -10,7 +10,9 @@ const AppState = {
     currentPoolId: null,
     currentPoolFee: 0,
     pendingPoolParam: null,
-    pendingPoolRoundEvent: null
+    pendingPoolRoundEvent: null,
+    pendingInvitePoolId: null,
+    pendingInvitePoolMax: null
 };
 
 let onlinePlayers = []; // Mis à jour via Reverb
@@ -46,10 +48,14 @@ function checkURLParameters() {
             .then(pool => {
                 document.getElementById('invite-message').innerText = `Vous êtes invité à la poule #${pool.id} (Mise: ${pool.entry_fee} TKN). Voulez-vous rejoindre ?`;
                 document.getElementById('btn-accept-invite').onclick = () => {
+                    stopInviteModalGuard();
                     document.getElementById('invite-modal').style.display = 'none';
                     joinPool(pool.id);
                 };
                 document.getElementById('invite-modal').style.display = 'flex';
+                AppState.pendingInvitePoolId = pool.id;
+                AppState.pendingInvitePoolMax = pool.max_players;
+                startInviteModalGuard(pool.id, pool.max_players);
             })
             .catch(err => console.error(err));
     }
@@ -73,18 +79,64 @@ window.joinPoolByCode = function() {
             .then(pool => {
                 document.getElementById('invite-message').innerText = `Vous êtes invité à la poule #${pool.id} (Mise: ${pool.entry_fee} TKN). Voulez-vous rejoindre ?`;
                 document.getElementById('btn-accept-invite').onclick = () => {
+                    stopInviteModalGuard();
                     document.getElementById('invite-modal').style.display = 'none';
                     // No more automatic polling of BRLobby to prevent php artisan serve crash in tests.
                     // The user must click the refresh button manually or it will just be loaded once.
                     joinPool(pool.id);
                 };
                 document.getElementById('invite-modal').style.display = 'flex';
+                AppState.pendingInvitePoolId = pool.id;
+                AppState.pendingInvitePoolMax = pool.max_players;
+                startInviteModalGuard(pool.id, pool.max_players);
             })
             .catch(err => {
                 console.error(err);
                 showToast("Code d'invitation invalide", "error");
             });
         input.value = '';
+    }
+}
+
+// --- GARDE MODALE INVITE (fermeture auto si la poule se remplit) ---
+let _inviteModalGuardInterval = null;
+function startInviteModalGuard(poolId, maxPlayers) {
+    stopInviteModalGuard();
+    _inviteModalGuardInterval = setInterval(async () => {
+        const modal = document.getElementById('invite-modal');
+        if (!modal || modal.style.display === 'none') {
+            stopInviteModalGuard();
+            return;
+        }
+        try {
+            const res = await fetch(`${APP_CONFIG.API_BASE_URL}/pools/${poolId}`);
+            const poolData = await res.json();
+            const count = poolData.players_count || 0;
+            const isFull = (count >= maxPlayers) || (poolData.status !== 'open');
+            if (isFull) {
+                stopInviteModalGuard();
+                const acceptBtn = document.getElementById('btn-accept-invite');
+                if (acceptBtn) {
+                    acceptBtn.disabled = true;
+                    acceptBtn.textContent = 'Poule complète';
+                }
+                showToast('Cette poule est maintenant complète !', 'error');
+                setTimeout(() => {
+                    const m = document.getElementById('invite-modal');
+                    if (m) m.style.display = 'none';
+                    AppState.pendingInvitePoolId = null;
+                    AppState.pendingInvitePoolMax = null;
+                }, 1500);
+            }
+        } catch (e) {
+            console.error('Invite guard error:', e);
+        }
+    }, 2000);
+}
+function stopInviteModalGuard() {
+    if (_inviteModalGuardInterval) {
+        clearInterval(_inviteModalGuardInterval);
+        _inviteModalGuardInterval = null;
     }
 }
 
@@ -250,17 +302,43 @@ function updateBalance() {
 }
 
 async function claimPendingFunds() {
-    if(contract) {
-        contract.claimFunds().then(tx => {
-            showToast("Transaction de retrait envoyée...", "info");
-            return tx.wait();
-        }).then(() => {
-            showToast("Fonds récupérés avec succès !", "success");
-            updateBalance();
-        }).catch(err => {
-            console.error(err);
-            showToast("Erreur lors de la récupération des fonds.", "error");
+    if(!contract || !AppState.walletAddress) {
+        showToast("Portefeuille non connecté.", "error");
+        return;
+    }
+    try {
+        // Lire le solde on-chain réel (userBalances du contrat CombatGame)
+        if (typeof contract.userBalances !== 'function') {
+            showToast("Fonction de réclamation indisponible.", "error");
+            return;
+        }
+        const pending = await contract.userBalances(AppState.walletAddress);
+        if (pending <= 0n) {
+            showToast("Aucun fonds à réclamer.", "info");
+            return;
+        }
+        // Obtenir le voucher signé par le backend (withdraw(amount, nonce, signature))
+        const res = await fetch(`${APP_CONFIG.API_BASE_URL}/withdraw/voucher`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Accept": "application/json" },
+            body: JSON.stringify({
+                wallet_address: AppState.walletAddress,
+                amount_wei: pending.toString()
+            })
         });
+        const data = await res.json();
+        if (!res.ok || !data.signature) {
+            showToast("Bon de retrait refusé : " + (data.error || 'Erreur inconnue'), "error");
+            return;
+        }
+        showToast("Transaction de retrait envoyée...", "info");
+        const tx = await contract.withdraw(BigInt(data.amount), BigInt(data.nonce), data.signature);
+        await tx.wait();
+        showToast("Fonds récupérés avec succès !", "success");
+        updateBalance();
+    } catch (err) {
+        console.error(err);
+        showToast("Erreur lors de la récupération des fonds.", "error");
     }
 }
 
@@ -504,6 +582,7 @@ function renderDuelLobby(playersToRender = onlinePlayers) {
     lucide.createIcons();
 }
 window.resetMatchState = function() {
+    stopVisibleTimer();
     stopUnifiedMatchPolling();
     AppState.currentMatchId = null;
     AppState.hasCommitted = false;
@@ -535,6 +614,8 @@ window.resetMatchState = function() {
     } else {
         renderDuelLobby();
     }
+    
+    updateBalance();
 };
 
 window.quitGodot = function() {
@@ -830,6 +911,9 @@ function launchGodot(targetId) {
     // Masquer complètement l'UI Web pour afficher Godot au premier plan
     const overlay = document.getElementById('ui-overlay');
     if (overlay) overlay.classList.add('hidden');
+
+    // Afficher le compte à rebours de 35s par-dessus Godot
+    startVisibleTimer(35);
     
     if (window.godotSpawnOpponent) {
         window.godotSpawnOpponent("p" + (AppState.opponentChar ? AppState.opponentChar.replace('p','') : "2"));
@@ -957,6 +1041,9 @@ window.submitMove = async function(moveNum) {
               })
               .catch(e => console.error("Erreur Backend Commit:", e));
 
+            // Réinitialiser la fenêtre de timeout à la soumission du coup
+            AppState.lastActionTime = Date.now();
+
             AppState.hasCommitted = true;
 
             startUnifiedMatchPolling();
@@ -967,7 +1054,42 @@ window.submitMove = async function(moveNum) {
     }
 };
 
+// --- TIMER VISIBLE (compte à rebours de 35s, synchrone sur tous les écrans) ---
+let _timerInterval = null;
+function startVisibleTimer(durationSeconds = 35) {
+    stopVisibleTimer();
+    const overlay = document.getElementById('turn-timer-overlay');
+    const display = document.getElementById('timer-seconds');
+    if (!overlay || !display) return;
+    let remaining = durationSeconds;
+    display.textContent = remaining;
+    overlay.classList.remove('hidden');
+    overlay.classList.remove('timer-urgent');
+    _timerInterval = setInterval(() => {
+        remaining--;
+        display.textContent = remaining;
+        if (remaining <= 10) {
+            overlay.classList.add('timer-urgent');
+        }
+        if (remaining <= 0) {
+            stopVisibleTimer();
+        }
+    }, 1000);
+}
+function stopVisibleTimer() {
+    if (_timerInterval) {
+        clearInterval(_timerInterval);
+        _timerInterval = null;
+    }
+    const overlay = document.getElementById('turn-timer-overlay');
+    if (overlay) {
+        overlay.classList.add('hidden');
+        overlay.classList.remove('timer-urgent');
+    }
+}
+
 function stopUnifiedMatchPolling() {
+    stopVisibleTimer();
     window._isPolling = false;
     if (window._unifiedMatchPollInterval) {
         clearInterval(window._unifiedMatchPollInterval);
@@ -1295,6 +1417,7 @@ async function renderPoolRoom() {
                 quitText.innerText = isWinner ? '🏆 Réclamer les gains et Quitter' : '← Retour au lobby';
                 document.getElementById('pool-room-status').innerText = isWinner ? '🏆 Vous êtes le champion !' : `Champion : ${winnerWallet ? winnerWallet.slice(0,10) : 'Inconnu'}...`;
                 document.getElementById('pool-room-status').style.color = isWinner ? 'gold' : 'var(--color-red)';
+                updateBalance();
             } else if (pCount >= mPlayers) {
                 btnQuit.disabled = true;
                 quitText.innerText = "Matchs en cours...";

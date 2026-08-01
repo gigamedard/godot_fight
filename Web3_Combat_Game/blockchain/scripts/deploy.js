@@ -7,7 +7,7 @@ async function main() {
   const wallet = ethers.HDNodeWallet.fromPhrase(mnemonic).connect(provider);
   
   // Use the second account for backend signer in tests
-  const backendSignerWallet = ethers.HDNodeWallet.fromPhrase(mnemonic, "m/44'/60'/0'/0/1").connect(provider);
+  const backendSignerWallet = ethers.HDNodeWallet.fromPhrase(mnemonic, "", "m/44'/60'/0'/0/1").connect(provider);
 
   const artifact = JSON.parse(fs.readFileSync("./artifacts/contracts/CombatGame.sol/CombatGame.json"));
   const factory = new ethers.ContractFactory(artifact.abi, artifact.bytecode, wallet);

@@ -35,4 +35,9 @@ return [
         ],
     ],
 
+    'web3' => [
+        'contract_address' => env('CONTRACT_ADDRESS', '0x5FbDB2315678afecb367f032d93F642f64180aa3'),
+        'backend_signer_key' => env('WEB3_BACKEND_SIGNER_KEY'),
+    ],
+
 ];

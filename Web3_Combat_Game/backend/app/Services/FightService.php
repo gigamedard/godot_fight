@@ -47,12 +47,15 @@ class FightService
         // event(new \App\Events\MatchFinished($fight));
 
         // Check if round is over (no more pending fights)
-        $pendingFights = Fight::where('pool_id', $fight->pool_id)
-                              ->whereIn('status', ['waiting_for_commits', 'waiting_for_reveals'])
-                              ->count();
+        // Un duel (pool_id null) n'active pas la suite du matchmaking de poule
+        if ($fight->pool_id !== null) {
+            $pendingFights = Fight::where('pool_id', $fight->pool_id)
+                                  ->whereIn('status', ['waiting_for_commits', 'waiting_for_reveals'])
+                                  ->count();
 
-        if ($pendingFights === 0) {
-            app(\App\Http\Controllers\Api\PoolController::class)->triggerMatchmaking($fight->pool_id);
+            if ($pendingFights === 0) {
+                app(\App\Http\Controllers\Api\PoolController::class)->triggerMatchmaking($fight->pool_id);
+            }
         }
     }
 

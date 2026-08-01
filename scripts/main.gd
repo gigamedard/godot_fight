@@ -14,6 +14,7 @@ var final_result_text = ""
 var sparks_node: CPUParticles3D
 var dust_node: CPUParticles3D
 var status_label: Label
+var my_choice_label: Label
 var flash_rect: ColorRect
 var canvas: CanvasLayer
 var rps_ui_container: HBoxContainer
@@ -88,6 +89,8 @@ func _ready():
 		player1_node.rotation_degrees = Vector3(0, 90, 0)
 	if player2_node:
 		player2_node.rotation_degrees = Vector3(0, -90, 0)
+	if player1_camera:
+		player1_camera.keep_aspect = Camera3D.KEEP_HEIGHT
 		
 	setup_particles()
 	setup_ui()
@@ -126,10 +129,11 @@ func _on_spawn_player(args):
 	p1_models.clear()
 	
 	var p1_mat = null
-	if roster[player_prefix].texture != "":
+	if roster.has(player_prefix) and roster[player_prefix].texture != "":
 		p1_mat = StandardMaterial3D.new()
 		p1_mat.albedo_texture = load(roster[player_prefix].texture)
-	_load_models_for(player1_node, p1_models, p1_mat, roster[player_prefix].models)
+	if roster.has(player_prefix):
+		_load_models_for(player1_node, p1_models, p1_mat, roster[player_prefix].models)
 	
 	set_state(1, "idle")
 
@@ -142,15 +146,17 @@ func _on_spawn_opponent(args):
 	p2_models.clear()
 	
 	var p2_mat = null
-	if roster[opponent_prefix].texture != "":
+	if roster.has(opponent_prefix) and roster[opponent_prefix].texture != "":
 		p2_mat = StandardMaterial3D.new()
 		p2_mat.albedo_texture = load(roster[opponent_prefix].texture)
-	_load_models_for(player2_node, p2_models, p2_mat, roster[opponent_prefix].models)
+	if roster.has(opponent_prefix):
+		_load_models_for(player2_node, p2_models, p2_mat, roster[opponent_prefix].models)
 	
 	set_state(2, "idle")
 	
 	# Réinitialiser l'état du combat pour que les boutons fonctionnent
 	is_fighting = false
+	if my_choice_label: my_choice_label.hide()
 	for btn in rps_ui_container.get_children():
 		if btn is Button:
 			btn.disabled = false
@@ -165,6 +171,7 @@ func _on_clear_opponent(args):
 		child.queue_free()
 	p2_models.clear()
 	
+	if my_choice_label: my_choice_label.hide()
 	rps_ui_container.hide()
 	status_label.hide()
 
@@ -284,7 +291,19 @@ func setup_ui():
 	status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	status_label.text = "CHOISISSEZ VOTRE COMBATTANT"
 	status_label.add_theme_font_size_override("font_size", 32)
+	status_label.offset_top = 20
 	canvas.add_child(status_label)
+
+	# --- LABEL DU CHOIX DU JOUEUR (SEUL SUR SON ÉCRAN) ---
+	my_choice_label = Label.new()
+	my_choice_label.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	my_choice_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	my_choice_label.add_theme_font_size_override("font_size", 28)
+	my_choice_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.2))
+	my_choice_label.offset_top = -140
+	my_choice_label.offset_bottom = -80
+	my_choice_label.hide()
+	canvas.add_child(my_choice_label)
 	
 	# --- RPS UI ---
 	rps_ui_container = HBoxContainer.new()
@@ -292,23 +311,26 @@ func setup_ui():
 	rps_ui_container.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
 	rps_ui_container.alignment = BoxContainer.ALIGNMENT_CENTER
 	rps_ui_container.add_theme_constant_override("separation", 20)
-	rps_ui_container.offset_top = -100
-	rps_ui_container.offset_bottom = -30
+	rps_ui_container.offset_top = -110
+	rps_ui_container.offset_bottom = -20
 	
 	var btn_p = Button.new()
 	btn_p.text = " PIERRE "
+	btn_p.custom_minimum_size = Vector2(130, 55)
 	btn_p.add_theme_font_size_override("font_size", 24)
 	btn_p.pressed.connect(func(): _on_choice_made(Choice.PIERRE))
 	rps_ui_container.add_child(btn_p)
 	
 	var btn_f = Button.new()
 	btn_f.text = " FEUILLE "
+	btn_f.custom_minimum_size = Vector2(130, 55)
 	btn_f.add_theme_font_size_override("font_size", 24)
 	btn_f.pressed.connect(func(): _on_choice_made(Choice.FEUILLE))
 	rps_ui_container.add_child(btn_f)
 	
 	var btn_c = Button.new()
 	btn_c.text = " CISEAUX "
+	btn_c.custom_minimum_size = Vector2(130, 55)
 	btn_c.add_theme_font_size_override("font_size", 24)
 	btn_c.pressed.connect(func(): _on_choice_made(Choice.CISEAUX))
 	rps_ui_container.add_child(btn_c)
@@ -336,6 +358,11 @@ func _on_choice_made(player_choice: Choice):
 	
 	status_label.text = "COMBAT EN COURS..."
 	rps_ui_container.hide() # On cache les boutons de combat
+	
+	# Afficher le choix sélectionné sur l'écran du joueur uniquement
+	if my_choice_label:
+		my_choice_label.text = "Votre choix : " + CHOICE_NAMES[player_choice] + " 🔒"
+		my_choice_label.show()
 	
 	is_waiting_for_result = true
 	final_combat_result = -1
@@ -534,6 +561,7 @@ func _play_combat_climax(winner: int, final_result_txt: String):
 		set_state(1, "idle")
 		set_state(2, "idle")
 	is_fighting = false
+	if my_choice_label: my_choice_label.hide()
 
 	if OS.has_feature("web"):
 		JavaScriptBridge.eval("if(window.animationFinished) { window.animationFinished(); }")

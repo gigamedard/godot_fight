@@ -9,7 +9,7 @@ use App\Events\ChallengeSent;
 use App\Events\MatchStarted;
 use App\Events\ChallengeDeclined;
 use App\Events\PlayerStatusChanged;
-use Illuminate\Support\Str;
+use App\Models\Fight;
 
 class MatchmakingController extends Controller
 {
@@ -34,10 +34,17 @@ class MatchmakingController extends Controller
             'target_id' => 'required|string|size:42',
             'challenger_char' => 'nullable|integer',
             'target_char' => 'nullable|integer',
+            'bet_amount' => 'nullable|numeric|min:0',
         ]);
 
-        // Générer un ID de match unique
-        $matchId = (string) Str::uuid();
+        // Créer le Fight en base pour permettre la résolution du match (statut, result, payout)
+        $fight = Fight::create([
+            'pool_id' => null,
+            'player1_wallet' => strtolower($request->challenger_id),
+            'player2_wallet' => strtolower($request->target_id),
+            'status' => 'waiting_for_commits',
+            'base_bet_amount' => $request->bet_amount ?? 0,
+        ]);
 
         // Mettre à jour le statut des joueurs (en combat)
         broadcast(new PlayerStatusChanged($request->challenger_id, 'in-game'));
@@ -45,14 +52,14 @@ class MatchmakingController extends Controller
 
         // Le target_id est celui qui a reçu le défi et l'accepte
         broadcast(new MatchStarted(
-            $matchId, 
-            $request->challenger_id, 
+            $fight->id,
+            $request->challenger_id,
             $request->target_id,
             $request->challenger_char ?? 2,
             $request->target_char ?? 2
         ));
 
-        return response()->json(['status' => 'success', 'match_id' => $matchId]);
+        return response()->json(['status' => 'success', 'match_id' => $fight->id]);
     }
 
     public function declineChallenge(Request $request)

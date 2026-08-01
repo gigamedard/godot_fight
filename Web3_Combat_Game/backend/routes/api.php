@@ -89,3 +89,7 @@ Route::post('/battle/commit', [BattleController::class, 'commitMove']);
 Route::post('/battle/reveal', [BattleController::class, 'revealMove']);
 Route::post('/battle/timeout', [BattleController::class, 'claimTimeout']);
 Route::get('/battle/status/{match_id}', [BattleController::class, 'getMatchStatus']);
+
+// Retrait de fonds (voucher signé par le backend)
+use App\Http\Controllers\Api\WithdrawController;
+Route::post('/withdraw/voucher', [WithdrawController::class, 'voucher']);
