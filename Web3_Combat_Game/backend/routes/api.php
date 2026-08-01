@@ -93,3 +93,4 @@ Route::get('/battle/status/{match_id}', [BattleController::class, 'getMatchStatu
 // Retrait de fonds (voucher signé par le backend)
 use App\Http\Controllers\Api\WithdrawController;
 Route::post('/withdraw/voucher', [WithdrawController::class, 'voucher']);
+Route::post('/withdraw/settle-voucher', [WithdrawController::class, 'settleVoucher']);

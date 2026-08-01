@@ -43,4 +43,29 @@ class WithdrawVoucherTest extends TestCase
             'amount_wei' => '0',
         ])->assertStatus(422);
     }
+
+    public function test_settle_voucher_returns_signed_voucher(): void
+    {
+        $response = $this->postJson('/api/withdraw/settle-voucher', [
+            'winner_address' => '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
+            'loser_address' => '0x70997970C51812dc3A010C7d01b50e0d17dc79C8',
+        ]);
+
+        $response->assertOk()
+            ->assertJsonStructure(['winner', 'loser', 'contract_address', 'signature']);
+
+        $data = $response->json();
+        $this->assertSame(strtolower('0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266'), $data['winner']);
+        $this->assertSame(strtolower('0x70997970C51812dc3A010C7d01b50e0d17dc79C8'), $data['loser']);
+        $this->assertSame('0x5fbdb2315678afecb367f032d93f642f64180aa3', strtolower($data['contract_address']));
+        $this->assertMatchesRegularExpression('/^0x[0-9a-fA-F]{130}$/', $data['signature']);
+    }
+
+    public function test_settle_voucher_rejects_identical_addresses(): void
+    {
+        $this->postJson('/api/withdraw/settle-voucher', [
+            'winner_address' => '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
+            'loser_address' => '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
+        ])->assertStatus(422);
+    }
 }

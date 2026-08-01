@@ -122,11 +122,16 @@ class BattleController extends Controller
             $winnerWallet = $fight->player2_wallet;
         }
 
+        // Deadline absolue (epoch ms serveur) : la même pour tous les joueurs,
+        // quel que soit leur fuseau horaire. Créée à la création du Fight.
+        $deadline = ((int) $fight->created_at?->getTimestamp()) * 1000 + 35000;
+
         return response()->json([
             'status' => $fight->status,
             'result' => $fight->result,
             'winner_wallet' => $winnerWallet,
             'payout' => $fight->base_bet_amount,
+            'deadline' => $deadline,
             'player1_wallet' => $fight->player1_wallet,
             'player2_wallet' => $fight->player2_wallet,
             'player1_commit' => $fight->player1_commit ? true : false,

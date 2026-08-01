@@ -12,7 +12,9 @@ const AppState = {
     pendingPoolParam: null,
     pendingPoolRoundEvent: null,
     pendingInvitePoolId: null,
-    pendingInvitePoolMax: null
+    pendingInvitePoolMax: null,
+    matchDeadline: null,
+    timeoutRequested: false
 };
 
 let onlinePlayers = []; // Mis à jour via Reverb
@@ -276,6 +278,24 @@ async function initSessionKey() {
     }
 }
 
+async function refreshClaimable() {
+    if (!contract || typeof contract.userBalances !== 'function') return;
+    const container = document.getElementById('pending-funds-container');
+    const amt = document.getElementById('pending-amount');
+    if (!container || !amt) return;
+    try {
+        const pending = await contract.userBalances(AppState.walletAddress);
+        if (pending > 0n) {
+            container.style.display = 'block';
+            amt.innerText = parseFloat(ethers.formatEther(pending)).toFixed(3);
+        } else {
+            container.style.display = 'none';
+        }
+    } catch (e) {
+        console.error("Error fetching userBalances:", e);
+    }
+}
+
 function updateBalance() {
     if(AppState.walletAddress) {
         provider.getBalance(AppState.walletAddress).then(bal => {
@@ -283,21 +303,7 @@ function updateBalance() {
             if(el) el.innerText = parseFloat(ethers.formatEther(bal)).toFixed(2) + " ETH";
         });
         
-        // Fetch pending withdrawals / user balances on-chain
-        if(contract && typeof contract.userBalances === 'function') {
-            contract.userBalances(AppState.walletAddress).then(pending => {
-                const container = document.getElementById('pending-funds-container');
-                const amt = document.getElementById('pending-amount');
-                if(container && amt) {
-                    if(pending > 0n) {
-                        container.style.display = 'block';
-                        amt.innerText = parseFloat(ethers.formatEther(pending)).toFixed(3);
-                    } else {
-                        container.style.display = 'none';
-                    }
-                }
-            }).catch(e => console.error("Error fetching userBalances:", e));
-        }
+        refreshClaimable();
     }
 }
 
@@ -506,6 +512,7 @@ function performLogin() {
             .listen('MatchStarted', (e) => {
                 console.log("Accord Off-Chain atteint ! Exécution On-Chain...", e);
                 window.gameConfig.matchId = e.matchId;
+                if (e.betAmount) AppState.currentBetAmountOffchain = e.betAmount;
                 
                 // Déterminer qui est le challenger et qui est le target pour assigner le bon personnage adverse
                 const isChallenger = (AppState.walletAddress.toLowerCase() === e.player1.toLowerCase());
@@ -591,6 +598,8 @@ window.resetMatchState = function() {
     AppState.currentSecret = null;
     AppState.opponentChar = null;
     AppState.lastActionTime = null;
+    AppState.matchDeadline = null;
+    AppState.timeoutRequested = false;
     AppState.currentChallenger = null;
     AppState.currentTargetId = null; // Reset so bye-player guard works next round
     
@@ -815,24 +824,44 @@ document.getElementById('btn-decline-challenge').addEventListener('click', async
 });
 
 // --- EXÉCUTION ON-CHAIN (Devenu Gasless via Backend) ---
+async function depositForMatch(amountEth) {
+    if (!contract || !AppState.walletAddress || !amountEth || Number(amountEth) <= 0) return false;
+    try {
+        showToast(`Dépôt de ${amountEth} ETH sur la blockchain...`, "info");
+        const tx = await contract.deposit({ value: ethers.parseEther(String(amountEth)) });
+        await tx.wait();
+        showToast("Dépôt confirmé sur la blockchain !", "success");
+        updateBalance();
+        return true;
+    } catch (err) {
+        console.error("Erreur de dépôt:", err);
+        showToast("Échec du dépôt on-chain : " + (err.shortMessage || err.message || "erreur"), "error");
+        return false;
+    }
+}
+
 async function executeMatchOnChain(e) {
     const isChallenger = (e.player1.toLowerCase() === AppState.walletAddress.toLowerCase());
     const opponent = isChallenger ? e.player2 : e.player1;
     
-    document.getElementById('challenge-text').innerText = "Match validé ! Lancement du combat...";
+    document.getElementById('challenge-text').innerText = "Match validé ! Dépôt et lancement du combat...";
     document.getElementById('challenge-modal-actions').style.display = 'none';
     
     AppState.currentMatchId = e.matchId;
     AppState.currentTargetId = opponent;
     
-    // Si on a l'info du perso de l'adversaire via l'event
+    // Si on a l'info du perso de l'adversaire via l'event (clés camelCase du broadcast Reverb)
     if (isChallenger) {
-        AppState.opponentChar = "p" + (e.p2_char || 2);
-        AppState.myChar = "p" + (e.p1_char || 2);
+        AppState.opponentChar = "p" + (e.p2Char || 2);
+        AppState.myChar = "p" + (e.p1Char || 2);
     } else {
-        AppState.opponentChar = "p" + (e.p1_char || 2);
-        AppState.myChar = "p" + (e.p2_char || 2);
+        AppState.opponentChar = "p" + (e.p1Char || 2);
+        AppState.myChar = "p" + (e.p2Char || 2);
     }
+
+    // Dépôt on-chain de la mise (escrow) au lancement du match
+    const betAmount = AppState.currentBetAmountOffchain || AppState.defaultBetAmount || '0';
+    await depositForMatch(betAmount);
 
     setTimeout(() => {
         document.getElementById('challenge-modal').style.display = 'none';
@@ -912,9 +941,6 @@ function launchGodot(targetId) {
     const overlay = document.getElementById('ui-overlay');
     if (overlay) overlay.classList.add('hidden');
 
-    // Afficher le compte à rebours de 35s par-dessus Godot
-    startVisibleTimer(35);
-    
     if (window.godotSpawnOpponent) {
         window.godotSpawnOpponent("p" + (AppState.opponentChar ? AppState.opponentChar.replace('p','') : "2"));
     }
@@ -924,6 +950,9 @@ function launchGodot(targetId) {
 
     // Commencer le polling immédiatement pour s'assurer de recevoir les timeouts ou la fin de match
     startUnifiedMatchPolling();
+
+    // Afficher le compte à rebours de 35s par-dessus Godot (après le polling pour ne pas être masqué)
+    startVisibleTimer(35);
 }
 
 function endCombatSimulation() {
@@ -942,6 +971,35 @@ window.onGodotReady = function() {
     }
 };
 
+// Règlement winner-takes-all : le gagnant transfère l'escrow du perdant vers lui
+async function settleMatchOnWin(godotResult) {
+    if (godotResult !== 1) return;
+    const loser = AppState.currentTargetId;
+    if (!loser || !contract || !AppState.walletAddress) return;
+    try {
+        const res = await fetch(`${APP_CONFIG.API_BASE_URL}/withdraw/settle-voucher`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Accept": "application/json" },
+            body: JSON.stringify({
+                winner_address: AppState.walletAddress,
+                loser_address: loser
+            })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.signature) {
+            showToast("Bon de règlement refusé : " + (data.error || 'Erreur inconnue'), "error");
+            return;
+        }
+        showToast("Règlement on-chain en cours (transfert de la mise adverse)...", "info");
+        const tx = await contract.settleLoser(data.winner, data.loser, data.signature);
+        await tx.wait();
+        showToast("Pot consolidé ! Vous pouvez réclamer vos gains.", "success");
+        updateBalance();
+    } catch (err) {
+        console.error("Erreur lors du règlement:", err);
+    }
+}
+
 window.animationFinished = function() {
     console.log("Animation de combat terminée !");
     
@@ -959,11 +1017,30 @@ window.animationFinished = function() {
     } else {
         showToast(`Défaite... Vous avez perdu le match.`, 'error');
     }
+
+    // Le perdant n'a rien à réclamer : masquer le bouton claim immédiatement.
+    // Pour les autres, le solde à réclamer est re-synchronisé plus bas.
+    if (godotResult === 2) {
+        const claimContainer = document.getElementById('pending-funds-container');
+        if (claimContainer) claimContainer.style.display = 'none';
+    }
     updateBalance();
+
+    // Winner-takes-all : consolider l'escrow (mise du perdant -> gagnant)
+    settleMatchOnWin(godotResult);
     
     if (AppState.currentPoolId) {
         checkPoolElimination(godotResult, AppState.currentMatchId);
     }
+
+    // Le règlement on-chain (settleLoser) peut prendre quelques secondes :
+    // re-synchroniser le solde à réclamer pour masquer/afficher le claim correctement
+    (async () => {
+        for (let i = 0; i < 6; i++) {
+            await new Promise(r => setTimeout(r, 2500));
+            await refreshClaimable();
+        }
+    })();
 
     // Réinitialisation complète des états (incluant le statut serveur online)
     resetMatchState();
@@ -1054,33 +1131,48 @@ window.submitMove = async function(moveNum) {
     }
 };
 
-// --- TIMER VISIBLE (compte à rebours de 35s, synchrone sur tous les écrans) ---
+// --- TIMER VISIBLE (compte à rebours ancré sur la deadline serveur, identique pour tous) ---
 let _timerInterval = null;
+let _timerDeadline = null;
+
 function startVisibleTimer(durationSeconds = 35) {
-    stopVisibleTimer();
+    // Compte à rebours provisoire local ; sera recalé sur la deadline serveur dès le 1er polling
+    _timerDeadline = Date.now() + durationSeconds * 1000;
+    _runVisibleTimer();
+}
+
+function syncVisibleTimerToDeadline(deadlineMs) {
+    if (!deadlineMs) return;
+    _timerDeadline = deadlineMs;
+    _runVisibleTimer();
+}
+
+function _runVisibleTimer() {
+    if (_timerInterval) {
+        clearInterval(_timerInterval);
+        _timerInterval = null;
+    }
     const overlay = document.getElementById('turn-timer-overlay');
     const display = document.getElementById('timer-seconds');
-    if (!overlay || !display) return;
-    let remaining = durationSeconds;
-    display.textContent = remaining;
-    overlay.classList.remove('hidden');
-    overlay.classList.remove('timer-urgent');
-    _timerInterval = setInterval(() => {
-        remaining--;
+    if (!overlay || !display || !_timerDeadline) return;
+
+    const tick = () => {
+        const remaining = Math.max(0, Math.ceil((_timerDeadline - Date.now()) / 1000));
         display.textContent = remaining;
-        if (remaining <= 10) {
-            overlay.classList.add('timer-urgent');
-        }
-        if (remaining <= 0) {
-            stopVisibleTimer();
-        }
-    }, 1000);
+        overlay.classList.toggle('timer-urgent', remaining <= 10);
+        if (remaining <= 0) stopVisibleTimer();
+    };
+    overlay.classList.remove('hidden');
+    tick();
+    _timerInterval = setInterval(tick, 1000);
 }
+
 function stopVisibleTimer() {
     if (_timerInterval) {
         clearInterval(_timerInterval);
         _timerInterval = null;
     }
+    _timerDeadline = null;
     const overlay = document.getElementById('turn-timer-overlay');
     if (overlay) {
         overlay.classList.add('hidden');
@@ -1089,7 +1181,6 @@ function stopVisibleTimer() {
 }
 
 function stopUnifiedMatchPolling() {
-    stopVisibleTimer();
     window._isPolling = false;
     if (window._unifiedMatchPollInterval) {
         clearInterval(window._unifiedMatchPollInterval);
@@ -1113,18 +1204,28 @@ function startUnifiedMatchPolling() {
             const data = await res.json();
             const currentStatus = data.fight_status || data.status;
 
+            // Recaler le timer sur la deadline serveur absolue (identique pour tous les joueurs)
+            if (data.deadline && data.deadline !== AppState.matchDeadline) {
+                AppState.matchDeadline = data.deadline;
+                syncVisibleTimerToDeadline(data.deadline);
+            }
+
             if (currentStatus === 'waiting_for_commits' || currentStatus === 'waiting_for_reveals') {
-                if (AppState.lastActionTime && (Date.now() - AppState.lastActionTime > 35000)) {
-                    console.log("Timeout de 35s atteint, demande de résolution forcée...");
+                const now = Date.now();
+                const deadline = AppState.matchDeadline || (AppState.lastActionTime ? AppState.lastActionTime + 35000 : now + 35000);
+                if (!AppState.timeoutRequested && now >= deadline) {
+                    AppState.timeoutRequested = true;
+                    console.log("Deadline atteinte, demande de résolution forcée...");
                     try {
                         await fetch(`${APP_CONFIG.API_BASE_URL}/battle/timeout`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ match_id: AppState.currentMatchId })
                         });
-                        AppState.lastActionTime = Date.now();
                     } catch(e) {
                         console.error("Erreur appel timeout:", e);
+                        // On retente au prochain tick si l'appel a échoué
+                        AppState.timeoutRequested = false;
                     }
                 }
             }
@@ -1135,6 +1236,7 @@ function startUnifiedMatchPolling() {
 
             if (currentStatus === 'completed' || currentStatus === 'finished') {
                 stopUnifiedMatchPolling();
+                stopVisibleTimer();
                 const wallet = AppState.walletAddress.toLowerCase();
                 
                 let godotResult = 0;
@@ -1151,17 +1253,19 @@ function startUnifiedMatchPolling() {
                     ethPayout: data.payout
                 };
 
-                let opponentMoveStr = null;
+                let opponentMoveRaw = null;
                 if (data.player1_wallet && data.player1_wallet.toLowerCase() === wallet) {
-                    opponentMoveStr = data.player2_move;
+                    opponentMoveRaw = data.player2_move;
                 } else {
-                    opponentMoveStr = data.player1_move;
+                    opponentMoveRaw = data.player1_move;
                 }
 
+                // Le backend renvoie le move sous forme d'entier (1/2/3) ou null si l'adversaire n'a pas joué
                 let opponentMoveInt = 0;
-                if (opponentMoveStr === 'pierre') opponentMoveInt = 1;
-                else if (opponentMoveStr === 'feuille') opponentMoveInt = 2;
-                else if (opponentMoveStr === 'ciseaux') opponentMoveInt = 3;
+                if (opponentMoveRaw !== null && opponentMoveRaw !== undefined && opponentMoveRaw !== '') {
+                    opponentMoveInt = parseInt(opponentMoveRaw, 10);
+                    if (isNaN(opponentMoveInt)) opponentMoveInt = 0;
+                }
 
                 if (window.receiveMatchResult) {
                     window.receiveMatchResult(godotResult, opponentMoveInt);
@@ -1302,6 +1406,12 @@ async function joinPool(poolId) {
         AppState.currentPoolId = poolId;
         AppState.currentPoolFee = poolData.entry_fee;
         showToast("Poule rejointe !", "success");
+
+        // Dépôt on-chain de la mise d'entrée (escrow) à la jonction
+        if (AppState.currentPoolFee > 0) {
+            await depositForMatch(AppState.currentPoolFee);
+        }
+
         navigateTo('screen-pool-room');
         renderPoolRoom();
         

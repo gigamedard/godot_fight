@@ -21,17 +21,19 @@ class MatchStarted implements ShouldBroadcastNow
     public $player2;
     public $p1Char;
     public $p2Char;
+    public $betAmount;
 
     /**
      * Create a new event instance.
      */
-    public function __construct($matchId, $player1, $player2, $p1Char = 2, $p2Char = 2)
+    public function __construct($matchId, $player1, $player2, $p1Char = 2, $p2Char = 2, $betAmount = 0)
     {
         $this->matchId = $matchId;
         $this->player1 = $player1;
         $this->player2 = $player2;
         $this->p1Char = $p1Char;
         $this->p2Char = $p2Char;
+        $this->betAmount = $betAmount;
     }
 
     /**

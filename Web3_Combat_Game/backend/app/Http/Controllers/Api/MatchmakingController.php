@@ -56,7 +56,8 @@ class MatchmakingController extends Controller
             $request->challenger_id,
             $request->target_id,
             $request->challenger_char ?? 2,
-            $request->target_char ?? 2
+            $request->target_char ?? 2,
+            $request->bet_amount ?? 0
         ));
 
         return response()->json(['status' => 'success', 'match_id' => $fight->id]);

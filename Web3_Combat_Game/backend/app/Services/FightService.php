@@ -16,8 +16,10 @@ class FightService
     {
         $move1 = $this->mapMove($fight->player1_move);
         $move2 = $this->mapMove($fight->player2_move);
+        $p1Committed = $fight->player1_commit !== null;
+        $p2Committed = $fight->player2_commit !== null;
 
-        $result = $this->determineResult($move1, $move2);
+        $result = $this->determineResult($move1, $move2, $p1Committed, $p2Committed);
         
         $fight->result = $result;
         $fight->status = 'completed';
@@ -70,9 +72,14 @@ class FightService
         }
     }
 
-    public function determineResult($user1Move, $user2Move)
+    public function determineResult($user1Move, $user2Move, $p1Committed = false, $p2Committed = false)
     {
-        if ($user1Move === 'nothing' && $user2Move === 'nothing') return 'double_elimination'; // Both AFK
+        if ($user1Move === 'nothing' && $user2Move === 'nothing') {
+            // Un move n'a jamais été révélé (l'adversaire n'a pas committé) : forfait
+            if ($p1Committed && !$p2Committed) return 'player1_win'; // P2 forfait
+            if ($p2Committed && !$p1Committed) return 'player2_win'; // P1 forfait
+            return 'double_elimination'; // Both AFK
+        }
         if ($user1Move === 'nothing') return 'player2_win';
         if ($user2Move === 'nothing') return 'player1_win';
         

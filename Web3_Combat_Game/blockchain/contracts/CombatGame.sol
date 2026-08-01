@@ -19,6 +19,7 @@ contract CombatGame {
     event Deposit(address indexed user, uint256 amount);
     event Withdrawal(address indexed user, uint256 amount, uint256 nonce);
     event MoveCommitted(bytes32 indexed matchHash, address indexed player, bytes32 commitHash);
+    event MatchSettled(address indexed winner, address indexed loser, uint256 amount);
 
     modifier onlyOwner() {
         require(msg.sender == owner, "Not owner");
@@ -66,6 +67,28 @@ contract CombatGame {
         require(success, "Transfer failed");
 
         emit Withdrawal(msg.sender, amount, nonce);
+    }
+
+    /**
+     * @dev Winner-takes-all: transfère l'escrow du perdant vers le gagnant.
+     * Autorisé par une signature du backend signer (comme les retraits).
+     * Le backend signe : keccak256(abi.encodePacked(winner, loser, address(this)))
+     */
+    function settleLoser(address winner, address loser, bytes memory signature) external {
+        require(loser != winner, "Same address");
+        uint256 amt = userBalances[loser];
+        require(amt > 0, "Nothing to settle");
+
+        bytes32 messageHash = keccak256(abi.encodePacked(winner, loser, address(this)));
+        bytes32 ethSignedMessageHash = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", messageHash));
+
+        address recoveredSigner = recoverSigner(ethSignedMessageHash, signature);
+        require(recoveredSigner == backendSigner, "Invalid backend signature");
+
+        userBalances[loser] = 0;
+        userBalances[winner] += amt;
+
+        emit MatchSettled(winner, loser, amt);
     }
 
     /**
