@@ -14,6 +14,13 @@ class FightService
      */
     public function resolveHybridFight(Fight $fight)
     {
+        // Idempotent : un combat déjà résolu ne se re-résout pas (évite les
+        // doubles éliminations / doubles broadcasts quand le POST timeout du client
+        // et la résolution serveur se chevauchent).
+        if (in_array($fight->status, ['completed', 'canceled'])) {
+            return;
+        }
+
         $move1 = $this->mapMove($fight->player1_move);
         $move2 = $this->mapMove($fight->player2_move);
         $p1Committed = $fight->player1_commit !== null;

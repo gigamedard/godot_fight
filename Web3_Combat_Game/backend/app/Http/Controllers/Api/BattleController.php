@@ -10,6 +10,11 @@ use App\Services\FightService;
 
 class BattleController extends Controller
 {
+    // Fenêtre de timeout = inactivité sur le combat (aucun commit/reveal reçu),
+    // ancrée sur updated_at (dernière action) et non sur la création : laisser les
+    // reveals en cours aboutir même si la création du fight remonte à plus longtemps.
+    private const TIMEOUT_MS = 45000;
+
     protected $fightService;
     public function __construct(FightService $fightService) { $this->fightService = $fightService; }
 
@@ -114,7 +119,11 @@ class BattleController extends Controller
     public function getMatchStatus($match_id)
     {
         $fight = Fight::findOrFail($match_id);
-        
+
+        // Le serveur est l'autorité du timeout : un combat toujours en attente
+        // passé la deadline est résolu ici, même si les clients se déconnectent.
+        $this->resolveIfExpired($fight);
+
         $winnerWallet = null;
         if ($fight->result === 'player1_win') {
             $winnerWallet = $fight->player1_wallet;
@@ -123,8 +132,9 @@ class BattleController extends Controller
         }
 
         // Deadline absolue (epoch ms serveur) : la même pour tous les joueurs,
-        // quel que soit leur fuseau horaire. Créée à la création du Fight.
-        $deadline = ((int) $fight->created_at?->getTimestamp()) * 1000 + 35000;
+        // quel que soit leur fuseau horaire. Ancré sur la dernière activité du
+        // combat (updated_at), glissante : un commit/reveal la repousse.
+        $deadline = ((int) $fight->updated_at?->getTimestamp()) * 1000 + self::TIMEOUT_MS;
 
         return response()->json([
             'status' => $fight->status,
@@ -139,5 +149,24 @@ class BattleController extends Controller
             'player1_move' => $fight->player1_move,
             'player2_move' => $fight->player2_move,
         ]);
+    }
+
+    /**
+     * Résout un combat toujours en attente dont la deadline (45s d'inactivité,
+     * ancrée sur updated_at) est dépassée. Idempotent : ne fait rien si le combat
+     * est déjà résolu. La deadline glisse avec chaque commit/reveal, donc un joueur
+     * qui joue ne risque pas de se faire éliminer par un compte à rebours parti à la
+     * création du combat (ex. round en file derrière l'animation du précédent).
+     */
+    private function resolveIfExpired(Fight $fight): void
+    {
+        if (!in_array($fight->status, ['waiting_for_commits', 'waiting_for_reveals'])) {
+            return;
+        }
+
+        $deadline = ((int) $fight->updated_at?->getTimestamp()) * 1000 + self::TIMEOUT_MS;
+        if (time() * 1000 >= $deadline) {
+            $this->fightService->resolveHybridFight($fight);
+        }
     }
 }

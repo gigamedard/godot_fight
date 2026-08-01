@@ -1135,7 +1135,7 @@ window.submitMove = async function(moveNum) {
 let _timerInterval = null;
 let _timerDeadline = null;
 
-function startVisibleTimer(durationSeconds = 35) {
+function startVisibleTimer(durationSeconds = 45) {
     // Compte à rebours provisoire local ; sera recalé sur la deadline serveur dès le 1er polling
     _timerDeadline = Date.now() + durationSeconds * 1000;
     _runVisibleTimer();
@@ -1212,7 +1212,7 @@ function startUnifiedMatchPolling() {
 
             if (currentStatus === 'waiting_for_commits' || currentStatus === 'waiting_for_reveals') {
                 const now = Date.now();
-                const deadline = AppState.matchDeadline || (AppState.lastActionTime ? AppState.lastActionTime + 35000 : now + 35000);
+                const deadline = AppState.matchDeadline || (AppState.lastActionTime ? AppState.lastActionTime + 45000 : now + 45000);
                 if (!AppState.timeoutRequested && now >= deadline) {
                     AppState.timeoutRequested = true;
                     console.log("Deadline atteinte, demande de résolution forcée...");
@@ -1448,7 +1448,13 @@ async function handlePoolRoundStarted(e) {
             document.getElementById('pool-room-status').innerText = isWinner ? '🏆 Vous êtes le champion !' : `Champion : ${e.winner.slice(0,10)}...`;
             document.getElementById('pool-room-status').style.color = isWinner ? 'gold' : 'var(--color-red)';
             showToast(isWinner ? '🏆 Vous avez remporté la poule !' : `Poule terminée ! Vainqueur : ${e.winner.slice(0,10)}...`, isWinner ? 'success' : 'info');
-            
+
+            // La consolidation du pot (winner-takes-all) est assurée côté serveur :
+            // le champion peut directement réclamer ses gains.
+            if (isWinner) {
+                refreshClaimable();
+            }
+
             const btnQuit = document.getElementById('btn-quit-pool');
             const quitText = document.getElementById('quit-pool-text');
             if (btnQuit && quitText) {
@@ -1525,7 +1531,9 @@ async function renderPoolRoom() {
                 
                 btnQuit.disabled = false;
                 quitText.innerText = isWinner ? '🏆 Réclamer les gains et Quitter' : '← Retour au lobby';
-                document.getElementById('pool-room-status').innerText = isWinner ? '🏆 Vous êtes le champion !' : `Champion : ${winnerWallet ? winnerWallet.slice(0,10) : 'Inconnu'}...`;
+                document.getElementById('pool-room-status').innerText = winnerWallet
+                    ? (isWinner ? '🏆 Vous êtes le champion !' : `Champion : ${winnerWallet.slice(0,10)}...`)
+                    : 'Poule terminée (aucun vainqueur)';
                 document.getElementById('pool-room-status').style.color = isWinner ? 'gold' : 'var(--color-red)';
                 updateBalance();
             } else if (pCount >= mPlayers) {

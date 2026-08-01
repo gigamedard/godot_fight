@@ -38,6 +38,10 @@ return [
     'web3' => [
         'contract_address' => env('CONTRACT_ADDRESS', '0x5FbDB2315678afecb367f032d93F642f64180aa3'),
         'backend_signer_key' => env('WEB3_BACKEND_SIGNER_KEY'),
+        'node_path' => env('WEB3_NODE_PATH', 'node'),
+        'consolidate_script' => env('WEB3_CONSOLIDATE_SCRIPT', base_path('../blockchain/scripts/consolidate_pool.js')),
+        'rpc_url' => env('WEB3_RPC_URL', 'http://127.0.0.1:8545'),
+        'backend_url' => env('APP_URL', 'http://127.0.0.1:8000') . '/api',
     ],
 
 ];

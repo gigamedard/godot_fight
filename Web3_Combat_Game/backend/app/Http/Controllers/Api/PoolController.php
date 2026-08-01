@@ -8,6 +8,7 @@ use App\Models\Pool;
 use App\Models\PoolPlayer;
 use App\Models\Fight;
 use App\Events\PoolRoundStarted;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class PoolController extends Controller
@@ -139,8 +140,13 @@ class PoolController extends Controller
         if ($players->count() <= 1) {
             // Pool is finished — broadcast winner
             $pool->update(['status' => 'finished', 'round_pending_matches' => 0]);
-            broadcast(new PoolRoundStarted($poolId, [], null, $players->first()?->wallet_address));
-            return response()->json(['status' => 'finished', 'winner' => $players->first()]);
+            $winner = $players->first();
+            broadcast(new PoolRoundStarted($poolId, [], null, $winner?->wallet_address));
+
+            // Winner-takes-all : le serveur consolide le pot (settleLoser des éliminés)
+            $this->consolidatePoolPot($pool, $winner);
+
+            return response()->json(['status' => 'finished', 'winner' => $winner]);
         }
 
         $pairs = [];
@@ -186,5 +192,44 @@ class PoolController extends Controller
         broadcast(new PoolRoundStarted($poolId, $pairs, $waitingPlayer));
 
         return response()->json(['status' => 'success', 'pairs' => $pairs, 'waiting' => $waitingPlayer]);
+    }
+
+    /**
+     * Consolide le pot d'une poule terminée : le serveur soumet lui-même les
+     * settleLoser de chaque joueur éliminé ayant encore un solde, vers le champion.
+     * Ne dépend pas du client du vainqueur.
+     */
+    protected function consolidatePoolPot($pool, $winner)
+    {
+        if (!$winner || !$pool) {
+            return;
+        }
+
+        $losers = PoolPlayer::where('pool_id', $pool->id)
+            ->whereRaw('LOWER(wallet_address) != ?', [strtolower($winner->wallet_address)])
+            ->pluck('wallet_address')
+            ->all();
+
+        if (count($losers) === 0) {
+            return;
+        }
+
+        $node = (string) config('services.web3.node_path', 'node');
+        $script = (string) config('services.web3.consolidate_script');
+        if (!is_file($script)) {
+            Log::warning('Script de consolidation introuvable : ' . $script);
+            return;
+        }
+
+        $cmd = escapeshellarg($node)
+            . ' ' . escapeshellarg($script)
+            . ' ' . (int) $pool->id
+            . ' ' . escapeshellarg($winner->wallet_address)
+            . ' ' . implode(' ', array_map('escapeshellarg', $losers))
+            . ' >> ' . escapeshellarg(storage_path('logs/consolidate.log')) . ' 2>&1';
+
+        // Lancement en arrière-plan (Windows : start /B)
+        pclose(popen('start /B "" ' . $cmd, 'r'));
+        Log::info("Consolidation du pot de la poule #{$pool->id} lancée (champion {$winner->wallet_address}).");
     }
 }
