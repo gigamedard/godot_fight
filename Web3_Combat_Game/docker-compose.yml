@@ -1,7 +1,8 @@
 # Stack conteneurisée de Web3 Combat Game, alignée sur le runtime réel :
 #   - blockchain  : Hardhat node + déploiement du contrat (port 8545)
 #   - indexer     : watcher node des événements on-chain -> API interne Laravel
-#   - api         : Laravel (artisan serve) + Reverb (WebSocket) + SQLite
+#   - api         : Laravel (artisan serve) + Reverb (WebSocket) + MySQL
+#   - db          : MySQL 8 (stockage applicatif Laravel)
 #   - frontend    : serveur statique Python (Godot Web export)
 
 services:
@@ -15,6 +16,25 @@ services:
     volumes:
       - ./blockchain:/app
       - /app/node_modules
+
+  db:
+    image: mysql:8.0
+    container_name: web3_combat_db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: web3_combat
+      MYSQL_USER: user
+      MYSQL_PASSWORD: password
+    ports:
+      - "3306:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
   indexer:
     build:
@@ -47,6 +67,12 @@ services:
       WEB3_BACKEND_SIGNER_KEY: 0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d
       WEB3_SETTLE_SCRIPT: /srv/blockchain/scripts/settle_fight.js
       WEB3_CONSOLIDATE_SCRIPT: /srv/blockchain/scripts/consolidate_pool.js
+      DB_CONNECTION: mysql
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_DATABASE: web3_combat
+      DB_USERNAME: user
+      DB_PASSWORD: password
     volumes:
       - ./backend:/var/www/html
       - ./blockchain:/srv/blockchain:ro
@@ -55,6 +81,7 @@ services:
       - "8081:8081"
     depends_on:
       - blockchain
+      - db
 
   frontend:
     build:
@@ -65,3 +92,6 @@ services:
       - "8080:8080"
     volumes:
       - ./frontend:/srv/www:ro
+
+volumes:
+  db_data:
