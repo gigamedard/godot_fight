@@ -14,7 +14,8 @@ const AppState = {
     pendingInvitePoolId: null,
     pendingInvitePoolMax: null,
     matchDeadline: null,
-    timeoutRequested: false
+    timeoutRequested: false,
+    fightTimeoutMs: null // Durée d'un round (ms), récupérée du backend (/game-config)
 };
 
 let onlinePlayers = []; // Mis à jour via Reverb
@@ -828,7 +829,13 @@ async function depositForMatch(amountEth) {
     if (!contract || !AppState.walletAddress || !amountEth || Number(amountEth) <= 0) return false;
     try {
         showToast(`Dépôt de ${amountEth} ETH sur la blockchain...`, "info");
-        const tx = await contract.deposit({ value: ethers.parseEther(String(amountEth)) });
+        const stakeWei = ethers.parseEther(String(amountEth));
+        // Commission serveur (2,5 % par défaut, reconfigurable via feeBps sur le contrat)
+        const feeBps = typeof contract.feeBps === 'function' ? Number(await contract.feeBps()) : 250;
+        const feeWei = stakeWei * BigInt(feeBps) / 10000n;
+        const totalWei = stakeWei + feeWei;
+        showToast(`Dépôt de ${amountEth} ETH (mise) + ${ethers.formatEther(feeWei)} ETH (frais)...`, "info");
+        const tx = await contract.register(stakeWei, { value: totalWei });
         await tx.wait();
         showToast("Dépôt confirmé sur la blockchain !", "success");
         updateBalance();
@@ -837,6 +844,77 @@ async function depositForMatch(amountEth) {
         console.error("Erreur de dépôt:", err);
         showToast("Échec du dépôt on-chain : " + (err.shortMessage || err.message || "erreur"), "error");
         return false;
+    }
+}
+
+// Dépôt de la mise d'entrée DANS L'ESCROW de la poule (winner-take-all).
+// Utilise registerForPool (le stake est verrouillé dans la pool), pas register (duel).
+async function depositForPool(poolId, amountEth) {
+    if (!contract || !AppState.walletAddress || !poolId || !amountEth || Number(amountEth) <= 0) return false;
+    try {
+        showToast(`Dépôt de ${amountEth} ETH dans l'escrow de la poule...`, "info");
+        const stakeWei = ethers.parseEther(String(amountEth));
+        const feeBps = typeof contract.feeBps === 'function' ? Number(await contract.feeBps()) : 250;
+        const feeWei = stakeWei * BigInt(feeBps) / 10000n;
+        const totalWei = stakeWei + feeWei;
+        showToast(`Escrow +${amountEth} ETH (mise) + ${ethers.formatEther(feeWei)} ETH (frais)...`, "info");
+        const tx = await contract.registerForPool(BigInt(poolId), stakeWei, { value: totalWei });
+        await tx.wait();
+        showToast("Mise verrouillée dans l'escrow de la poule !", "success");
+        updateBalance();
+        return true;
+    } catch (err) {
+        console.error("Erreur de dépôt en poule:", err);
+        showToast("Échec du dépôt en poule : " + (err.shortMessage || err.message || "erreur"), "error");
+        return false;
+    }
+}
+
+// Le champion réclame l'intégralité du pot de la poule (winner-take-all) en une seule tx,
+// via un voucher signé par le backend pour claimPool.
+async function claimPoolGains(poolId, winnerAddress) {
+    if (!contract || !AppState.walletAddress) return;
+    if (poolId === null || poolId === undefined) return;
+    if (AppState.claimingPool) return;
+    AppState.claimingPool = true;
+    try {
+        const pool = await fetch(`${APP_CONFIG.API_BASE_URL}/pools/${poolId}`).then(r => r.json());
+        const winnerWallet = pool.players ? pool.players.find(p => p.status === 'alive') : null;
+        if (!winnerWallet || winnerWallet.wallet_address.toLowerCase() !== AppState.walletAddress.toLowerCase()) {
+            showToast("Seul le champion peut réclamer le pot.", "error");
+            return;
+        }
+        const totalWei = await contract.poolTotal(BigInt(poolId));
+        if (totalWei <= 0n) {
+            showToast("Aucun pot à réclamer (déjà réglé ?).", "info");
+            return;
+        }
+        const res = await fetch(`${APP_CONFIG.API_BASE_URL}/withdraw/claim-pool-voucher`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Accept": "application/json" },
+            body: JSON.stringify({
+                pool_id: Number(poolId),
+                winner_address: AppState.walletAddress,
+                amount_wei: totalWei.toString()
+            })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.signature) {
+            showToast("Bon du pot refusé : " + (data.error || 'Erreur inconnue'), "error");
+            return;
+        }
+        showToast("Réclamation du pot en cours...", "info");
+        const tx = await contract.claimPool(BigInt(data.pool_id), BigInt(data.amount), BigInt(data.nonce), data.signature);
+        await tx.wait();
+        showToast(`🏆 Pot de ${ethers.formatEther(totalWei)} ETH récupéré !`, "success");
+        AppState.claimingPool = false;
+        updateBalance();
+        return;
+    } catch (err) {
+        console.error("Erreur claim pool:", err);
+        showToast("Erreur lors de la réclamation du pot.", "error");
+    } finally {
+        AppState.claimingPool = false;
     }
 }
 
@@ -951,8 +1029,9 @@ function launchGodot(targetId) {
     // Commencer le polling immédiatement pour s'assurer de recevoir les timeouts ou la fin de match
     startUnifiedMatchPolling();
 
-    // Afficher le compte à rebours de 35s par-dessus Godot (après le polling pour ne pas être masqué)
-    startVisibleTimer(35);
+    // Afficher le compte à rebours par-dessus Godot (après le polling pour ne pas être masqué).
+    // Provisoire local ; recalé sur la deadline serveur fixe dès le 1er polling.
+    startVisibleTimer(fightTimeoutSeconds());
 }
 
 function endCombatSimulation() {
@@ -1026,8 +1105,11 @@ window.animationFinished = function() {
     }
     updateBalance();
 
-    // Winner-takes-all : consolider l'escrow (mise du perdant -> gagnant)
-    settleMatchOnWin(godotResult);
+    // Winner-takes-all : consolider l'escrow (mise du perdant -> gagnant).
+    // Uniquement en duel : en poule, le serveur consolide tout le pot à la fin.
+    if (!AppState.currentPoolId) {
+        settleMatchOnWin(godotResult);
+    }
     
     if (AppState.currentPoolId) {
         checkPoolElimination(godotResult, AppState.currentMatchId);
@@ -1135,7 +1217,11 @@ window.submitMove = async function(moveNum) {
 let _timerInterval = null;
 let _timerDeadline = null;
 
-function startVisibleTimer(durationSeconds = 45) {
+function fightTimeoutSeconds() {
+    return AppState.fightTimeoutMs ? Math.round(AppState.fightTimeoutMs / 1000) : 60;
+}
+
+function startVisibleTimer(durationSeconds = 60) {
     // Compte à rebours provisoire local ; sera recalé sur la deadline serveur dès le 1er polling
     _timerDeadline = Date.now() + durationSeconds * 1000;
     _runVisibleTimer();
@@ -1209,10 +1295,13 @@ function startUnifiedMatchPolling() {
                 AppState.matchDeadline = data.deadline;
                 syncVisibleTimerToDeadline(data.deadline);
             }
+            if (data.timeout_ms) {
+                AppState.fightTimeoutMs = data.timeout_ms;
+            }
 
             if (currentStatus === 'waiting_for_commits' || currentStatus === 'waiting_for_reveals') {
                 const now = Date.now();
-                const deadline = AppState.matchDeadline || (AppState.lastActionTime ? AppState.lastActionTime + 45000 : now + 45000);
+                const deadline = AppState.matchDeadline || (AppState.lastActionTime ? AppState.lastActionTime + (AppState.fightTimeoutMs || 60000) : now + (AppState.fightTimeoutMs || 60000));
                 if (!AppState.timeoutRequested && now >= deadline) {
                     AppState.timeoutRequested = true;
                     console.log("Deadline atteinte, demande de résolution forcée...");
@@ -1293,6 +1382,16 @@ document.addEventListener('DOMContentLoaded', () => {
     renderCharacterSelect();
     renderDuelLobby();
     renderBRLobby();
+
+    // Récupérer la configuration de jeu (durée du round) pour le compte à rebours
+    fetch(`${APP_CONFIG.API_BASE_URL}/game-config`)
+        .then(res => res.ok ? res.json() : null)
+        .then(cfg => {
+            if (cfg && cfg.fight_timeout_ms) {
+                AppState.fightTimeoutMs = cfg.fight_timeout_ms;
+            }
+        })
+        .catch(() => {});
     
     const savedCharId = localStorage.getItem('web3combat_char');
     if (savedCharId) {
@@ -1357,9 +1456,20 @@ async function confirmCreatePool() {
 
         if(!joinRes.ok) throw new Error("Failed to join pool");
 
-        showToast("Poule créée et rejointe ! ID: " + poolId, "success");
         AppState.currentPoolId = Number(poolId);
         AppState.currentPoolFee = Number(fee);
+
+        // Le créateur doit aussi verrouiller sa mise dans l'escrow de la poule,
+        // comme tout participant. Sinon le pot serait privé de sa mise (N-1 participants).
+        if (AppState.currentPoolFee > 0) {
+            const deposited = await depositForPool(poolId, AppState.currentPoolFee);
+            if (!deposited) {
+                showToast("Dépôt dans l'escrow échoué, poule non créée.", "error");
+                return;
+            }
+        }
+
+        showToast("Poule créée et rejointe ! ID: " + poolId, "success");
         
         if (isPrivate && createdPool.pool.invite_code) {
             AppState.currentInviteCode = createdPool.pool.invite_code;
@@ -1407,9 +1517,9 @@ async function joinPool(poolId) {
         AppState.currentPoolFee = poolData.entry_fee;
         showToast("Poule rejointe !", "success");
 
-        // Dépôt on-chain de la mise d'entrée (escrow) à la jonction
+        // Dépôt on-chain de la mise d'entrée (escrow de la poule) à la jonction
         if (AppState.currentPoolFee > 0) {
-            await depositForMatch(AppState.currentPoolFee);
+            await depositForPool(poolId, AppState.currentPoolFee);
         }
 
         navigateTo('screen-pool-room');
@@ -1450,10 +1560,15 @@ async function handlePoolRoundStarted(e) {
             showToast(isWinner ? '🏆 Vous avez remporté la poule !' : `Poule terminée ! Vainqueur : ${e.winner.slice(0,10)}...`, isWinner ? 'success' : 'info');
 
             // La consolidation du pot (winner-takes-all) est assurée côté serveur :
-            // le champion peut directement réclamer ses gains.
-            if (isWinner) {
-                refreshClaimable();
-            }
+            // le champion peut directement réclamer ses gains. On rafraîchit le solde
+            // de TOUS les joueurs (le champion accumule, les éliminés voient 0).
+            updateBalance();
+            (async () => {
+                for (let i = 0; i < 6; i++) {
+                    await new Promise(r => setTimeout(r, 2500));
+                    await refreshClaimable();
+                }
+            })();
 
             const btnQuit = document.getElementById('btn-quit-pool');
             const quitText = document.getElementById('quit-pool-text');
@@ -1583,11 +1698,17 @@ async function quitPool(claim = true) {
 
     if (AppState.currentPoolId) {
         try {
-            const poolStatus = await fetch(`${APP_CONFIG.API_BASE_URL}/pools/${AppState.currentPoolId}`)
-                .then(r => r.json()).then(p => p.status).catch(() => 'unknown');
+            const poolData = await fetch(`${APP_CONFIG.API_BASE_URL}/pools/${AppState.currentPoolId}`).then(r => r.json());
+            const poolStatus = poolData.status || 'unknown';
 
-            if (poolStatus === 'finished') {
-                showToast("🏆 Vous pouvez fermer ce panneau, vos gains sont sur votre compte !", "success");
+            if (claim && poolStatus === 'finished') {
+                // Winner-take-all : le champion réclame LE POT entier (une seule signature),
+                // depuis l'escrow. Les éliminés voient 0 et n'ont rien à réclamer.
+                const winnerWallet = poolData.players ? poolData.players.find(p => p.status === 'alive') : null;
+                if (winnerWallet && winnerWallet.wallet_address.toLowerCase() === AppState.walletAddress.toLowerCase()) {
+                    await claimPoolGains(AppState.currentPoolId, AppState.walletAddress);
+                }
+                showToast("Vous pouvez fermer ce panneau.", "success");
             } else {
                 showToast("Vous avez quitté l'interface de la poule.", "info");
             }

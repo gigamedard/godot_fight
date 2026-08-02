@@ -8,6 +8,7 @@ use App\Models\Pool;
 use App\Models\PoolPlayer;
 use App\Models\Fight;
 use App\Events\PoolRoundStarted;
+use App\Support\ProcessHelper;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
@@ -122,6 +123,7 @@ class PoolController extends Controller
         );
 
         $currentCount = $pool->players()->count();
+        \Illuminate\Support\Facades\Log::info("Pool #{$id} JOIN wallet=" . strtolower($request->player_wallet) . " count_after={$currentCount} max={$pool->max_players}");
         if ($currentCount >= $pool->max_players && $pool->status == 'open') {
             $pool->update(['status' => 'active']);
             $this->triggerMatchmaking($id);
@@ -143,8 +145,9 @@ class PoolController extends Controller
             $winner = $players->first();
             broadcast(new PoolRoundStarted($poolId, [], null, $winner?->wallet_address));
 
-            // Winner-takes-all : le serveur consolide le pot (settleLoser des éliminés)
-            $this->consolidatePoolPot($pool, $winner);
+            // Pool terminée, un champion reste. L'escrow de la poule (winner-take-all)
+            // est réclamé par le champion lui-même via claimPool (une seule signature).
+            // Le serveur broadcast juste le vainqueur ; l'argent ne bouge qu'au claim.
 
             return response()->json(['status' => 'finished', 'winner' => $winner]);
         }
@@ -228,8 +231,8 @@ class PoolController extends Controller
             . ' ' . implode(' ', array_map('escapeshellarg', $losers))
             . ' >> ' . escapeshellarg(storage_path('logs/consolidate.log')) . ' 2>&1';
 
-        // Lancement en arrière-plan (Windows : start /B)
-        pclose(popen('start /B "" ' . $cmd, 'r'));
+        // Lancement en arrière-plan (Windows : start /B, Linux/Docker : nohup)
+        ProcessHelper::spawnBackground($cmd);
         Log::info("Consolidation du pot de la poule #{$pool->id} lancée (champion {$winner->wallet_address}).");
     }
 }

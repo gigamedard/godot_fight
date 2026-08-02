@@ -40,6 +40,7 @@ return [
         'backend_signer_key' => env('WEB3_BACKEND_SIGNER_KEY'),
         'node_path' => env('WEB3_NODE_PATH', 'node'),
         'consolidate_script' => env('WEB3_CONSOLIDATE_SCRIPT', base_path('../blockchain/scripts/consolidate_pool.js')),
+        'settle_script' => env('WEB3_SETTLE_SCRIPT', base_path('../blockchain/scripts/settle_fight.js')),
         'rpc_url' => env('WEB3_RPC_URL', 'http://127.0.0.1:8545'),
         'backend_url' => env('APP_URL', 'http://127.0.0.1:8000') . '/api',
     ],

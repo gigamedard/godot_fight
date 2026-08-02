@@ -1,20 +1,10 @@
-version: '3.8'
+# Stack conteneurisée de Web3 Combat Game, alignée sur le runtime réel :
+#   - blockchain  : Hardhat node + déploiement du contrat (port 8545)
+#   - indexer     : watcher node des événements on-chain -> API interne Laravel
+#   - api         : Laravel (artisan serve) + Reverb (WebSocket) + SQLite
+#   - frontend    : serveur statique Python (Godot Web export)
 
 services:
-  db:
-    image: mysql:8
-    container_name: web3_combat_db
-    restart: unless-stopped
-    environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: web3_combat
-      MYSQL_USER: user
-      MYSQL_PASSWORD: password
-    ports:
-      - "3306:3306"
-    volumes:
-      - db_data:/var/lib/mysql
-
   blockchain:
     build:
       context: ./blockchain
@@ -26,35 +16,45 @@ services:
       - ./blockchain:/app
       - /app/node_modules
 
-  api:
-    build:
-      context: ./backend
-    container_name: web3_combat_api
-    restart: unless-stopped
-    working_dir: /var/www/html
-    volumes:
-      - ./backend:/var/www/html
-    ports:
-      - "8000:8000"
-      - "8081:8081"
-    depends_on:
-      - db
-      - blockchain
-
   indexer:
     build:
       context: ./indexer
     container_name: web3_combat_indexer
     restart: unless-stopped
     environment:
-      - RPC_URL=ws://blockchain:8545
-      - API_URL=http://api:8000/api/internal
-      - INDEXER_SECRET=super_secret_indexer_token
+      RPC_URL: ws://blockchain:8545
+      API_URL: http://api:8000/api/internal
+      INDEXER_SECRET: super_secret_indexer_token
+      CONTRACT_ADDRESS: 0x5FbDB2315678afecb367f032d93F642f64180aa3
+      ARTIFACT_PATH: /srv/blockchain/artifacts/contracts/CombatGame.sol/CombatGame.json
     volumes:
-      - ./blockchain/artifacts:/app/artifacts:ro
+      - ./blockchain:/srv/blockchain:ro
     depends_on:
       - blockchain
       - api
+
+  api:
+    build:
+      context: ./backend
+    container_name: web3_combat_api
+    restart: unless-stopped
+    working_dir: /var/www/html
+    environment:
+      # Le backend lance les scripts node (settle/consolidate) : ils doivent
+      # joindre le nœud via le nom de service et lire leurs scripts montés.
+      WEB3_RPC_URL: http://blockchain:8545
+      WEB3_BACKEND_URL: http://127.0.0.1:8000/api
+      WEB3_BACKEND_SIGNER_KEY: 0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d
+      WEB3_SETTLE_SCRIPT: /srv/blockchain/scripts/settle_fight.js
+      WEB3_CONSOLIDATE_SCRIPT: /srv/blockchain/scripts/consolidate_pool.js
+    volumes:
+      - ./backend:/var/www/html
+      - ./blockchain:/srv/blockchain:ro
+    ports:
+      - "8000:8000"
+      - "8081:8081"
+    depends_on:
+      - blockchain
 
   frontend:
     build:
@@ -62,9 +62,6 @@ services:
     container_name: web3_combat_frontend
     restart: unless-stopped
     ports:
-      - "8080:80"
+      - "8080:8080"
     volumes:
-      - ./frontend:/usr/share/nginx/html:ro
-
-volumes:
-  db_data:
+      - ./frontend:/srv/www:ro

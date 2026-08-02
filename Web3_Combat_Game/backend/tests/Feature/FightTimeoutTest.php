@@ -102,7 +102,7 @@ class FightTimeoutTest extends TestCase
 
         $deadline = (int) $data['deadline'];
         $this->assertGreaterThanOrEqual(time() * 1000, $deadline);
-        $this->assertLessThanOrEqual((time() + 50) * 1000, $deadline);
+        $this->assertLessThanOrEqual((time() + 70) * 1000, $deadline);
     }
 
     public function test_status_auto_resolves_expired_fight_without_client_timeout(): void
@@ -116,9 +116,9 @@ class FightTimeoutTest extends TestCase
             'status' => 'waiting_for_commits',
         ]);
 
-        // Simuler un combat dont la deadline est déjà dépassée (aucune activité depuis 60s)
-        $fight->created_at = now()->subSeconds(60);
-        $fight->updated_at = now()->subSeconds(60);
+        // Simuler un combat dont la deadline est déjà dépassée (créé il y a 61s > 60s)
+        $fight->created_at = now()->subSeconds(61);
+        $fight->updated_at = now()->subSeconds(61);
         $fight->save();
 
         // Un simple GET /battle/status résout le combat côté serveur (aucun POST /timeout)
@@ -144,12 +144,11 @@ class FightTimeoutTest extends TestCase
         $this->assertSame('waiting_for_commits', $data['status']);
     }
 
-    public function test_reveal_not_killed_by_deadline_anchored_on_creation(): void
+    public function test_reveal_within_fixed_deadline_window_not_killed(): void
     {
-        // Bug « vainqueur inconnu » : le fight a été créé il y a 120s, mais les joueurs
-        // viennent de committer (updated_at récent). Sous l'ancien ancrage created_at+35s,
-        // le GET /battle/status résolvait le combat avant que les reveals n'atterrissent,
-        // produisant un double_elimination et une poule sans vainqueur.
+        // Bug « vainqueur inconnu » : un fight dont la création remonte à 50s (dans la
+        // fenêtre fixe de 60s) mais dont les reveals arrivent en retard ne doit PAS être
+        // résolu par le GET /status : le reveal de l'adversaire a encore 10s pour atterrir.
         $fight = Fight::create([
             'pool_id' => null,
             'player1_wallet' => '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
@@ -161,13 +160,13 @@ class FightTimeoutTest extends TestCase
             'status' => 'waiting_for_reveals',
         ]);
 
-        $fight->created_at = now()->subSeconds(120);
-        $fight->updated_at = now()->subSeconds(10);
+        $fight->created_at = now()->subSeconds(50);
+        $fight->updated_at = now()->subSeconds(50);
         $fight->save();
 
         $data = $this->getJson("/api/battle/status/{$fight->id}")->assertOk()->json();
 
-        // La deadline glisse avec l'activité : le reveal de l'adversaire peut encore arriver
+        // Deadline = created_at + 60s : pas encore atteinte (dans 10s)
         $this->assertSame('waiting_for_reveals', $data['status']);
         $this->assertGreaterThan(time() * 1000, (int) $data['deadline']);
     }

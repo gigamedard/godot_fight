@@ -90,7 +90,15 @@ Route::post('/battle/reveal', [BattleController::class, 'revealMove']);
 Route::post('/battle/timeout', [BattleController::class, 'claimTimeout']);
 Route::get('/battle/status/{match_id}', [BattleController::class, 'getMatchStatus']);
 
+// Configuration de jeu exposée au frontend (durée du round, etc.)
+Route::get('/game-config', function () {
+    return response()->json([
+        'fight_timeout_ms' => (int) config('game.fight_timeout_ms', 60000),
+    ]);
+});
+
 // Retrait de fonds (voucher signé par le backend)
 use App\Http\Controllers\Api\WithdrawController;
 Route::post('/withdraw/voucher', [WithdrawController::class, 'voucher']);
 Route::post('/withdraw/settle-voucher', [WithdrawController::class, 'settleVoucher']);
+Route::post('/withdraw/claim-pool-voucher', [WithdrawController::class, 'claimPoolVoucher']);

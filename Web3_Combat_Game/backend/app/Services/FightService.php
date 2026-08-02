@@ -3,9 +3,7 @@
 namespace App\Services;
 
 use App\Models\Fight;
-use App\Models\User;
 use App\Models\PoolPlayer;
-use Illuminate\Support\Facades\Log;
 
 class FightService
 {
@@ -50,6 +48,11 @@ class FightService
                 $poolPlayer->status = 'eliminated';
                 $poolPlayer->save();
             }
+
+            // Aucun règlement on-chain par combat : le pot reste entier sur le contrat
+            // jusqu'à la fin de la poule. La comptabilité est 100 % serveur, en une seule
+            // consolidation finale (consolidatePoolPot) qui achemine la mise de chaque
+            // perdant vers le champion. En poule le règlement du combat est OFF-chain.
         }
 
         // Inform clients via WebSocket

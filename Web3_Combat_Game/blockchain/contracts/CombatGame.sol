@@ -11,12 +11,26 @@ contract CombatGame {
     address public backendSigner; // The wallet used by Laravel to sign vouchers
 
     mapping(address => uint256) public userBalances;
+    mapping(address => uint256) public treasuryBalances; // Commission des entrées
     mapping(address => mapping(uint256 => bool)) public usedNonces;
+
+    // --- Escrow par poule (winner-take-all) ---
+    // poolEscrow[poolId][user] = mise déposée par l'utilisateur dans la poule poolId
+    mapping(uint256 => mapping(address => uint256)) public poolEscrow;
+    mapping(uint256 => uint256) public poolTotal;          // pot total (N x mise) détenu en escrow
+    mapping(uint256 => bool) public poolSettled;           // tremière poule déjà payée
+    mapping(uint256 => mapping(uint256 => bool)) public poolUsedNonces;
+
+    uint256 public feeBps = 250; // 2,5 % de commission sur la mise d'entrée, reconfigurable
 
     // Optional: Keep a historical trace of commits for ultimate trustlessness
     // mapping(bytes32 => mapping(address => bytes32)) public moveCommits;
 
     event Deposit(address indexed user, uint256 amount);
+    event DepositWithFee(address indexed user, uint256 stake, uint256 fee);
+    event PoolDeposit(uint256 indexed poolId, address indexed user, uint256 stake);
+    event PoolClaimed(uint256 indexed poolId, address indexed winner, uint256 amount);
+    event TreasuryWithdrawn(address indexed owner, uint256 amount);
     event Withdrawal(address indexed user, uint256 amount, uint256 nonce);
     event MoveCommitted(bytes32 indexed matchHash, address indexed player, bytes32 commitHash);
     event MatchSettled(address indexed winner, address indexed loser, uint256 amount);
@@ -33,6 +47,94 @@ contract CombatGame {
 
     function setBackendSigner(address _signer) external onlyOwner {
         backendSigner = _signer;
+    }
+
+    /**
+     * @dev Met à jour la commission d'entrée (en points de base, 10000 = 100%).
+     * Restreint au owner pour reconfigurer les frais.
+     */
+    function setFeeBps(uint256 _feeBps) external onlyOwner {
+        require(_feeBps <= 10000, "Fee too high");
+        feeBps = _feeBps;
+    }
+
+    /**
+     * @dev Dépôt de la mise d'entrée frais inclus (comptabilité serveur).
+     * Le joueur envoie : stake + fee, où fee = (stake * feeBps) / 10000.
+     * - stake est crédité à userBalances[msg.sender] => il compose le POT (N x mise).
+     * - fee   est crédité à treasuryBalances[owner] (trésorerie du contrat, hors pot).
+     * L'égalité est vérifiée exactement pour garantir pot = N x mise sans erreur d'arrondi.
+     */
+    function register(uint256 stake) external payable {
+        require(stake > 0, "Stake must be > 0");
+        uint256 fee = (stake * feeBps) / 10000;
+        require(msg.value == stake + fee, "Send exact stake + fee");
+
+        userBalances[msg.sender] += stake;
+        treasuryBalances[owner] += fee;
+
+        emit DepositWithFee(msg.sender, stake, fee);
+        emit Deposit(msg.sender, msg.value);
+    }
+
+    /**
+     * @dev Dépôt de la mise d'entrée dans l'escrow d'une poule (frais inclus).
+     * Le joueur envoie stake + fee, avec fee = (stake * feeBps) / 10000).
+     * - stake  est verrouillé dans poolEscrow[poolId][sender] et compose le pot de la poule.
+     * - fee    part en trésorerie (commission du serveur, hors escrow).
+     * L'égalité exacte garantit pot = prix de la poule sans erreur d'arrondi.
+     */
+    function registerForPool(uint256 poolId, uint256 stake) external payable {
+        require(stake > 0, "Stake must be > 0");
+        uint256 fee = (stake * feeBps) / 10000;
+        require(msg.value == stake + fee, "Send exact stake + fee");
+        require(!poolSettled[poolId], "Pool already settled");
+
+        poolEscrow[poolId][msg.sender] += stake;
+        poolTotal[poolId] += stake;
+        treasuryBalances[owner] += fee;
+
+        emit PoolDeposit(poolId, msg.sender, stake);
+    }
+
+    /**
+     * @dev Winner-take-all : le champion retire l'intégralité du pot de la poule,
+     * en une seule fois, depuis l'escrow de la poule.
+     * Autorisé par une signature unique du backend signer sur
+     *     keccak256(abi.encodePacked( poolId, winner, amount, nonce, address(this) ))
+     * puis préfixé EIP-191. amount == poolTotal[poolId] doit être strict.
+     * Une fois payée, la poule est marquée settled : plus aucun dépôt/claim possible.
+     */
+    function claimPool(uint256 poolId, uint256 amount, uint256 nonce, bytes calldata signature) external {
+        require(amount == poolTotal[poolId], "Amount != pool total");
+        require(amount > 0, "Nothing to claim");
+        require(!poolSettled[poolId], "Pool already settled");
+        require(!poolUsedNonces[poolId][nonce], "Nonce already used");
+
+        bytes32 messageHash = keccak256(abi.encodePacked(poolId, msg.sender, amount, nonce, address(this)));
+        bytes32 ethSignedMessageHash = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", messageHash));
+        address recovered = recoverSigner(ethSignedMessageHash, signature);
+        require(recovered == backendSigner, "Invalid backend signature");
+
+        poolUsedNonces[poolId][nonce] = true;
+        poolSettled[poolId] = true;
+        poolTotal[poolId] = 0;
+        (bool success, ) = msg.sender.call{value: amount}("");
+        require(success, "Transfer failed");
+
+        emit PoolClaimed(poolId, msg.sender, amount);
+    }
+
+    /**
+     * @dev Owner peut retirer les frais accumulés dans la trésorerie.
+     */
+    function withdrawTreasury() external onlyOwner {
+        uint256 amount = treasuryBalances[msg.sender];
+        require(amount > 0, "Nothing to withdraw");
+        treasuryBalances[msg.sender] = 0;
+        (bool success, ) = msg.sender.call{value: amount}("");
+        require(success, "Transfer failed");
+        emit TreasuryWithdrawn(msg.sender, amount);
     }
 
     /**

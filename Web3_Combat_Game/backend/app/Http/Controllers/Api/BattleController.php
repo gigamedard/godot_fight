@@ -10,10 +10,11 @@ use App\Services\FightService;
 
 class BattleController extends Controller
 {
-    // Fenêtre de timeout = inactivité sur le combat (aucun commit/reveal reçu),
-    // ancrée sur updated_at (dernière action) et non sur la création : laisser les
-    // reveals en cours aboutir même si la création du fight remonte à plus longtemps.
-    private const TIMEOUT_MS = 45000;
+    // Durée du round configurable par le développeur (config/game.php, env FIGHT_TIMEOUT_MS).
+    private function timeoutMs(): int
+    {
+        return (int) config('game.fight_timeout_ms', 60000);
+    }
 
     protected $fightService;
     public function __construct(FightService $fightService) { $this->fightService = $fightService; }
@@ -132,9 +133,10 @@ class BattleController extends Controller
         }
 
         // Deadline absolue (epoch ms serveur) : la même pour tous les joueurs,
-        // quel que soit leur fuseau horaire. Ancré sur la dernière activité du
-        // combat (updated_at), glissante : un commit/reveal la repousse.
-        $deadline = ((int) $fight->updated_at?->getTimestamp()) * 1000 + self::TIMEOUT_MS;
+        // quel que soit leur fuseau horaire. Ancré sur la création du combat
+        // (created_at) : deadline FIXE par round, donc compte à rebours monotone.
+        $timeoutMs = $this->timeoutMs();
+        $deadline = ((int) $fight->created_at?->getTimestamp()) * 1000 + $timeoutMs;
 
         return response()->json([
             'status' => $fight->status,
@@ -142,6 +144,7 @@ class BattleController extends Controller
             'winner_wallet' => $winnerWallet,
             'payout' => $fight->base_bet_amount,
             'deadline' => $deadline,
+            'timeout_ms' => $timeoutMs,
             'player1_wallet' => $fight->player1_wallet,
             'player2_wallet' => $fight->player2_wallet,
             'player1_commit' => $fight->player1_commit ? true : false,
@@ -152,11 +155,11 @@ class BattleController extends Controller
     }
 
     /**
-     * Résout un combat toujours en attente dont la deadline (45s d'inactivité,
-     * ancrée sur updated_at) est dépassée. Idempotent : ne fait rien si le combat
-     * est déjà résolu. La deadline glisse avec chaque commit/reveal, donc un joueur
-     * qui joue ne risque pas de se faire éliminer par un compte à rebours parti à la
-     * création du combat (ex. round en file derrière l'animation du précédent).
+     * Résout un combat toujours en attente dont la deadline (durée fixe d'un round,
+     * ancrée sur created_at, configurable via config/game.php) est dépassée.
+     * Idempotent : ne fait rien si le combat est déjà résolu. La deadline ne glisse
+     * pas : un round a une durée fixe, donc le compte à rebours exposé aux joueurs
+     * ne remonte jamais.
      */
     private function resolveIfExpired(Fight $fight): void
     {
@@ -164,7 +167,7 @@ class BattleController extends Controller
             return;
         }
 
-        $deadline = ((int) $fight->updated_at?->getTimestamp()) * 1000 + self::TIMEOUT_MS;
+        $deadline = ((int) $fight->created_at?->getTimestamp()) * 1000 + $this->timeoutMs();
         if (time() * 1000 >= $deadline) {
             $this->fightService->resolveHybridFight($fight);
         }
