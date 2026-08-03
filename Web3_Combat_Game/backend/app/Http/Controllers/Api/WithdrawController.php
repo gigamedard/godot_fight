@@ -174,10 +174,13 @@ class WithdrawController extends Controller
             $resp = curl_exec($ch);
             $curlErr = curl_error($ch);
             curl_close($ch);
-            if (!$curlErr && !empty($json['result']) && $json['result'] !== '0x') {
-                $hexTrim = ltrim((string)$hex, '0x');
-                $poolTotalToUse = $hexTrim === '' ? '0' : $hexTrim;
-                $poolTotalToUse = gmp_strval(gmp_init($poolTotalToUse, 16), 10);
+            if (!$curlErr) {
+                $decoded = json_decode((string) $resp, true);
+                if (is_array($decoded) && !empty($decoded['result']) && $decoded['result'] !== '0x') {
+                    $hexTrim = ltrim((string) $decoded['result'], '0x');
+                    $poolTotalToUse = $hexTrim === '' ? '0' : $hexTrim;
+                    $poolTotalToUse = gmp_strval(gmp_init($poolTotalToUse, 16), 10);
+                }
             }
         } catch (\Throwable $err) {
             Log::warning('claimPoolVoucher: check poolTotal échoué: ' . $err->getMessage());
@@ -185,6 +188,14 @@ class WithdrawController extends Controller
 
         $poolTotalDisplay = $poolTotalToUse ?? 'N/A';
         Log::info("claimPoolVoucher pool={$poolId} winner={$winner} claim={$amountWei} poolTotal_onchain={$poolTotalDisplay}");
+
+        // Cohérence : le champion ne peut réclamer que ce qui existe réellement dans
+        // l'escrow. Si un joueur a rejoint en DB sans déposer on-chain, le pot réel
+        // est inférieur au montant attendu => refus (sinon tx claimPool revert on-chain).
+        if (isset($poolTotalToUse) && gmp_cmp($amountWei, $poolTotalToUse) > 0) {
+            Log::warning("claimPoolVoucher pool={$poolId} REFUSÉ : demandé {$amountWei} > poolTotal on-chain {$poolTotalToUse}");
+            return response()->json(['error' => 'Montant demandé supérieur au pot on-chain réel.'], 409);
+        }
 
         $nonceHex = bin2hex(random_bytes(32));
         $nonceDec = gmp_strval(gmp_init($nonceHex, 16), 10);

@@ -26,4 +26,4 @@ php artisan reverb:start --host=0.0.0.0 --port=8081 &
 
 echo "Starting API on port 8000..."
 export PHP_CLI_SERVER_WORKERS=4
-exec php artisan serve --host=0.0.0.0 --port=8000
+exec php artisan serve --host=0.0.0.0 --port=8000 --no-reload

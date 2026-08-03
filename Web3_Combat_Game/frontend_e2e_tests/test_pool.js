@@ -127,6 +127,14 @@ const MAX_PLAYERS = '3';
     for (let i = 0; i < 50; i++) {
         await new Promise(r => setTimeout(r, 1000));
         if (targetPoolId) break;
+        // Fallback : interroger le backend (AppState est une const non exposée sur window)
+        if (!targetPoolId) {
+            try {
+                const res = await fetch('http://localhost:8000/api/pools/user/0x70997970C51812dc3A010C7d01b50e0d17dc79C8');
+                const data = await res.json();
+                if (data.active) targetPoolId = Number(data.pool_id);
+            } catch (e) {}
+        }
     }
     
     if (!targetPoolId) {
