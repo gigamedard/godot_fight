@@ -192,9 +192,19 @@ window.changeCharacter = function() {
 async function initWeb3() {
     const abi = typeof CONTRACT_ABI !== 'undefined' ? CONTRACT_ABI : (typeof COMBAT_GAME_ABI !== 'undefined' ? COMBAT_GAME_ABI : null);
     if (typeof ethers !== 'undefined' && abi) {
-        const providerUrl = "http://127.0.0.1:8545";
-        provider = new ethers.JsonRpcProvider(providerUrl);
-        signer = new ethers.Wallet(AppState.privateKey, provider);
+        // AUTH UNIFIÉE : si une clé privée locale existe (mode dev Hardhat), on l'utilise.
+        // Sinon, on passe par le provider injecté (MetaMask déjà connecté par App 1).
+        if (AppState.privateKey) {
+            const providerUrl = "http://127.0.0.1:8545";
+            provider = new ethers.JsonRpcProvider(providerUrl);
+            signer = new ethers.Wallet(AppState.privateKey, provider);
+        } else if (window.ethereum) {
+            provider = new ethers.BrowserProvider(window.ethereum);
+            signer = await provider.getSigner();
+        } else {
+            showToast("Aucun wallet détecté. Connectez-vous via App 1 (wallet Web3) puis réessayez.", "error");
+            return;
+        }
         contract = new ethers.Contract(CONTRACT_ADDRESS, abi, signer);
         
         await initSessionKey();
@@ -394,7 +404,22 @@ function performLogin() {
         savedPk = null;
     }
     
-    if (savedWallet && savedPk) {
+    // --- AUTH UNIFIÉE : reprendre la session wallet d'App 1 (rock-paper-scissors) ---
+    // App 1 stocke `user` (JSON avec wallet_address) + `auth_token` dans le localStorage.
+    // Même domaine derrière le proxy => ce localStorage est partagé avec App 2.
+    // L'identité d'App 2 est l'adresse wallet : on la reprend, sans toucher au token App 1.
+    let app1User = null;
+    try {
+        app1User = JSON.parse(localStorage.getItem('user') || 'null');
+    } catch (e) {
+        app1User = null;
+    }
+    const app1Wallet = app1User && app1User.wallet_address ? app1User.wallet_address : null;
+    
+    if (playerParam === null && app1Wallet) {
+        AppState.walletAddress = app1Wallet;
+        AppState.privateKey = null; // Pas de clé privée stockée : le provider injecté signera
+    } else if (savedWallet && savedPk) {
         AppState.walletAddress = savedWallet;
         AppState.privateKey = savedPk;
     } else if (typeof HARDHAT_ACCOUNTS !== 'undefined' && HARDHAT_ACCOUNTS.length > 0) {
