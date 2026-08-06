@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BATTLEPOOL — Spirit Fight</title>
-    <link rel="stylesheet" href="style.css?v=3.0">
+    <link rel="stylesheet" href="style.css?v=3.3">
 </head>
 <body>
 
@@ -231,6 +231,16 @@
     </div>
 
     <!-- ============================================================
+         FOND D'ÉCRAN DYNAMIQUE (z-index 5) — rotation aléatoire gérée
+         par app.js (bgRotation). Deux couches pour le crossfade.
+         Placé APRÈS #ui-overlay dans le DOM : quand l'overlay passe en
+         .hidden (combat), les images s'éteignent (.ui-overlay.hidden ~ .ui-bg)
+         et laissent la place au canvas Godot (z-index 0).
+         ============================================================ -->
+    <div id="ui-bg" class="ui-bg"></div>
+    <div id="ui-bg-next" class="ui-bg" aria-hidden="true"></div>
+
+    <!-- ============================================================
          MODALES
          ============================================================ -->
 
@@ -375,6 +385,6 @@
     </script>
 
     <script src="config.js"></script>
-    <script src="app.js?v=3.0" defer></script>
+    <script src="app.js?v=3.3" defer></script>
 </body>
 </html>

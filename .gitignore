@@ -16,3 +16,6 @@ project_handover.md
 
 # Reference copy of repo B (rock-paper-scissors stack) - out of scope for this repo
 rock-paper-scissors-ref/
+
+# Originaux PNG du fond d'écran (backup local, servis ni référencés par le frontend)
+Web3_Combat_Game/frontend/bg/original/

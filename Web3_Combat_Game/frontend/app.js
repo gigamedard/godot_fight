@@ -1542,6 +1542,65 @@ function startUnifiedMatchPolling() {
 }
 
 
+// --- ROTATION ALÉATOIRE DU FOND D'ÉCRAN ---
+// Les images (bg/1.jpg .. bg/N.jpg) tournent de façon aléatoire à
+// intervalle régulier, avec crossfade entre deux couches .ui-bg.
+const BG_CONFIG = {
+    images: ['bg/1.jpg', 'bg/2.jpg', 'bg/3.jpg', 'bg/4.jpg'],
+    intervalMs: 15000 // 15 s entre chaque changement de décor
+};
+
+const BGRotation = {
+    index: -1,
+    timer: null,
+
+    // Précharge toutes les images pour éviter tout flash au premier
+    // changement de décor (les données restent en cache navigateur).
+    preload() {
+        BG_CONFIG.images.forEach(src => {
+            const img = new Image();
+            img.src = src;
+        });
+    },
+
+    // Affiche un décor aléatoire différent du précédent (si possible)
+    // sur la couche d'attente, puis opère le crossfade.
+    next() {
+        const list = BG_CONFIG.images;
+        if (!list.length) return;
+        const active = document.getElementById('ui-bg');
+        const incoming = document.getElementById('ui-bg-next');
+        if (!active || !incoming) return;
+
+        let i;
+        do {
+            i = Math.floor(Math.random() * list.length);
+        } while (i === this.index && list.length > 1);
+        this.index = i;
+
+        incoming.style.backgroundImage = `url('${list[i]}')`;
+        // Le crossfade : on remonte la couche d'attente pendant que
+        // l'ancienne descend, puis on échange les ids pour le prochain cycle.
+        incoming.style.opacity = '1';
+        active.style.opacity = '0';
+        incoming.id = 'ui-bg';
+        active.id = 'ui-bg-next';
+    },
+
+    start() {
+        this.preload();
+        // Premier décor affiché immédiatement (sans fondu) au chargement.
+        const active = document.getElementById('ui-bg');
+        const incoming = document.getElementById('ui-bg-next');
+        if (active && incoming && BG_CONFIG.images.length) {
+            this.index = Math.floor(Math.random() * BG_CONFIG.images.length);
+            active.style.backgroundImage = `url('${BG_CONFIG.images[this.index]}')`;
+        }
+        this.timer = setInterval(() => this.next(), BG_CONFIG.intervalMs);
+    }
+};
+
+
 // --- INITIALISATION AU CHARGEMENT ---
 document.addEventListener('DOMContentLoaded', () => {
     checkURLParameters();
@@ -1549,6 +1608,9 @@ document.addEventListener('DOMContentLoaded', () => {
     renderCharacterSelect();
     renderDuelLobby();
     renderBRLobby();
+
+    // Lance la rotation aléatoire du fond d'écran
+    BGRotation.start();
 
     // Récupérer la configuration de jeu (durée du round) pour le compte à rebours
     fetch(`${APP_CONFIG.API_BASE_URL}/game-config`)
