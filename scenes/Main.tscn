@@ -1,6 +1,7 @@
 [gd_scene format=3 uid="uid://dfuh77hbjwvym"]
 
 [ext_resource type="Script" uid="uid://5j8dk31n16i5" path="res://scripts/main.gd" id="1_main"]
+[ext_resource type="Script" path="res://scripts/arenas/arena_neon.gd" id="2_arena"]
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_abc12"]
 sky_horizon_color = Color(0.64625, 0.65575, 0.67075, 1)
 ground_horizon_color = Color(0.64625, 0.65575, 0.67075, 1)
@@ -37,3 +38,6 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2, 0, 0)
 
 [node name="Player2" type="Node3D" parent="Fighters" unique_id=649661241]
 transform = Transform3D(-1, 0, -8.74228e-08, 0, 1, 0, 8.74228e-08, 0, -1, 2, 0, 0)
+
+[node name="Arena" type="Node3D" parent="."]
+script = ExtResource("2_arena")
