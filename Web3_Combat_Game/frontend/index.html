@@ -3,286 +3,346 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Web3 Combat Game</title>
-    <link rel="stylesheet" href="style.css?v=6">
+    <title>BATTLEPOOL — Spirit Fight</title>
+    <link rel="stylesheet" href="style.css?v=3.0">
 </head>
 <body>
 
-    <!-- Le Canvas Godot en arrière-plan -->
-    <div id="godot-layer" style="position:fixed; top:0; left:0; width:100vw; height:100vh; z-index:0;">
-        <canvas id="canvas" style="display: block; width: 100%; height: 100%; border: none;"></canvas>
-        <div id="godot-status" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1; text-align: center; color: white; display: none; background: rgba(0,0,0,0.8); padding: 20px; border-radius: 10px;">
+    <!-- ============================================================
+         COUCHE GODOT (z-index 0) — moteur 3D, jamais en iframe
+         ============================================================ -->
+    <div id="godot-layer">
+        <canvas id="canvas"></canvas>
+        <div id="godot-status" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1; text-align: center; color: white; display: none; background: rgba(0,0,0,0.85); padding: 20px; border-radius: 10px;">
             <p style="margin-bottom: 10px; font-weight: bold;">Chargement du Moteur 3D...</p>
             <progress id="godot-progress" value="0" max="1" style="width: 200px;"></progress>
         </div>
     </div>
 
-    <!-- Overlay Timer Synchrone superposé à Godot -->
-    <div id="turn-timer-overlay" class="turn-timer-badge hidden" style="position: fixed; top: 25px; left: 50%; transform: translateX(-50%); z-index: 20; pointer-events: none;">
-        <div class="timer-inner" style="background: rgba(0,0,0,0.85); border: 2px solid var(--color-orange); border-radius: 30px; padding: 6px 18px; color: white; font-weight: bold; font-size: 1.1rem; box-shadow: 0 0 15px rgba(249, 115, 22, 0.5); display: flex; align-items: center; gap: 8px;">
-            <span class="timer-icon">⏱️</span>
+    <!-- ============================================================
+         TIMER DE TOUR (z-index 20) — superposé à Godot pendant combat
+         ============================================================ -->
+    <div id="turn-timer-overlay" class="turn-timer-badge hidden">
+        <div class="timer-inner">
+            <i data-lucide="clock" class="timer-icon" width="18"></i>
             <span id="timer-seconds">35</span>s
         </div>
     </div>
 
+    <!-- ============================================================
+         UI OVERLAY (z-index 10)
+         ============================================================ -->
     <div class="ui-overlay" id="ui-overlay">
         <div class="ui-content">
 
-        <!-- ECRAN 1 : SELECTION PERSONNAGE -->
-        <div id="screen-character" class="screen active">
-            <div style="flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center;">
-                <h1>Choisis ton Combattant</h1>
-                <p class="subtitle">Ce choix sera sauvegardé pour tes prochaines sessions.</p>
-                
-                <div class="character-grid" id="character-grid">
-                    <!-- Injecté par JS -->
-                </div>
+            <!-- Header wallet (injecté/actualisé par app.js) -->
+            <header id="player-badge" class="player-badge" style="display:none;"></header>
 
-                <button id="btn-confirm-char" class="btn btn-confirm" disabled>Confirmer et Jouer</button>
-            </div>
-        </div>
-
-        <!-- ECRAN 2 : MENU PRINCIPAL -->
-        <div id="screen-main" class="screen">
-            <button class="header-nav" onclick="changeCharacter()" style="position:absolute; top:20px; left:20px; z-index:100; padding:10px; background:rgba(0,0,0,0.5); border-radius:10px;">
-                <i data-lucide="arrow-left" width="20"></i> Changer de Perso
-            </button>
-            <div class="player-badge" id="player-badge">
-                <!-- Injecté par JS -->
-            </div>
-
-            <div id="pending-funds-container" class="pending-funds-card" style="display: none; margin: 10px auto; width: 100%; max-width: 400px; background: rgba(22, 163, 74, 0.2); border: 1px solid var(--color-green); border-radius: 12px; padding: 12px 16px; text-align: center;">
-                <span style="font-size: 0.9rem; color: #86efac;">💰 Fonds à réclamer : <strong id="pending-amount">0.000</strong> ETH</span>
-                <button id="btn-claim-funds" class="btn btn-confirm" style="margin-top: 8px; padding: 6px 16px; font-size: 0.85rem; background: var(--color-green);" onclick="claimPendingFunds()">🏆 Réclamer (Claim)</button>
-            </div>
-
-            <div style="flex:1; display:flex; flex-direction:column; justify-content:center;">
-                <h1 style="font-size: 2rem; margin-bottom: 2.5rem; letter-spacing: 2px;">SÉLECTION DU MODE</h1>
-                
-                <button class="mode-btn" onclick="navigateTo('screen-duel')">
-                    <div class="mode-btn-inner">
-                        <div class="mode-text">
-                            <h2>MODE DUEL</h2>
-                            <p>1 vs 1 en direct</p>
-                        </div>
-                        <div class="icon-container"><i data-lucide="swords" width="40" height="40"></i></div>
+            <!-- ═══════════════ ÉCRAN 0 : SPLASH ═══════════════ -->
+            <div id="screen-splash" class="screen active">
+                <div class="splash-container">
+                    <div class="logo-wrapper">
+                        <h1 class="game-logo">BATTLEPOOL</h1>
+                        <span class="logo-sub">SPIRIT FIGHT</span>
+                        <div class="katana-slash"></div>
                     </div>
-                </button>
-
-                <button class="mode-btn br" onclick="navigateTo('screen-br')">
-                    <div class="mode-btn-inner">
-                        <div class="mode-text">
-                            <h2>BATTLE ROYALE</h2>
-                            <p>Tournoi à élimination</p>
-                        </div>
-                        <div class="icon-container"><i data-lucide="trophy" width="40" height="40"></i></div>
+                    <div class="splash-loader">
+                        <div class="energy-bar"></div>
                     </div>
-                </button>
-            </div>
-        </div>
-
-        <!-- ECRAN 3 : LOBBY DUEL -->
-        <div id="screen-duel" class="screen">
-            <button class="header-nav" onclick="navigateTo('screen-main')">
-                <i data-lucide="arrow-left" width="20"></i> Retour
-            </button>
-            
-            <h1 style="text-align: left; font-size: 1.5rem;">Trouver un Adversaire</h1>
-            
-            <div class="search-bar">
-                <div class="search-input-wrapper">
-                    <i data-lucide="search" width="20"></i>
-                    <input type="text" placeholder="Pseudo ou Adresse Wallet..." id="search-input" oninput="filterLobby(this.value)">
-                </div>
-                <button class="qr-btn" onclick="openQRScanner()"><i data-lucide="qr-code" width="24"></i></button>
-            </div>
-
-            <h2 class="list-title">Joueurs en ligne</h2>
-            <div class="list-container" id="players-list">
-                <!-- Injecté par JS -->
-            </div>
-        </div>
-
-        <!-- ECRAN 4 : LOBBY BATTLE ROYALE -->
-        <div id="screen-br" class="screen">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
-                <button class="header-nav" onclick="navigateTo('screen-main')" style="margin-bottom: 0;">
-                    <i data-lucide="arrow-left" width="20"></i> Retour
-                </button>
-                <button class="header-nav" onclick="openCreatePoolModal()" style="margin-bottom: 0;">
-                    <i data-lucide="plus" width="20"></i> Créer Privée
-                </button>
-            </div>
-            
-            <h1 style="text-align: left; font-size: 1.5rem; margin-bottom: 0.5rem;">Salons Battle Royale</h1>
-            <p class="subtitle" style="text-align: left; margin-bottom: 1.5rem;">Rejoins un tournoi en attente ou utilise un code privé.</p>
-
-            <div class="search-bar" style="margin-bottom: 1rem;">
-                <div class="search-input-wrapper">
-                    <i data-lucide="key" width="20"></i>
-                    <input type="text" placeholder="Code d'invitation..." id="invite-code-input">
-                </div>
-                <button class="qr-btn" style="background-color: var(--color-yellow); color: black;" onclick="joinPoolByCode()"><i data-lucide="arrow-right" width="24"></i></button>
-            </div>
-
-            <div class="list-container" id="br-list">
-                <!-- Injecté par JS -->
-            </div>
-        </div>
-
-        <!-- ECRAN 4.5 : SALON DE POULE -->
-        <div id="screen-pool-room" class="screen">
-            <button id="btn-quit-pool" class="header-nav" onclick="quitPool()">
-                <i data-lucide="arrow-left" width="20"></i> <span id="quit-pool-text">Quitter Poule</span>
-            </button>
-            
-            <div style="text-align: center; margin-top: 3rem; margin-bottom: 2rem;">
-                <h1 id="pool-room-title" style="font-size: 1.5rem; margin-bottom: 0.5rem;">Poule #ID</h1>
-                <p id="pool-room-status" class="subtitle" style="color: var(--color-yellow);">En attente de joueurs...</p>
-            </div>
-
-            <div id="pool-invite-container" style="display: none; background: rgba(0,0,0,0.4); padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; text-align: center; border: 1px solid var(--border-gray-700);">
-                <p style="color: var(--text-gray-400); margin-bottom: 0.5rem; font-size: 0.85rem;">Code d'invitation (Poule Privée)</p>
-                <div style="display: flex; gap: 0.5rem; justify-content: center;">
-                    <input type="text" id="pool-invite-link" readonly style="background: var(--bg-gray-900); color: var(--color-yellow); border: 1px solid var(--border-gray-700); padding: 0.5rem; border-radius: 4px; width: 70%; font-size: 1rem; text-align: center; font-weight: bold;">
-                    <button class="btn" style="background-color: var(--bg-gray-800); color: white; padding: 0.5rem 1rem;" onclick="copyInviteLink()">Copier</button>
                 </div>
             </div>
 
-            <div class="br-players" style="justify-content: center; margin-bottom: 2rem;">
-                <i data-lucide="users" width="20"></i>
-                <span id="pool-room-count">1 / 8</span> joueurs
-            </div>
-
-            <div class="list-container" id="pool-players-list">
-                <!-- Injecté par JS -->
-            </div>
-        </div>
-
-        <!-- ECRAN 5 : CHARGEMENT GODOT -->
-        <div id="screen-combat" class="screen">
-            <button class="header-nav" onclick="quitGodot()" style="position:absolute; top:20px; left:20px; z-index:100; padding:10px;">
-                <i data-lucide="arrow-left" width="20"></i> Quitter
-            </button>
-            <div class="godot-icon"><i data-lucide="swords" width="64" height="64"></i></div>
-            <h1 class="godot-title">Godot Engine</h1>
-            <p class="subtitle">Chargement de la scène 3D de combat...</p>
-            
-            <div class="loading-bar-container">
-                <div class="loading-bar-fill" id="loading-bar"></div>
-            </div>
-            <p id="loading-text" style="margin-top: 10px; color: var(--text-gray-400);">0 / 0 Mo</p>
-        </div>
-
-
-
-        <!-- MODAL SCANNER QR CODE -->
-        <div id="qr-modal" class="overlay-modal">
-            <button class="btn-close-modal" onclick="closeQRScanner()"><i data-lucide="x" width="24"></i></button>
-            <div id="reader"></div>
-            <p style="margin-top: 1.5rem; color: var(--text-gray-400); text-align: center;">Scannez le QR Code de l'adversaire<br/>pour lancer un défi</p>
-        </div>
-
-        <!-- MODAL DE PARI (ENVOI DÉFI) -->
-        <div id="bet-modal" class="overlay-modal">
-            <div class="bet-card">
-                <div style="display: flex; justify-content: center; margin-bottom: 1rem; color: var(--color-yellow);">
-                    <i data-lucide="coins" width="48" height="48"></i>
-                </div>
-                <h2 style="font-size: 1.25rem; font-weight: bold; color: white;">Montant du Défi</h2>
-                <p style="color: var(--text-gray-400); font-size: 0.85rem; margin-top: 0.25rem;">
-                    Adversaire : <span id="bet-target-name" style="color: white; font-weight: bold;">Joueur</span>
-                </p>
-                <p id="bet-stats" style="color: var(--color-yellow); font-size: 0.75rem; margin-top: 0.25rem;"></p>
-                
-                <div class="bet-input-wrapper">
-                    <input type="number" id="bet-amount" value="10" min="0" step="0.1">
-                    <span class="bet-currency">TKN</span>
-                </div>
-
-                <div class="bet-presets">
-                    <button class="btn-preset" onclick="setBetAmount(10)">10</button>
-                    <button class="btn-preset" onclick="setBetAmount(50)">50</button>
-                    <button class="btn-preset" onclick="setBetAmount(100)">100</button>
-                <button class="btn-preset" onclick="setBetAmount(500)">Max</button>
-                </div>
-                
-                <button class="btn btn-bet-confirm" onclick="confirmBetAndChallenge()">Valider et Défier</button>
-                <button class="btn" style="background: transparent; color: var(--text-gray-400); margin-top: 1rem; width: 100%;" onclick="closeBetModal()">Annuler</button>
-            </div>
-        </div>
-
-        <!-- MODAL DE DÉFI (RÉCEPTION) -->
-        <div id="challenge-modal" class="overlay-modal">
-            <div class="bet-card">
-                <div style="display: flex; justify-content: center; margin-bottom: 1rem; color: var(--color-red);">
-                    <i data-lucide="swords" width="48" height="48"></i>
-                </div>
-                <h2 style="font-size: 1.25rem; font-weight: bold; color: white;">Défi Reçu !</h2>
-                <p id="challenge-text" style="color: var(--text-gray-400); margin-top: 0.5rem; text-align: center;">
-                    Joueur XYZ vous met au défi !
-                </p>
-                <div style="display: flex; gap: 0.5rem; margin-top: 1.5rem;" id="challenge-modal-actions">
-                    <button class="btn btn-bet-confirm" style="flex:1;" id="btn-accept-challenge">Accepter</button>
-                    <button class="btn btn-challenge" style="flex:1;" id="btn-modify-challenge">Négocier</button>
-                    <button class="btn" style="flex:1; background: var(--bg-gray-800); color: white;" id="btn-decline-challenge">Refuser</button>
+            <!-- ═══════════════ ÉCRAN 1 : LANGUE ═══════════════ -->
+            <div id="screen-language" class="screen">
+                <div class="screen-card">
+                    <h2 class="screen-title"><i data-lucide="globe"></i> LANGUE / LANGUAGE</h2>
+                    <p class="screen-subtitle">Sélectionnez votre langue d'interface</p>
+                    <div class="language-grid">
+                        <button class="lang-card" onclick="selectLanguage('fr')"><span class="flag">🇫🇷</span><span class="lang-name">Français</span></button>
+                        <button class="lang-card" onclick="selectLanguage('en')"><span class="flag">🇬🇧</span><span class="lang-name">English</span></button>
+                        <button class="lang-card" onclick="selectLanguage('es')"><span class="flag">🇪🇸</span><span class="lang-name">Español</span></button>
+                        <button class="lang-card" onclick="selectLanguage('pt')"><span class="flag">🇵🇹</span><span class="lang-name">Português</span></button>
+                    </div>
                 </div>
             </div>
-        </div>
 
-        <!-- MODAL CREATION POULE PRIVEE -->
-        <div id="create-pool-modal" class="overlay-modal">
-            <div class="bet-card">
-                <h2 style="font-size: 1.25rem; font-weight: bold; color: white; margin-bottom: 1rem;">Créer une Poule</h2>
-                
-                <label style="color: var(--text-gray-400); font-size: 0.85rem; display:block; margin-bottom: 0.25rem;">Mise d'entrée (ETH)</label>
-                <input type="number" id="pool-entry-fee" value="10" min="0" step="0.1" style="width: 100%; padding: 0.5rem; margin-bottom: 1rem; background: var(--bg-gray-800); color: white; border: 1px solid var(--border-gray); border-radius: 5px;">
-
-                <label style="color: var(--text-gray-400); font-size: 0.85rem; display:block; margin-bottom: 0.25rem;">Nombre max de joueurs</label>
-                <input type="number" id="pool-max-players" value="8" min="2" max="64" style="width: 100%; padding: 0.5rem; margin-bottom: 1rem; background: var(--bg-gray-800); color: white; border: 1px solid var(--border-gray); border-radius: 5px;">
-
-                <label style="color: var(--text-gray-400); font-size: 0.85rem; display:block; margin-bottom: 0.25rem;">Règle d'élimination</label>
-                  <select id="pool-penalty-mode" style="width: 100%; padding: 0.5rem; margin-bottom: 1.5rem; background: var(--bg-gray-800); color: white; border: 1px solid var(--border-gray); border-radius: 5px;">
-                      <option value="1">Mort Subite (1 Défaite = Élimination)</option>
-                  </select>
-
-                <label style="color: var(--text-gray-400); font-size: 0.9rem; margin-top: 1rem; display: block;">Visibilité</label>
-                <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1.5rem;">
-                    <input type="checkbox" id="pool-is-private" style="width: 1.2rem; height: 1.2rem; accent-color: var(--accent-blue);">
-                    <label for="pool-is-private" style="color: white; font-size: 0.9rem;">Poule Privée (Lien d'invitation requis)</label>
+            <!-- ═══════════════ ÉCRAN 2 : CONNEXION ═══════════════ -->
+            <div id="screen-connect" class="screen">
+                <div class="screen-card">
+                    <div class="nav-header">
+                        <button class="btn-back" onclick="navGoBack()"><i data-lucide="arrow-left"></i></button>
+                        <h2 class="screen-title">CONNEXION WEB3</h2>
+                    </div>
+                    <div class="cyber-shield-icon">
+                        <i data-lucide="wallet"></i>
+                    </div>
+                    <p class="screen-subtitle">Connectez votre wallet pour accéder aux combats et à vos tokens.</p>
+                    <button class="btn-cyber btn-primary-gold" onclick="connectWallet()">
+                        <i data-lucide="zap"></i> CONNECTER LE WALLET
+                    </button>
+                    <div class="wallet-status-box" id="wallet-status-box" style="display:none;">
+                        <span>Wallet connecté</span>
+                        <div class="wallet-addr-display" id="wallet-addr-display"></div>
+                    </div>
                 </div>
-
-                <button class="btn btn-bet-confirm" style="width: 100%" onclick="confirmCreatePool()">Créer et Rejoindre</button>
-                <button class="btn" style="background: transparent; color: var(--text-gray-400); margin-top: 1rem; width: 100%;" onclick="closeCreatePoolModal()">Annuler</button>
             </div>
-        </div>
+
+            <!-- ═══════════════ ÉCRAN 3 : MODE DE JEU ═══════════════ -->
+            <div id="screen-mode" class="screen">
+                <div class="screen-card">
+                    <div class="nav-header">
+                        <button class="btn-back" onclick="navGoBack()"><i data-lucide="arrow-left"></i></button>
+                        <h2 class="screen-title">MODE DE JEU</h2>
+                    </div>
+                    <div class="mode-grid">
+                        <div class="mode-card" onclick="selectGameMode('DUEL')">
+                            <div class="mode-icon"><i data-lucide="swords"></i></div>
+                            <div class="mode-details">
+                                <h3>1 VS 1 DUEL</h3>
+                                <p>Affrontez un adversaire en direct avec mise en jeu.</p>
+                            </div>
+                        </div>
+                        <div class="mode-card" onclick="selectGameMode('BATTLE')">
+                            <div class="mode-icon"><i data-lucide="trophy"></i></div>
+                            <div class="mode-details">
+                                <h3>BATTLE ROYALE</h3>
+                                <p>Rejoignez un salon de poule à élimination directe.</p>
+                            </div>
+                        </div>
+                        <div class="mode-card spirit-card" onclick="selectGameMode('SPIRIT')">
+                            <div class="mode-icon"><i data-lucide="flame"></i></div>
+                            <div class="mode-details">
+                                <h3>SPIRIT FIGHT</h3>
+                                <p>Accédez au portail global & Marketplace NFT.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ═══════════════ ÉCRAN 4 : PERSONNAGE ═══════════════ -->
+            <div id="screen-character" class="screen">
+                <div class="screen-card">
+                    <div class="nav-header">
+                        <button class="btn-back" onclick="navGoBack()"><i data-lucide="arrow-left"></i></button>
+                        <h2 class="screen-title">SÉLECTION DU GUERRIER</h2>
+                    </div>
+                    <div id="character-grid" class="character-grid"></div>
+                    <button id="btn-confirm-char" class="btn-cyber btn-primary-gold disabled" disabled>
+                        <i data-lucide="check-circle"></i> CONFIRMER LE COMBATTANT
+                    </button>
+                </div>
+            </div>
+
+            <!-- ═══════════════ ÉCRAN 5A : LOBBY DUEL ═══════════════ -->
+            <div id="screen-main" class="screen">
+                <div class="screen-card">
+                    <div class="nav-header">
+                        <button class="btn-back" onclick="navGoBack()"><i data-lucide="arrow-left"></i></button>
+                        <h2 class="screen-title">LOBBY 1VS1 DUEL</h2>
+                    </div>
+                    <div class="search-bar">
+                        <div class="search-input-wrapper">
+                            <i data-lucide="search" width="20"></i>
+                            <input type="text" placeholder="Pseudo ou adresse wallet..." id="search-input" oninput="filterLobby(this.value)">
+                        </div>
+                        <button class="qr-btn" onclick="openQRScanner()"><i data-lucide="qr-code" width="24"></i></button>
+                    </div>
+                    <div class="section-label">JOUEURS EN LIGNE</div>
+                    <div class="list-container" id="players-list"></div>
+                </div>
+            </div>
+
+            <!-- ═══════════════ ÉCRAN 5B : LOBBY BATTLE ROYALE ═══════════════ -->
+            <div id="screen-br" class="screen">
+                <div class="screen-card">
+                    <div class="nav-header">
+                        <button class="btn-back" onclick="navGoBack()"><i data-lucide="arrow-left"></i></button>
+                        <h2 class="screen-title">SALONS BATTLE ROYALE</h2>
+                    </div>
+                    <div class="action-row">
+                        <button class="btn-cyber btn-primary-gold" onclick="openCreatePoolModal()">
+                            <i data-lucide="plus-circle"></i> CRÉER UNE BATTLE
+                        </button>
+                    </div>
+                    <div class="join-private-box">
+                        <input type="text" id="invite-code-input" placeholder="Code d'invitation privé...">
+                        <button class="btn-cyber btn-cyan" onclick="joinPoolByCode()">REJOINDRE</button>
+                    </div>
+                    <div class="section-label">SALONS OUVERTS</div>
+                    <div class="list-container" id="br-list"></div>
+                </div>
+            </div>
+
+            <!-- ═══════════════ ÉCRAN 5C : SPIRIT FIGHT (Portail BATTLEPOOL / App 1) ═══════════════ -->
+            <div id="screen-spirit" class="screen">
+                <div class="screen-card">
+                    <div class="nav-header">
+                        <button class="btn-back" onclick="navGoBack()"><i data-lucide="arrow-left"></i></button>
+                        <h2 class="screen-title">SPIRIT FIGHT</h2>
+                    </div>
+                    <div class="spirit-hero">
+                        <div class="spirit-logo">BATTLE<span>POOL</span></div>
+                        <p class="screen-subtitle">L'univers complet : arène, marketplace NFT, références et récompenses influencer.</p>
+                        <button class="btn-cyber btn-primary-gold" onclick="launchBattlePool()">
+                            <i data-lucide="flame"></i> LANCER BATTLEPOOL (APP 1)
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ═══════════════ ÉCRAN 5D : SALON DE POULE ═══════════════ -->
+            <div id="screen-pool-room" class="screen">
+                <div class="screen-card">
+                    <div class="nav-header">
+                        <button id="btn-quit-pool" class="btn-back danger" onclick="quitPool()">
+                            <i data-lucide="log-out"></i> <span id="quit-pool-text">QUITTER</span>
+                        </button>
+                        <h2 id="pool-room-title" class="screen-title">SALON #000</h2>
+                    </div>
+                    <div class="pool-status-banner">
+                        <span id="pool-room-status" class="status-badge">EN ATTENTE</span>
+                        <span class="count-badge"><i data-lucide="users" width="18"></i> <span id="pool-room-count">1/4</span></span>
+                    </div>
+                    <div id="pool-invite-container" class="invite-share-box" style="display:none;">
+                        <p>Lien d'invitation du salon :</p>
+                        <div style="display:flex; gap:8px;">
+                            <input type="text" id="pool-invite-link" readonly onclick="this.select()">
+                            <button class="btn-cyber btn-cyan" style="padding:0 16px; width:auto; font-size:0.8rem;" onclick="copyInviteLink()">COPIER</button>
+                        </div>
+                    </div>
+                    <div class="section-label">COMBATTANTS DANS LA POULE</div>
+                    <div class="list-container" id="pool-players-list"></div>
+                </div>
+            </div>
+
+            <!-- ═══════════════ ÉCRAN 6 : CHARGEMENT COMBAT ═══════════════ -->
+            <div id="screen-combat" class="screen">
+                <div class="combat-loader-card">
+                    <h2 class="screen-title pulse">CHARGEMENT DE L'ARÈNE...</h2>
+                    <div class="cyber-progress-container">
+                        <div id="loading-bar" class="cyber-progress-bar" style="width: 0%;"></div>
+                    </div>
+                    <p id="loading-text" class="loading-subtext">Préparation du moteur 3D...</p>
+                </div>
+            </div>
+
         </div>
     </div>
 
-    <!-- Scripts Locaux (pour éviter les TIMEOUT) -->
+    <!-- ============================================================
+         MODALES
+         ============================================================ -->
+
+    <!-- Scanner QR -->
+    <div id="qr-modal" class="overlay-modal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3>SCANNER QR CODE</h3>
+                <button class="btn-close" onclick="closeQRScanner()"><i data-lucide="x"></i></button>
+            </div>
+            <div id="reader"></div>
+        </div>
+    </div>
+
+    <!-- Pari / Envoi défi -->
+    <div id="bet-modal" class="overlay-modal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3>DÉFIER <span id="bet-target-name">JOUEUR</span></h3>
+                <button class="btn-close" onclick="closeBetModal()"><i data-lucide="x"></i></button>
+            </div>
+            <div id="bet-stats" class="bet-stats-box" style="color: var(--text-muted); font-size: 0.8rem; font-weight: 600; margin-bottom: 12px;"></div>
+            <div class="bet-input-wrapper">
+                <input type="number" id="bet-amount" step="0.001" value="10" min="0">
+                <span class="bet-currency">TKN</span>
+            </div>
+            <div class="bet-presets">
+                <button class="btn-preset" onclick="setBetAmount(10)">10</button>
+                <button class="btn-preset" onclick="setBetAmount(50)">50</button>
+                <button class="btn-preset" onclick="setBetAmount(100)">100</button>
+                <button class="btn-preset" onclick="setBetAmount(500)">MAX</button>
+            </div>
+            <button class="btn btn-bet-confirm" onclick="confirmBetAndChallenge()">
+                <i data-lucide="swords"></i> ENVOYER LE DÉFI
+            </button>
+        </div>
+    </div>
+
+    <!-- Défi reçu -->
+    <div id="challenge-modal" class="overlay-modal">
+        <div class="modal-card challenge-received">
+            <div class="modal-header">
+                <h3 class="glow-title">DÉFI REÇU !</h3>
+            </div>
+            <p id="challenge-text" class="modal-body-text">Un joueur vous défie en duel.</p>
+            <div id="challenge-modal-actions" class="modal-actions-row">
+                <button id="btn-accept-challenge" class="btn-cyber btn-success">ACCEPTER</button>
+                <button id="btn-modify-challenge" class="btn-cyber btn-cyan">CONTRE-PROPOSER</button>
+                <button id="btn-decline-challenge" class="btn-cyber btn-danger">REFUSER</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Création d'une poule -->
+    <div id="create-pool-modal" class="overlay-modal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3>CRÉER UNE BATTLE ROYALE</h3>
+                <button class="btn-close" onclick="closeCreatePoolModal()"><i data-lucide="x"></i></button>
+            </div>
+            <div class="form-group">
+                <label>Frais d'entrée (ETH) :</label>
+                <input type="number" id="pool-entry-fee" step="0.001" value="10" min="0">
+            </div>
+            <div class="form-group">
+                <label>Joueurs max (2 à 64) :</label>
+                <input type="number" id="pool-max-players" min="2" max="64" value="8">
+            </div>
+            <div class="form-group">
+                <label>Règle d'élimination :</label>
+                <select id="pool-penalty-mode">
+                    <option value="1">Mort Subite (1 défaite = élimination)</option>
+                </select>
+            </div>
+            <div class="form-group checkbox-group" style="flex-direction: row; align-items: center; gap: 10px;">
+                <label for="pool-is-private" style="flex:1;">Poule privée sur code :</label>
+                <input type="checkbox" id="pool-is-private" style="width: 20px; height: 20px; accent-color: var(--cyan-spark);">
+            </div>
+            <button class="btn-cyber btn-primary-gold" onclick="confirmCreatePool()">
+                <i data-lucide="plus-circle"></i> CRÉER LE SALON
+            </button>
+        </div>
+    </div>
+
+    <!-- Invitation reçue -->
+    <div id="invite-modal" class="overlay-modal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3>INVITATION SALON</h3>
+            </div>
+            <p id="invite-message" class="modal-body-text">Vous êtes invité à rejoindre un salon.</p>
+            <div style="margin-top: 15px;">
+                <button id="btn-accept-invite" class="btn-cyber btn-success">REJOINDRE LE SALON</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toasts -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- ============================================================
+         SCRIPTS (ordre préservé — ne pas modifier)
+         ============================================================ -->
     <script src="lucide.min.js"></script>
     <script src="pusher.min.js"></script>
     <script src="echo.iife.js"></script>
 
-    <div class="overlay-modal" id="invite-modal">
-        <div class="bet-card">
-            <div style="display: flex; justify-content: center; margin-bottom: 1rem; color: var(--color-yellow);">
-                <i data-lucide="mail" width="48" height="48"></i>
-            </div>
-            <h2 style="font-size: 1.25rem; font-weight: bold; color: white; margin-bottom: 1rem;">Invitation Reçue</h2>
-            <p style="color: var(--text-gray-400); margin-bottom: 1.5rem; text-align: center;" id="invite-message">Vous avez été invité à rejoindre la poule #X</p>
-            <div style="display: flex; gap: 1rem;">
-                <button class="btn btn-bet-confirm" style="flex: 1" id="btn-accept-invite">Rejoindre</button>
-                <button class="btn" style="background: var(--bg-gray-800); color: white; flex: 1" onclick="stopInviteModalGuard(); document.getElementById('invite-modal').style.display='none'">Ignorer</button>
-            </div>
-        </div>
-    </div>
-    <!-- Scripts Web3 -->
     <script src="ethers.min.js"></script>
     <script src="hardhat_keys.js"></script>
     <script src="contract_abi.js?v=3"></script>
 
-    <!-- Script principal exporté par Godot -->
+    <!-- Moteur Godot (export web) -->
     <script src="godot/jeu.js?v=3"></script>
     <script>
         const GODOT_CONFIG = {
@@ -294,24 +354,16 @@
             "gdextensionLibs":[]
         };
         const engine = new Engine(GODOT_CONFIG);
-
         window.addEventListener('load', () => {
             const statusOverlay = document.getElementById('godot-status');
             const statusProgress = document.getElementById('godot-progress');
-            
             engine.startGame({
                 'onProgress': function (current, total) {
                     if (total > 0) {
                         if(statusOverlay) statusOverlay.style.display = 'block';
-                        if(statusProgress) {
-                            statusProgress.value = current;
-                            statusProgress.max = total;
-                        }
+                        if(statusProgress) { statusProgress.value = current; statusProgress.max = total; }
                     } else {
-                        if(statusProgress) {
-                            statusProgress.removeAttribute('value');
-                            statusProgress.removeAttribute('max');
-                        }
+                        if(statusProgress) { statusProgress.removeAttribute('value'); statusProgress.removeAttribute('max'); }
                     }
                 }
             }).then(() => {
@@ -321,9 +373,8 @@
             });
         });
     </script>
-    
-    <div id="toast-container" style="position: fixed; bottom: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 10px;"></div>
+
     <script src="config.js"></script>
-    <script src="app.js?v=26" defer></script>
+    <script src="app.js?v=3.0" defer></script>
 </body>
 </html>

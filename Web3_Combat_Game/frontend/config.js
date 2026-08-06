@@ -10,7 +10,11 @@ const APP_CONFIG = {
     REVERB_PORT: 8081,
 
     // Configuration Blockchain (Réseau Local Hardhat)
-    RPC_URL: `http://${window.location.hostname}:8545`
+    RPC_URL: `http://${window.location.hostname}:8545`,
+
+    // Portail BATTLEPOOL (App 1) — cible du mode SPIRIT FIGHT.
+    // En dev : `php artisan serve --port=8090` depuis rock-paper-scissors-ref.
+    PORTAL_URL: `http://${window.location.hostname}:8090`
 };
 
 // Adresse du contrat CombatGame (déployée par le service blockchain).

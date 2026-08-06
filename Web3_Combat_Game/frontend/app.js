@@ -1,7 +1,9 @@
 // 1. ÉTAT GLOBAL DE L'APPLICATION
 const AppState = {
-    currentScreen: 'screen-character',
+    currentScreen: 'screen-splash',
     selectedCharacter: null,
+    selectedGameMode: localStorage.getItem('web3combat_mode') || null, // 'DUEL' | 'BATTLE' | 'SPIRIT'
+    language: localStorage.getItem('web3combat_lang') || null,
     walletAddress: null,
     currentChallenger: null, 
     currentTargetId: null, 
@@ -145,18 +147,146 @@ function stopInviteModalGuard() {
 
 // 3. FONCTIONS DE NAVIGATION ET D'INITIALISATION
 function navigateTo(screenId) {
+    // Compat : l'ancien lobby duel 'screen-duel' est fusionné dans 'screen-main'
+    if (screenId === 'screen-duel') screenId = 'screen-main';
+    
     document.querySelectorAll('.screen').forEach(el => el.classList.remove('active'));
-    document.getElementById(screenId).classList.add('active');
+    const target = document.getElementById(screenId);
+    if (!target) {
+        console.error("Écran introuvable :", screenId);
+        return;
+    }
+    target.classList.add('active');
     AppState.currentScreen = screenId;
     lucide.createIcons();
     
-    if(screenId === 'screen-duel' && AppState.pendingChallengeParam) {
+    if(screenId === 'screen-main' && AppState.pendingChallengeParam) {
         const searchInput = document.getElementById('search-input');
-        searchInput.value = AppState.pendingChallengeParam;
-        filterLobby(AppState.pendingChallengeParam);
+        if (searchInput) {
+            searchInput.value = AppState.pendingChallengeParam;
+            filterLobby(AppState.pendingChallengeParam);
+        }
         AppState.pendingChallengeParam = null;
     }
 }
+
+// ============================================================
+// NOUVEAU FLOW D'ENTRÉE : SPLASH → LANGUE → CONNEXION → MODE → PERSONNAGE
+// ============================================================
+
+// Étape 1 : Sélection de la langue
+window.selectLanguage = function(lang) {
+    AppState.language = lang;
+    localStorage.setItem('web3combat_lang', lang);
+    navigateTo('screen-connect');
+};
+
+// Étape 2 : Connexion du wallet (détection App 1 / Hardhat / MetaMask)
+window.connectWallet = function() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const playerParam = urlParams.get('player');
+
+    let savedWallet = localStorage.getItem('web3combat_wallet');
+    let savedPk = localStorage.getItem('web3combat_pk');
+
+    if (playerParam !== null) {
+        savedWallet = null;
+        savedPk = null;
+    }
+
+    let app1User = null;
+    try {
+        app1User = JSON.parse(localStorage.getItem('user') || 'null');
+    } catch (e) {
+        app1User = null;
+    }
+    const app1Wallet = app1User && app1User.wallet_address ? app1User.wallet_address : null;
+
+    if (playerParam === null && app1Wallet) {
+        AppState.walletAddress = app1Wallet;
+        AppState.privateKey = null;
+    } else if (savedWallet && savedPk) {
+        AppState.walletAddress = savedWallet;
+        AppState.privateKey = savedPk;
+    } else if (typeof HARDHAT_ACCOUNTS !== 'undefined' && HARDHAT_ACCOUNTS.length > 0) {
+        let accIndex = 1;
+        if (playerParam !== null && !isNaN(playerParam)) {
+            accIndex = parseInt(playerParam);
+            if (accIndex < 0 || accIndex >= HARDHAT_ACCOUNTS.length) accIndex = 1;
+        } else {
+            accIndex = Math.floor(Math.random() * 4) + 1;
+        }
+        const account = HARDHAT_ACCOUNTS[accIndex];
+        AppState.walletAddress = account.address;
+        AppState.privateKey = account.privateKey;
+        if (playerParam === null) {
+            localStorage.setItem('web3combat_wallet', account.address);
+            localStorage.setItem('web3combat_pk', account.privateKey);
+        }
+    } else {
+        showToast("Aucun wallet détecté. Connectez-vous via App 1 puis réessayez.", "error");
+        return;
+    }
+
+    // Afficher le wallet connecté sur l'écran de connexion
+    const statusBox = document.getElementById('wallet-status-box');
+    const addrDisplay = document.getElementById('wallet-addr-display');
+    if (statusBox) statusBox.style.display = 'block';
+    if (addrDisplay) addrDisplay.textContent = AppState.walletAddress;
+
+    showToast("Wallet connecté : " + AppState.walletAddress.substring(0, 6) + "...", "success");
+
+    // Initialiser le provider Web3 (signataire déjà détecté)
+    initWeb3();
+
+    setTimeout(() => navigateTo('screen-mode'), 500);
+};
+
+// Étape 3 : Choix du mode de jeu
+window.selectGameMode = function(mode) {
+    AppState.selectedGameMode = mode;
+    localStorage.setItem('web3combat_mode', mode);
+
+    if (mode === 'SPIRIT') {
+        // Le mode SPIRIT ouvre le menu du jeu Battle Pool (App 1)
+        navigateTo('screen-spirit');
+        return;
+    }
+    navigateTo('screen-character');
+};
+
+// Bouton retour : remonte d'un cran dans le flow
+window.navGoBack = function() {
+    const backMap = {
+        'screen-language': 'screen-splash',
+        'screen-connect': 'screen-language',
+        'screen-mode': 'screen-connect',
+        'screen-character': 'screen-mode',
+        'screen-main': 'screen-character',
+        'screen-br': 'screen-character',
+        'screen-spirit': 'screen-mode',
+        'screen-pool-room': 'screen-br',
+        'screen-combat': 'screen-main'
+    };
+    const prev = backMap[AppState.currentScreen] || 'screen-splash';
+    navigateTo(prev);
+};
+
+// Lancement du portail BATTLEPOOL (App 1) depuis l'écran SPIRIT
+window.launchBattlePool = function() {
+    const portalUrl = (typeof APP_CONFIG !== 'undefined' && APP_CONFIG.PORTAL_URL)
+        ? APP_CONFIG.PORTAL_URL
+        : `http://${window.location.hostname}:8090`;
+    showToast("Ouverture de BATTLEPOOL (App 1)...", "info");
+    setTimeout(() => { window.location.href = portalUrl; }, 400);
+};
+
+// Confirmation du personnage : enregistre puis lance la connexion finale
+window.confirmCharacterSelection = function() {
+    if (!AppState.selectedCharacter) return;
+    localStorage.setItem('web3combat_char', AppState.selectedCharacter.id);
+    performLogin();
+};
 
 // --- GÉNÉRATION ÉCRAN PERSONNAGES ---
 let provider;
@@ -387,6 +517,7 @@ function selectCharacter(char) {
     document.getElementById(`char-${char.id}`).classList.add('selected');
     const btn = document.getElementById('btn-confirm-char');
     btn.disabled = false;
+    btn.classList.remove('disabled');
 }
 
 function performLogin() {
@@ -566,7 +697,19 @@ function performLogin() {
         AppState.pendingPoolParam = null;
     }
 
-    navigateTo('screen-main');
+    // Afficher le badge joueur (masqué par défaut dans le HTML)
+    const badge = document.getElementById('player-badge');
+    if (badge) badge.style.display = 'flex';
+
+    // Navigation selon le mode choisi dans le nouveau flow
+    if (AppState.selectedGameMode === 'BATTLE') {
+        navigateTo('screen-br');
+        renderBRLobby();
+    } else if (AppState.selectedGameMode === 'SPIRIT') {
+        navigateTo('screen-spirit');
+    } else {
+        navigateTo('screen-main');
+    }
     if (window.godotSpawnPlayer) {
         window.godotSpawnPlayer("p" + AppState.selectedCharacter.id);
     }
@@ -574,8 +717,7 @@ function performLogin() {
 
 // --- CONFIRMATION ET CONNEXION WEB3/REVERB ---
 document.getElementById('btn-confirm-char').addEventListener('click', () => {
-    localStorage.setItem('web3combat_char', AppState.selectedCharacter.id);
-    performLogin();
+    window.confirmCharacterSelection();
 });
 
 
@@ -656,7 +798,7 @@ window.resetMatchState = function() {
 window.quitGodot = function() {
     if(confirm("Voulez-vous vraiment quitter le jeu et retourner au lobby ?")) {
         resetMatchState();
-        navigateTo('screen-duel');
+        navigateTo('screen-main');
     }
 };
 
@@ -1151,7 +1293,7 @@ window.animationFinished = function() {
 
     // Réinitialisation complète des états (incluant le statut serveur online)
     resetMatchState();
-    navigateTo(AppState.currentPoolId ? 'screen-pool-room' : 'screen-duel');
+    navigateTo(AppState.currentPoolId ? 'screen-pool-room' : 'screen-main');
     
     AppState.pendingResult = null;
     
@@ -1418,14 +1560,20 @@ document.addEventListener('DOMContentLoaded', () => {
         })
         .catch(() => {});
     
+    // Pré-sélection du personnage sauvegardé (sans connexion auto)
     const savedCharId = localStorage.getItem('web3combat_char');
     if (savedCharId) {
         const char = characters.find(c => c.id == savedCharId);
         if (char) {
             selectCharacter(char);
-            performLogin();
         }
     }
+
+    // NOUVEAU FLOW : splash (2.5s) → sélection de la langue
+    // (screen-splash est l'écran actif par défaut dans le HTML)
+    setTimeout(() => {
+        navigateTo('screen-language');
+    }, 2600);
 });
 
 // --- POULE / BATTLE ROYALE LOGIC ---
