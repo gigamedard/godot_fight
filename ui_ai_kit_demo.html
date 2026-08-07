@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BATTLEPOOL — Spirit Fight (Kit IA — Démo autonome)</title>
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+/* ============================================================
+   DÉMO AUTONOME DU KIT IA — pour comparaison dans le navigateur
+   Le HTML/CSS ci-dessous est FIDÈLE au kit fourni par l'IA.
+   Un bloc JS de démonstration (mock) a été ajouté en fin de
+   fichier pour rendre le flow navigable sans backend/Godot.
+   ============================================================ */
+
+/* ==========================================================================
+   DA: NEO-STREET FIGHTER / URBAN ANIME POP-CYBER
+   ========================================================================== */
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700;800;900&family=Rajdhani:wght@500;600;700&display=swap');
+
+:root {
+    --bg-night-violet: #0F0C1B;
+    --bg-cyber-dark: #181824;
+    --panel-dark: #1F1B2E;
+    --panel-light: #2A243D;
+    --gold-primary: #FFC700;
+    --gold-hover: #FF9100;
+    --purple-neon: #7B2CBF;
+    --cyan-spark: #00E5FF;
+    --magenta-vivid: #FF0055;
+    --success-green: #00E676;
+    --error-red: #FF1744;
+    --text-white: #FFFFFF;
+    --text-muted: #A099B8;
+    --font-heading: 'Orbitron', sans-serif;
+    --font-body: 'Rajdhani', sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
+
+body, html {
+    width: 100%; height: 100%;
+    overflow: hidden;
+    background-color: var(--bg-night-violet);
+    font-family: var(--font-body);
+    color: var(--text-white);
+}
+
+/* --- Règle .hidden globale (manquante dans le kit, nécessaire au fonctionnement) --- */
+.hidden { display: none !important; }
+
+/* ==========================================================================
+   COUCHE GODOT (z-index 0) — désactivée en démo (fond statique)
+   ========================================================================== */
+#godot-layer {
+    position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 0;
+    background: radial-gradient(900px 600px at 50% 20%, #2A243D 0%, #0F0C1B 70%);
+}
+#godot-layer::after {
+    content: ''; position: absolute; inset: 0;
+    background:
+        repeating-linear-gradient(115deg, transparent 0 44px, rgba(255,255,255,0.03) 44px 45px, transparent 45px 88px),
+        linear-gradient(180deg, rgba(15,12,27,0.4), rgba(24,24,36,0.7));
+}
+#canvas { width: 100%; height: 100%; display: block; }
+
+/* ==========================================================================
+   COUCHE UI OVERLAY (z-index 10)
+   ========================================================================== */
+.ui-overlay {
+    position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 10;
+    display: flex; justify-content: center; align-items: center;
+    background: linear-gradient(180deg, rgba(15,12,27,0.82) 0%, rgba(24,24,36,0.95) 100%);
+    backdrop-filter: blur(10px);
+    transition: opacity 0.4s ease, visibility 0.4s ease;
+}
+.ui-overlay.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+
+.ui-content {
+    width: 100%; max-width: 480px; height: 100%; max-height: 900px;
+    padding: 20px;
+    display: flex; flex-direction: column; justify-content: center; position: relative;
+}
+
+/* ==========================================================================
+   HEADER / PLAYER BADGE
+   ========================================================================== */
+.player-badge {
+    position: absolute; top: 20px; left: 20px; right: 20px;
+    display: flex; justify-content: space-between; align-items: center;
+    background: rgba(31,27,46,0.9);
+    border: 1.5px solid var(--purple-neon);
+    clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px);
+    padding: 10px 15px; z-index: 15;
+    box-shadow: 0 0 15px rgba(123,44,191,0.3);
+}
+.badge-profile { display: flex; align-items: center; gap: 10px; }
+.avatar-ring {
+    width: 38px; height: 38px; background: var(--purple-neon);
+    display: flex; align-items: center; justify-content: center;
+    clip-path: polygon(30% 0%, 70% 0%, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0% 70%, 0% 30%);
+    color: var(--gold-primary);
+}
+.player-info { display: flex; flex-direction: column; }
+.wallet-val { font-family: var(--font-heading); font-size: 1rem; color: var(--gold-primary); }
+.wallet-addr { font-size: 0.8rem; color: var(--text-muted); }
+.pending-box { display: flex; align-items: center; gap: 8px; }
+.btn-claim {
+    background: var(--gold-primary); border: none; padding: 4px 10px;
+    font-family: var(--font-heading); font-size: 0.75rem; font-weight: 800; cursor: pointer;
+    clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+}
+
+/* ==========================================================================
+   ÉCRANS & CARTE PRINCIPALE
+   ========================================================================== */
+.screen { display: none; width: 100%; animation: fadeIn 0.3s cubic-bezier(0.175,0.885,0.32,1.275); }
+.screen.active { display: block; }
+
+.screen-card {
+    background: var(--panel-dark);
+    border: 1.5px solid var(--purple-neon);
+    padding: 24px 20px;
+    box-shadow: 0 0 25px rgba(0,0,0,0.8), inset 0 0 15px rgba(123,44,191,0.15);
+    clip-path: polygon(16px 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%, 0 16px);
+    position: relative;
+}
+.nav-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+.btn-back {
+    background: var(--panel-light); border: 1px solid var(--purple-neon); color: var(--cyan-spark);
+    width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; cursor: pointer;
+    clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+}
+.btn-back.danger { color: var(--error-red); border-color: var(--error-red); width: auto; padding: 0 12px; gap: 6px; }
+.screen-title {
+    font-family: var(--font-heading); font-size: 1.25rem; color: var(--text-white);
+    letter-spacing: 1px; font-style: italic; display: flex; align-items: center; gap: 8px;
+}
+.screen-subtitle { font-size: 0.95rem; color: var(--text-muted); margin-bottom: 20px; }
+
+/* ==========================================================================
+   BOUTONS STYLISÉS (CYBER BUTTONS)
+   ========================================================================== */
+.btn-cyber {
+    width: 100%; padding: 14px 20px;
+    font-family: var(--font-heading); font-size: 1rem; font-weight: 800; font-style: italic;
+    border: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    letter-spacing: 1px; text-transform: uppercase;
+    clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+    transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+}
+.btn-primary-gold { background: linear-gradient(90deg, var(--gold-primary) 0%, var(--gold-hover) 100%); color: #000; box-shadow: 0 0 15px rgba(255,199,0,0.4); }
+.btn-primary-gold:hover { transform: scale(1.02); filter: brightness(1.1); box-shadow: 0 0 25px rgba(255,199,0,0.7); }
+.btn-cyan { background: var(--cyan-spark); color: #000; }
+.btn-success { background: var(--success-green); color: #000; }
+.btn-danger { background: var(--error-red); color: #FFF; }
+.btn-cyber.disabled, .btn-cyber:disabled { opacity: 0.4; cursor: not-allowed; filter: grayscale(1); transform: none !important; }
+
+/* ==========================================================================
+   ÉCRAN 0 : SPLASH SCREEN
+   ========================================================================== */
+.splash-container { text-align: center; }
+.logo-wrapper { position: relative; display: inline-block; margin-bottom: 40px; }
+.game-logo {
+    font-family: var(--font-heading); font-size: 3rem; font-weight: 900; font-style: italic;
+    color: var(--gold-primary); text-shadow: 0 0 20px rgba(255,199,0,0.6); letter-spacing: 2px;
+}
+.logo-sub { font-family: var(--font-heading); font-size: 1.2rem; color: var(--cyan-spark); letter-spacing: 6px; display: block; }
+.katana-slash {
+    position: absolute; top: 50%; left: -10%; width: 120%; height: 4px;
+    background: var(--cyan-spark); box-shadow: 0 0 15px var(--cyan-spark);
+    transform: rotate(-12deg);
+    animation: slashAnim 0.6s cubic-bezier(0.23,1,0.32,1) forwards;
+}
+.splash-loader {
+    width: 80%; height: 6px; background: var(--panel-light); margin: 0 auto; overflow: hidden;
+    clip-path: polygon(3px 0, 100% 0, 100% calc(100% - 3px), calc(100% - 3px) 100%, 0 100%, 0 3px);
+}
+.energy-bar { width: 100%; height: 100%; background: var(--gold-primary); animation: energyFill 2.5s ease-in-out forwards; }
+
+/* ==========================================================================
+   ÉCRAN 1 : LANGUE
+   ========================================================================== */
+.language-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+.lang-card {
+    background: var(--panel-light); border: 1.5px solid var(--purple-neon);
+    padding: 20px; display: flex; flex-direction: column; align-items: center; gap: 10px; cursor: pointer;
+    clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+    transition: all 0.2s ease;
+}
+.lang-card:hover { border-color: var(--gold-primary); transform: translateY(-3px); box-shadow: 0 0 15px rgba(255,199,0,0.3); }
+.lang-card .flag { font-size: 2.5rem; }
+.lang-card .lang-name { font-family: var(--font-heading); font-size: 1rem; color: #FFF; }
+
+/* ==========================================================================
+   ÉCRAN 2 : CONNEXION
+   ========================================================================== */
+.cyber-shield-icon {
+    width: 70px; height: 70px; background: rgba(123,44,191,0.2);
+    border: 2px solid var(--cyan-spark); margin: 0 auto 20px auto;
+    display: flex; align-items: center; justify-content: center; color: var(--cyan-spark);
+    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+}
+.cyber-shield-icon i { width: 32px; height: 32px; }
+
+/* ==========================================================================
+   ÉCRAN 3 : MODE GRID
+   ========================================================================== */
+.mode-grid { display: flex; flex-direction: column; gap: 12px; }
+.mode-card {
+    background: var(--panel-light); border: 1px solid rgba(123,44,191,0.5);
+    padding: 16px; display: flex; align-items: center; gap: 16px; cursor: pointer;
+    clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+    transition: all 0.2s ease;
+}
+.mode-card:hover { border-color: var(--gold-primary); background: rgba(42,36,61,0.9); transform: translateX(4px); box-shadow: 0 0 15px rgba(255,199,0,0.2); }
+.mode-icon {
+    width: 48px; height: 48px; background: var(--purple-neon);
+    display: flex; align-items: center; justify-content: center; color: var(--gold-primary);
+    clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+}
+.mode-details h3 { font-family: var(--font-heading); font-size: 1.1rem; color: var(--gold-primary); margin-bottom: 2px; }
+.mode-details p { font-size: 0.85rem; color: var(--text-muted); }
+.mode-card.spirit-card { border-color: var(--cyan-spark); }
+.mode-card.spirit-card .mode-icon { background: var(--cyan-spark); color: #000; }
+
+/* ==========================================================================
+   ÉCRAN 4 : SELECTION PERSONNAGE
+   ========================================================================== */
+.character-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
+.char-card {
+    background: var(--panel-light); border: 1.5px solid var(--panel-light);
+    padding: 12px; text-align: center; cursor: pointer;
+    clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+    transition: all 0.2s ease;
+}
+.char-card:hover, .char-card.selected { border-color: var(--gold-primary); box-shadow: 0 0 15px rgba(255,199,0,0.4); background: rgba(123,44,191,0.2); }
+.char-avatar { width: 100%; height: 90px; object-fit: cover; margin-bottom: 8px; clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px); }
+.char-name { font-family: var(--font-heading); font-size: 0.9rem; color: #FFF; }
+
+/* ==========================================================================
+   ÉCRANS 5 : LOBBIES & LISTES
+   ========================================================================== */
+.search-bar-wrapper { display: flex; gap: 10px; margin-bottom: 16px; }
+.search-bar-wrapper input, .join-private-box input, .form-group input, .form-group select {
+    flex: 1; background: var(--bg-cyber-dark); border: 1px solid var(--purple-neon);
+    padding: 12px; color: #FFF; font-family: var(--font-body); font-size: 0.95rem; outline: none;
+    clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+}
+.search-bar-wrapper input:focus { border-color: var(--cyan-spark); }
+.btn-icon-qr { background: var(--purple-neon); border: none; color: var(--gold-primary); width: 44px; display: flex; align-items: center; justify-content: center; cursor: pointer; clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px); }
+.section-label { font-family: var(--font-heading); font-size: 0.8rem; color: var(--cyan-spark); letter-spacing: 1.5px; margin: 15px 0 10px 0; }
+.players-list, .br-list { max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.player-item, .br-item {
+    background: var(--panel-light); padding: 12px; display: flex; justify-content: space-between; align-items: center;
+    clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+}
+.action-row { margin-bottom: 15px; }
+.join-private-box { display: flex; gap: 8px; margin-bottom: 15px; }
+.pool-status-banner { display: flex; justify-content: space-between; margin-bottom: 15px; }
+.status-badge { background: var(--purple-neon); padding: 4px 10px; font-family: var(--font-heading); font-size: 0.8rem; }
+.count-badge { color: var(--gold-primary); font-family: var(--font-heading); display: flex; align-items: center; gap: 6px; }
+
+/* ==========================================================================
+   ÉCRAN 6 : COMBAT LOADING
+   ========================================================================== */
+.combat-loader-card { text-align: center; padding: 30px; }
+.pulse { animation: pulseAnim 1.5s infinite; }
+.cyber-progress-container {
+    width: 100%; height: 12px; background: var(--bg-cyber-dark);
+    border: 1px solid var(--cyan-spark); margin: 20px 0 10px 0; padding: 2px;
+    clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px);
+}
+.cyber-progress-bar { height: 100%; background: linear-gradient(90deg, var(--cyan-spark), var(--gold-primary)); transition: width 0.3s ease; }
+.loading-subtext { font-size: 0.85rem; color: var(--text-muted); }
+
+/* ==========================================================================
+   MODALES & TOASTS
+   ========================================================================== */
+.modal-overlay {
+    position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+    background: rgba(15,12,27,0.85); backdrop-filter: blur(8px); z-index: 100;
+    display: flex; align-items: center; justify-content: center; padding: 20px;
+}
+.modal-overlay.hidden { display: none; }
+.modal-card {
+    background: var(--panel-dark); border: 2px solid var(--gold-primary);
+    width: 100%; max-width: 420px; padding: 20px;
+    clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px);
+    box-shadow: 0 0 30px rgba(255,199,0,0.3);
+}
+.modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+.modal-header h3 { font-family: var(--font-heading); color: var(--gold-primary); font-size: 1.1rem; }
+.btn-close { background: none; border: none; color: var(--text-muted); cursor: pointer; }
+.form-group { margin-bottom: 15px; display: flex; flex-direction: column; gap: 6px; }
+.form-group label { font-size: 0.85rem; color: var(--text-muted); }
+.modal-actions-row { display: flex; flex-direction: column; gap: 8px; margin-top: 15px; }
+
+.toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 200; display: flex; flex-direction: column; gap: 10px; }
+.toast {
+    background: var(--panel-dark); border-left: 4px solid var(--cyan-spark); color: #FFF;
+    padding: 12px 18px; font-family: var(--font-body); font-size: 0.9rem;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+    clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px);
+    animation: slideInRight 0.3s forwards;
+}
+
+/* ==========================================================================
+   ANIMATIONS
+   ========================================================================== */
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes slashAnim { 0% { width: 0%; opacity: 0; } 50% { opacity: 1; } 100% { width: 120%; opacity: 1; } }
+@keyframes energyFill { 0% { width: 0%; } 100% { width: 100%; } }
+@keyframes pulseAnim { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+@keyframes slideInRight { from { transform: translateX(100%); } to { transform: translateX(0); } }
+</style>
+</head>
+<body>
+
+<div id="godot-layer"><canvas id="canvas"></canvas></div>
+
+<div id="turn-timer-overlay" class="hidden">
+    <div class="timer-box"><i data-lucide="clock" class="timer-icon"></i><span id="timer-seconds">30</span>s</div>
+</div>
+
+<div id="ui-overlay" class="ui-overlay">
+    <div class="ui-content">
+
+        <header id="player-badge" class="player-badge hidden">
+            <div class="badge-profile">
+                <div class="avatar-ring"><i data-lucide="shield" class="avatar-icon"></i></div>
+                <div class="player-info">
+                    <span id="wallet-balance" class="wallet-val">0.00 ETH</span>
+                    <span id="user-wallet-address" class="wallet-addr">0x00...0000</span>
+                </div>
+            </div>
+            <div id="pending-funds-container" class="pending-box hidden">
+                <span class="pending-label">En attente: <strong id="pending-amount">0</strong> ETH</span>
+                <button id="btn-claim-funds" class="btn-claim" onclick="claimPendingFunds()"><i data-lucide="download"></i> Réclamer</button>
+            </div>
+        </header>
+
+        <div id="screen-splash" class="screen active">
+            <div class="splash-container">
+                <div class="logo-wrapper">
+                    <h1 class="game-logo">BATTLEPOOL</h1>
+                    <span class="logo-sub">SPIRIT FIGHT</span>
+                    <div class="katana-slash"></div>
+                </div>
+                <div class="splash-loader"><div class="energy-bar"></div></div>
+            </div>
+        </div>
+
+        <div id="screen-language" class="screen">
+            <div class="screen-card">
+                <h2 class="screen-title"><i data-lucide="globe"></i> LANGUE / LANGUAGE</h2>
+                <p class="screen-subtitle">Sélectionnez votre langue d'interface</p>
+                <div class="language-grid">
+                    <button class="lang-card" onclick="selectLanguage('fr')"><span class="flag">🇫🇷</span><span class="lang-name">Français</span></button>
+                    <button class="lang-card" onclick="selectLanguage('en')"><span class="flag">🇬🇧</span><span class="lang-name">English</span></button>
+                </div>
+            </div>
+        </div>
+
+        <div id="screen-connect" class="screen">
+            <div class="screen-card">
+                <div class="cyber-shield-icon"><i data-lucide="wallet"></i></div>
+                <h2 class="screen-title">CONNEXION WEB3</h2>
+                <p class="screen-subtitle">Connectez votre wallet pour accéder aux combats et vos tokens.</p>
+                <button class="btn-cyber btn-primary-gold" onclick="connectWallet()"><i data-lucide="zap"></i> CONNECTER METAMASK</button>
+            </div>
+        </div>
+
+        <div id="screen-mode" class="screen">
+            <div class="screen-card">
+                <div class="nav-header">
+                    <button class="btn-back" onclick="navGoBack()"><i data-lucide="arrow-left"></i></button>
+                    <h2 class="screen-title">MODE DE JEU</h2>
+                </div>
+                <div class="mode-grid">
+                    <div class="mode-card" onclick="selectGameMode('DUEL')">
+                        <div class="mode-icon"><i data-lucide="swords"></i></div>
+                        <div class="mode-details"><h3>1 VS 1 DUEL</h3><p>Affrontez un adversaire en direct avec mise en jeu.</p></div>
+                    </div>
+                    <div class="mode-card" onclick="selectGameMode('BATTLE')">
+                        <div class="mode-icon"><i data-lucide="trophy"></i></div>
+                        <div class="mode-details"><h3>BATTLE ROYALE</h3><p>Rejoignez un salon de poule à élimination directe.</p></div>
+                    </div>
+                    <div class="mode-card spirit-card" onclick="selectGameMode('SPIRIT')">
+                        <div class="mode-icon"><i data-lucide="flame"></i></div>
+                        <div class="mode-details"><h3>SPIRIT FIGHT</h3><p>Accédez au portail global & Marketplace NFT.</p></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="screen-character" class="screen">
+            <div class="screen-card">
+                <div class="nav-header">
+                    <button class="btn-back" onclick="navGoBack()"><i data-lucide="arrow-left"></i></button>
+                    <h2 class="screen-title">SÉLECTION DU GUERRIER</h2>
+                </div>
+                <div id="character-grid" class="character-grid"></div>
+                <button id="btn-confirm-char" class="btn-cyber btn-primary-gold disabled" onclick="confirmCharacterSelection()" disabled>
+                    <i data-lucide="check-circle"></i> CONFIRMER LE COMBATTANT
+                </button>
+            </div>
+        </div>
+
+        <div id="screen-main" class="screen">
+            <div class="screen-card">
+                <div class="nav-header">
+                    <button class="btn-back" onclick="navGoBack()"><i data-lucide="arrow-left"></i></button>
+                    <h2 class="screen-title">LOBBY 1VS1 DUEL</h2>
+                </div>
+                <div class="search-bar-wrapper">
+                    <input type="text" id="search-input" placeholder="Rechercher un joueur..." onkeyup="filterPlayers()">
+                    <button class="btn-icon-qr" onclick="openQRScanner()"><i data-lucide="qr-code"></i></button>
+                </div>
+                <div class="section-label">JOUEURS EN LIGNE</div>
+                <div id="players-list" class="players-list"></div>
+            </div>
+        </div>
+
+        <div id="screen-br" class="screen">
+            <div class="screen-card">
+                <div class="nav-header">
+                    <button class="btn-back" onclick="navGoBack()"><i data-lucide="arrow-left"></i></button>
+                    <h2 class="screen-title">SALONS BATTLE ROYALE</h2>
+                </div>
+                <div class="action-row">
+                    <button class="btn-cyber btn-primary-gold" onclick="openCreatePoolModal()"><i data-lucide="plus-circle"></i> CRÉER UNE BATTLE</button>
+                </div>
+                <div class="join-private-box">
+                    <input type="text" id="invite-code-input" placeholder="Code d'invitation privé...">
+                    <button class="btn-cyber btn-cyan" onclick="joinPrivatePoolByCode()">REJOINDRE</button>
+                </div>
+                <div class="section-label">SALONS OUVERTS</div>
+                <div id="br-list" class="br-list"></div>
+            </div>
+        </div>
+
+        <div id="screen-pool-room" class="screen">
+            <div class="screen-card">
+                <div class="nav-header">
+                    <button id="btn-quit-pool" class="btn-back danger" onclick="quitPool()"><i data-lucide="log-out"></i> <span id="quit-pool-text">QUITTER</span></button>
+                    <h2 id="pool-room-title" class="screen-title">SALON #000</h2>
+                </div>
+                <div class="pool-status-banner">
+                    <span id="pool-room-status" class="status-badge">EN ATTENTE</span>
+                    <span class="count-badge"><i data-lucide="users"></i> <span id="pool-room-count">1/4</span></span>
+                </div>
+                <div id="pool-invite-container" class="invite-share-box hidden">
+                    <p>Lien d'invitation du salon :</p>
+                    <input type="text" id="pool-invite-link" readonly onclick="this.select()">
+                </div>
+                <div class="section-label">COMBATTANTS DANS LA POULE</div>
+                <div id="pool-players-list" class="players-list"></div>
+            </div>
+        </div>
+
+        <div id="screen-combat" class="screen">
+            <div class="combat-loader-card">
+                <h2 class="screen-title pulse">CHARGEMENT DE L'ARÈNE...</h2>
+                <div class="cyber-progress-container"><div id="loading-bar" class="cyber-progress-bar" style="width: 0%;"></div></div>
+                <p id="loading-text" class="loading-subtext">Préparation du moteur 3D...</p>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<div id="qr-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+        <div class="modal-header"><h3>SCANNER QR CODE</h3><button class="btn-close" onclick="closeQRScanner()"><i data-lucide="x"></i></button></div>
+        <div id="reader" style="height:160px;background:var(--bg-cyber-dark);display:flex;align-items:center;justify-content:center;color:var(--text-muted);">[ QR Scanner simulé ]</div>
+    </div>
+</div>
+
+<div id="bet-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+        <div class="modal-header"><h3>DÉFIER <span id="bet-target-name">JOUEUR</span></h3><button class="btn-close" onclick="closeBetModal()"><i data-lucide="x"></i></button></div>
+        <div id="bet-stats" class="bet-stats-box" style="font-size:0.85rem;color:var(--text-muted);margin-bottom:12px;"></div>
+        <div class="form-group">
+            <label>Mise du combat (ETH) :</label>
+            <input type="number" id="bet-amount" step="0.001" value="0.01" min="0">
+        </div>
+        <button class="btn-cyber btn-primary-gold" onclick="sendChallenge()"><i data-lucide="swords"></i> ENVOYER LE DÉFI</button>
+    </div>
+</div>
+
+<div id="challenge-modal" class="modal-overlay hidden">
+    <div class="modal-card challenge-received">
+        <div class="modal-header"><h3 class="glow-title">DÉFI REÇU !</h3></div>
+        <p id="challenge-text" class="modal-body-text" style="color:var(--text-muted);margin-bottom:6px;">Un joueur vous défie en duel.</p>
+        <div id="challenge-modal-actions" class="modal-actions-row">
+            <button id="btn-accept-challenge" class="btn-cyber btn-success" onclick="acceptChallenge()">ACCEPTER</button>
+            <button id="btn-modify-challenge" class="btn-cyber btn-cyan" onclick="modifyChallenge()">CONTRE-PROPOSER</button>
+            <button id="btn-decline-challenge" class="btn-cyber btn-danger" onclick="declineChallenge()">REFUSER</button>
+        </div>
+    </div>
+</div>
+
+<div id="create-pool-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+        <div class="modal-header"><h3>CRÉER UNE BATTLE ROYALE</h3><button class="btn-close" onclick="closeCreatePoolModal()"><i data-lucide="x"></i></button></div>
+        <div class="form-group"><label>Frais d'entrée (ETH) :</label><input type="number" id="pool-entry-fee" step="0.001" value="0.01"></div>
+        <div class="form-group"><label>Joueurs max (2 à 8) :</label><input type="number" id="pool-max-players" min="2" max="8" value="4"></div>
+        <div class="form-group"><label>Mode pénalité abandon :</label><select id="pool-penalty-mode"><option value="0">Aucune</option><option value="1">Perte de mise</option></select></div>
+        <div class="form-group checkbox-group" style="flex-direction:row;align-items:center;gap:10px;"><label for="pool-is-private">Poule privée sur code :</label><input type="checkbox" id="pool-is-private" style="width:18px;height:18px;accent-color:var(--cyan-spark);"></div>
+        <button class="btn-cyber btn-primary-gold" onclick="confirmCreatePool()"><i data-lucide="plus-circle"></i> CRÉER LE SALON</button>
+    </div>
+</div>
+
+<div id="invite-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+        <div class="modal-header"><h3>INVITATION SALON</h3></div>
+        <p id="invite-message" class="modal-body-text" style="color:var(--text-muted);margin-bottom:12px;">Vous êtes invité à rejoindre un salon.</p>
+        <button id="btn-accept-invite" class="btn-cyber btn-success" onclick="acceptPoolInvite()">REJOINDRE LE SALON</button>
+    </div>
+</div>
+
+<div id="toast-container" class="toast-container"></div>
+
+<script>
+/* ==========================================================================
+   BLOC DÉMO (mock) — ajouté pour rendre le kit testable sans backend/Godot.
+   À SUPPRIMER lors de l'intégration réelle (remplacé par app.js).
+   ========================================================================== */
+
+/* --- DONNÉES MOCK --- */
+const CHARS = [
+    { id: 1, name: 'GUERRIER NINJA', grad: 'linear-gradient(135deg,#00E5FF,#06313a)' },
+    { id: 2, name: 'MUTANT CYBORG',  grad: 'linear-gradient(135deg,#7B2CBF,#230e3a)' },
+    { id: 3, name: 'TOM FRAZER',     grad: 'linear-gradient(135deg,#FFC700,#3a2e06)' },
+    { id: 4, name: 'BIG CHOCO',      grad: 'linear-gradient(135deg,#FF0055,#3a0615)' }
+];
+const PLAYERS = [
+    { name: 'ShadowBlade_99', rank: 'S · Diamond I' },
+    { name: 'CyberMecha',     rank: 'A · Platinum II' },
+    { name: 'VioletFury',     rank: 'S · Diamond III' },
+    { name: 'KageRyu',        rank: 'B · Gold I' },
+    { name: 'LunarSword',     rank: 'A · Platinum I' }
+];
+const ROOMS = [
+    { name: 'ARENA #042', mode: 'PUBLIC',   p: 6, max: 8 },
+    { name: 'ARENA #137', mode: 'PUBLIC',   p: 4, max: 8 },
+    { name: 'ARENA #200', mode: 'PRIVÉE',   p: 7, max: 8 },
+    { name: 'ARENA #318', mode: 'PUBLIC',   p: 2, max: 8 }
+];
+
+/* --- NAVIGATION & ÉTAT --- */
+let navigationHistory = [];
+let selectedLanguage = localStorage.getItem('bp_language') || null;
+let selectedGameMode = null;
+let selectedCharacterId = localStorage.getItem('bp_character') || null;
+
+function initAppFlow() {
+    showScreen('screen-splash');
+    setTimeout(() => {
+        if (!selectedLanguage) showScreen('screen-language');
+        else if (!window.userWalletAddress) checkExistingSessionOrConnect();
+        else showScreen('screen-mode');
+    }, 2500);
+}
+
+function checkExistingSessionOrConnect() {
+    const savedUser = localStorage.getItem('user');
+    if (savedUser) {
+        try {
+            const userData = JSON.parse(savedUser);
+            if (userData && userData.wallet_address) {
+                window.userWalletAddress = userData.wallet_address;
+                updateWalletUI(userData.wallet_address);
+                showScreen('screen-mode');
+                return;
+            }
+        } catch (e) { /* ignore */ }
+    }
+    showScreen('screen-connect');
+}
+
+function selectLanguage(lang) {
+    selectedLanguage = lang;
+    localStorage.setItem('bp_language', lang);
+    checkExistingSessionOrConnect();
+}
+
+/* Connexion — réel si MetaMask présent, sinon simulée (démo) */
+async function connectWallet() {
+    if (window.ethereum) {
+        try {
+            const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+            window.userWalletAddress = accounts[0];
+            localStorage.setItem('user', JSON.stringify({ wallet_address: accounts[0] }));
+            updateWalletUI(accounts[0]);
+            showScreen('screen-mode');
+        } catch (e) { showToast("Erreur de connexion Wallet", "error"); }
+    } else {
+        // DÉMO : wallet simulé
+        const mock = '0x70997070C51812dc3A010C7d01b50e0d17dc79C8';
+        window.userWalletAddress = mock;
+        localStorage.setItem('user', JSON.stringify({ wallet_address: mock }));
+        updateWalletUI(mock);
+        showToast("Wallet simulé (aucun MetaMask détecté)", "success");
+        showScreen('screen-mode');
+    }
+}
+
+function updateWalletUI(address) {
+    const badge = document.getElementById('player-badge');
+    const addrSpan = document.getElementById('user-wallet-address');
+    if (badge) badge.classList.remove('hidden');
+    if (addrSpan) addrSpan.innerText = address.substring(0, 6) + '...' + address.substring(address.length - 4);
+}
+
+function selectGameMode(mode) {
+    selectedGameMode = mode;
+    if (mode === 'SPIRIT') {
+        showToast("SPIRIT → redirection portail BATTLEPOOL (simulée en démo)", "info");
+        return;
+    }
+    showScreen('screen-character');
+}
+
+/* --- PERSONNAGES (rendu injecté) --- */
+function renderCharacters() {
+    const grid = document.getElementById('character-grid');
+    grid.innerHTML = '';
+    CHARS.forEach(c => {
+        const card = document.createElement('div');
+        card.className = 'char-card';
+        card.innerHTML = `
+            <div class="char-avatar" style="background:${c.grad};display:flex;align-items:center;justify-content:center;color:#fff;font-family:var(--font-heading);font-size:1.6rem;font-weight:900;">${c.name[0]}</div>
+            <div class="char-name">${c.name}</div>`;
+        card.onclick = () => {
+            document.querySelectorAll('.char-card').forEach(x => x.classList.remove('selected'));
+            card.classList.add('selected');
+            selectedCharacterId = c.id;
+            const btn = document.getElementById('btn-confirm-char');
+            btn.disabled = false;
+            btn.classList.remove('disabled');
+        };
+        grid.appendChild(card);
+    });
+}
+
+function confirmCharacterSelection() {
+    if (!selectedCharacterId) return;
+    localStorage.setItem('bp_character', selectedCharacterId);
+    if (selectedGameMode === 'DUEL') showScreen('screen-main');
+    else if (selectedGameMode === 'BATTLE') showScreen('screen-br');
+    else showScreen('screen-main');
+}
+
+/* --- LOBBY DUEL --- */
+function renderPlayers() {
+    const list = document.getElementById('players-list');
+    list.innerHTML = '';
+    const filter = (document.getElementById('search-input').value || '').toLowerCase();
+    PLAYERS.filter(p => p.name.toLowerCase().includes(filter)).forEach(p => {
+        const item = document.createElement('div');
+        item.className = 'player-item';
+        item.innerHTML = `
+            <div>
+                <div style="font-family:var(--font-heading);font-size:0.85rem;font-weight:700;">${p.name}</div>
+                <div style="font-size:0.75rem;color:var(--text-muted);">${p.rank}</div>
+            </div>
+            <button class="btn-cyber btn-primary-gold" style="width:auto;padding:8px 16px;font-size:0.75rem;"
+                onclick="openBetModal('${p.name}')">DÉFIER</button>`;
+        list.appendChild(item);
+    });
+}
+function filterPlayers() { renderPlayers(); }
+
+function openBetModal(name) {
+    document.getElementById('bet-target-name').textContent = name;
+    document.getElementById('bet-stats').textContent = 'Mise minimale : 0.01 ETH · Rang vérifié';
+    document.getElementById('bet-modal').classList.remove('hidden');
+}
+function sendChallenge() {
+    closeBetModal();
+    showToast("Défi envoyé !", "success");
+    setTimeout(() => { document.getElementById('challenge-modal').classList.remove('hidden'); }, 800);
+}
+function closeBetModal() { document.getElementById('bet-modal').classList.add('hidden'); }
+function acceptChallenge() { document.getElementById('challenge-modal').classList.add('hidden'); showToast("Défi accepté — lancement de l'arène", "success"); setTimeout(() => showScreen('screen-combat'), 400); }
+function modifyChallenge() { document.getElementById('challenge-modal').classList.add('hidden'); showToast("Contre-proposition envoyée", "info"); }
+function declineChallenge() { document.getElementById('challenge-modal').classList.add('hidden'); showToast("Défi refusé", "error"); }
+
+/* --- LOBBY BATTLE --- */
+function renderRooms() {
+    const list = document.getElementById('br-list');
+    list.innerHTML = '';
+    ROOMS.forEach(r => {
+        const item = document.createElement('div');
+        item.className = 'br-item';
+        item.innerHTML = `
+            <div>
+                <div style="font-family:var(--font-heading);font-size:0.85rem;font-weight:700;">${r.name} <span style="color:var(--cyan-spark);font-size:0.7rem;">${r.mode}</span></div>
+                <div style="font-size:0.75rem;color:var(--text-muted);">${r.p}/${r.max} joueurs · ${r.p===r.max?'COMPLET':'EN ATTENTE'}</div>
+            </div>
+            <button class="btn-cyber ${r.p===r.max?'btn-danger':'btn-primary-gold'}" style="width:auto;padding:8px 16px;font-size:0.75rem;"
+                onclick="${r.p===r.max ? '' : 'showScreen(\'screen-pool-room\'); setPoolRoom(\'' + r.name + '\',' + r.p + ',' + r.max + ');'}">${r.p===r.max?'PLEIN':'REJOINDRE'}</button>`;
+        list.appendChild(item);
+    });
+}
+function setPoolRoom(name, p, max) {
+    document.getElementById('pool-room-title').textContent = name;
+    document.getElementById('pool-room-count').textContent = p + '/' + max;
+    const plist = document.getElementById('pool-players-list');
+    plist.innerHTML = '';
+    for (let i = 1; i <= p; i++) {
+        const row = document.createElement('div');
+        row.className = 'player-item';
+        row.innerHTML = `<div style="font-family:var(--font-heading);font-size:0.8rem;">Combatant #${i}</div><span class="status-badge">PRÊT</span>`;
+        plist.appendChild(row);
+    }
+}
+function joinPrivatePoolByCode() {
+    const code = document.getElementById('invite-code-input').value.trim();
+    if (!code) { showToast("Entrez un code d'invitation", "warn"); return; }
+    showToast("Rejoint via code " + code, "success");
+    showScreen('screen-pool-room'); setPoolRoom('SALON ' + code.toUpperCase(), 1, 4);
+}
+function quitPool() { showScreen('screen-br'); }
+function openCreatePoolModal() { document.getElementById('create-pool-modal').classList.remove('hidden'); }
+function closeCreatePoolModal() { document.getElementById('create-pool-modal').classList.add('hidden'); }
+function confirmCreatePool() {
+    closeCreatePoolModal();
+    showToast("Salon créé !", "success");
+    showScreen('screen-pool-room'); setPoolRoom('SALON #NEW', 1, 4);
+}
+function acceptPoolInvite() { document.getElementById('invite-modal').classList.add('hidden'); showScreen('screen-pool-room'); setPoolRoom('SALON #042', 6, 8); }
+
+/* --- QR / MISC --- */
+function openQRScanner() { document.getElementById('qr-modal').classList.remove('hidden'); }
+function closeQRScanner() { document.getElementById('qr-modal').classList.add('hidden'); }
+function claimPendingFunds() { showToast("Claim réussi : 0.010 ETH", "success"); document.getElementById('pending-funds-container').classList.add('hidden'); }
+
+/* --- MOTEUR DE NAVIGATION --- */
+function showScreen(screenId) {
+    const currentActive = document.querySelector('.screen.active');
+    if (currentActive && currentActive.id !== screenId) navigationHistory.push(currentActive.id);
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    const target = document.getElementById(screenId);
+    if (target) target.classList.add('active');
+    if (window.lucide) lucide.createIcons();
+    // Rendu des listes selon l'écran
+    if (screenId === 'screen-character') renderCharacters();
+    if (screenId === 'screen-main') renderPlayers();
+    if (screenId === 'screen-br') renderRooms();
+}
+
+function navGoBack() {
+    if (navigationHistory.length > 0) {
+        const prev = navigationHistory.pop();
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+        const target = document.getElementById(prev);
+        if (target) target.classList.add('active');
+    } else showScreen('screen-mode');
+}
+
+/* --- TOASTS --- */
+function showToast(msg, type) {
+    const zone = document.getElementById('toast-container');
+    const el = document.createElement('div');
+    el.className = 'toast';
+    if (type === 'success') el.style.borderLeftColor = 'var(--success-green)';
+    if (type === 'error') el.style.borderLeftColor = 'var(--error-red)';
+    if (type === 'warn') el.style.borderLeftColor = 'var(--gold-primary)';
+    el.textContent = msg;
+    zone.appendChild(el);
+    setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity 0.3s'; }, 2400);
+    setTimeout(() => el.remove(), 2800);
+}
+
+/* --- DÉMARRAGE --- */
+document.addEventListener('DOMContentLoaded', () => {
+    initAppFlow();
+    if (window.lucide) lucide.createIcons();
+});
+</script>
+</body>
+</html>

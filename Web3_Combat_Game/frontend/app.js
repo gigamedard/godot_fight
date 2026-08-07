@@ -297,6 +297,13 @@ window.showToast = function(message, type = 'info') {
     const container = document.getElementById('toast-container');
     if (!container) return;
     
+    // Échantillon sonore selon le type de notification
+    if (typeof window.AUDIO_FX !== 'undefined') {
+        if (type === 'success') window.AUDIO_FX.success();
+        else if (type === 'error') window.AUDIO_FX.error();
+        else window.AUDIO_FX.info();
+    }
+    
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
     
@@ -318,6 +325,54 @@ window.changeCharacter = function() {
     localStorage.removeItem('web3combat_char');
     window.location.reload();
 };
+
+// ============================================================
+// INTÉGRATION SON FRONTEND (AUDIO_FX chargé précédemment dans index.html)
+// - Musique d'ambiance du menu (drone procédural)
+// - Échantillon son sur chaque clic d'élément interactif
+// - Coupe la musique du menu pendant le combat Godot (il joue la sienne)
+// ============================================================
+(function integrateAudioFX() {
+    if (typeof window.AUDIO_FX === 'undefined') return;
+
+    const overlayEl = () => document.getElementById('ui-overlay');
+    const musicShouldPlay = () => !overlayEl() || !overlayEl().classList.contains('hidden');
+    let started = false;
+
+    // 1) Déblocage + démarrage musique de menu à la 1re interaction utilisateur
+    //    (indispensable à cause de la politique d'autoplay des navigateurs).
+    const unlockAndStart = () => {
+        if (started) return;
+        started = true;
+        window.AUDIO_FX.unlock();
+        if (musicShouldPlay()) window.AUDIO_FX.start();
+        window.removeEventListener('pointerdown', unlockAndStart);
+        window.removeEventListener('keydown', unlockAndStart);
+    };
+    window.addEventListener('pointerdown', unlockAndStart);
+    window.addEventListener('keydown', unlockAndStart);
+
+    // 2) Échantillon de clic sur tout élément interactif (capture pour
+    //    intercepter avant tout re-render lucide)
+    document.addEventListener('click', (e) => {
+        const t = e.target.closest('button, a, [role="button"], select, input[type="radio"]');
+        if (t) window.AUDIO_FX.click();
+    }, true);
+
+    // 3) Pendant le combat (ui-overlay → .hidden) on coupe la musique du menu,
+    //    car Godot joue sa propre ambiance (scripts/sfx.gd). On la reprend ensuite.
+    const overlay = document.getElementById('ui-overlay');
+    if (overlay && 'MutationObserver' in window) {
+        new MutationObserver(() => {
+            if (musicShouldPlay()) {
+                window.AUDIO_FX.unlock();
+                window.AUDIO_FX.start();
+            } else {
+                window.AUDIO_FX.stopMenu();
+            }
+        }).observe(overlay, { attributes: true, attributeFilter: ['class'] });
+    }
+})();
 
 async function initWeb3() {
     const abi = typeof CONTRACT_ABI !== 'undefined' ? CONTRACT_ABI : (typeof COMBAT_GAME_ABI !== 'undefined' ? COMBAT_GAME_ABI : null);

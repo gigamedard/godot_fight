@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NEO-STREET FIGHTER — Prototype UI</title>
+<!-- ============================================================
+     PROTOTYPE UI — NEO-STREET FIGHTER: URBAN ANIME POP-CYBER
+     Direction artistique fournie par IA vision (cahier des charges).
+     Prototype de comparaison — flow complet: Splash → Langue →
+     Connexion → Mode → Personnage → Menu du mode.
+     Autonome (aucune dépendance externe) — ouvrir directement.
+     ============================================================ -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@800;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   1. DESIGN TOKENS (cahier des charges)
+   ============================================================ */
+:root {
+    /* Fond / Deep Space */
+    --bg-deep:      #0F0C1B;   /* Night Violet */
+    --bg-cyber:     #181824;   /* Cyber Dark */
+    /* Brand */
+    --gold:         #FFC700;   /* Electric Gold */
+    --purple:       #7B2CBF;   /* Neon Purple */
+    /* Accents */
+    --cyan:         #00E5FF;   /* Cyan Spark */
+    --magenta:      #FF0055;   /* Vivid Magenta */
+    /* Surfaces */
+    --panel-dark:   #1F1B2E;   /* Panel Dark */
+    --panel-light:  #2A243D;   /* Panel Light */
+    /* Status */
+    --success:      #00E676;
+    --error:        #FF1744;
+    --warning:      #FF9100;
+
+    --text:         #FFFFFF;
+    --text-dim:     #B8B2CC;
+    --font-title:   'Orbitron', sans-serif;
+    --font-body:    'Rajdhani', sans-serif;
+    --radius-cut:   10px;      /* coins biseautés fallback */
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+    height: 100%;
+    overflow: hidden;
+    font-family: var(--font-body);
+    background: var(--bg-deep);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+}
+
+/* ============================================================
+   2. FOND D'ÉCRAN + OVERLAY + PARTICULES
+   ============================================================ */
+.bg-layer {
+    position: fixed; inset: 0; z-index: 0;
+    background: radial-gradient(1200px 800px at 50% -10%, #2A243D 0%, var(--bg-deep) 55%, #0A0814 100%);
+}
+.bg-img {
+    position: absolute; inset: -20px; z-index: 0;
+    background-image: url('rock-paper-scissors-ref/public/dbs_tournament_arena_bg_1777998706410.png');
+    background-size: cover; background-position: center 70%;
+    filter: blur(8px) saturate(120%);
+    opacity: 0.55;
+}
+/* Masque sombre WCAG AAA (cahier des charges) */
+.bg-overlay {
+    position: absolute; inset: 0; z-index: 1;
+    background: linear-gradient(180deg, rgba(15,12,27,0.75) 0%, rgba(24,24,36,0.92) 100%);
+}
+/* Vignette sombre 4 bords (cahier des charges) */
+.bg-vignette {
+    position: absolute; inset: 0; z-index: 1;
+    box-shadow: inset 0 0 200px 60px rgba(6,5,12,0.85);
+}
+/* Texture speedlines rayonnantes (opacité 4%) */
+.bg-speedlines {
+    position: absolute; inset: 0; z-index: 2; pointer-events: none; opacity: 0.045;
+    background:
+        repeating-linear-gradient(115deg, transparent 0 40px, #FFFFFF 40px 41px, transparent 41px 80px),
+        repeating-linear-gradient(65deg, transparent 0 60px, #C0C0C0 60px 61px, transparent 61px 120px);
+}
+#particles { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
+/* Grain de bruit retro-arcade */
+.bg-noise {
+    position: absolute; inset: 0; z-index: 4; pointer-events: none; opacity: 0.05;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+}
+
+/* ============================================================
+   3. COMPOSANTS DE BASE
+   ============================================================ */
+/* Bouton principal — parallélogramme incliné, gradient or */
+.btn-fight {
+    position: relative;
+    font-family: var(--font-title);
+    font-weight: 900;
+    font-size: 1.05rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #000000;
+    background: linear-gradient(135deg, var(--gold) 0%, var(--warning) 100%);
+    border: 2px solid #FFFFFF;
+    padding: 14px 42px;
+    clip-path: polygon(6% 0, 100% 0, 94% 100%, 0 100%);
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+    box-shadow: 0 0 12px rgba(255,199,0,0.35);
+}
+.btn-fight:hover {
+    transform: scale(1.05);
+    filter: brightness(1.08);
+    box-shadow: 0 0 24px var(--gold);
+}
+.btn-fight:active { transform: scale(0.98); }
+.btn-fight.ghost {
+    background: transparent;
+    color: var(--cyan);
+    border-color: var(--cyan);
+    box-shadow: 0 0 12px rgba(0,229,255,0.25);
+}
+.btn-fight.ghost:hover { background: rgba(0,229,255,0.12); box-shadow: 0 0 20px rgba(0,229,255,0.5); }
+.btn-fight:disabled {
+    opacity: 0.4; cursor: not-allowed; filter: grayscale(0.6);
+    transform: none; box-shadow: none;
+}
+
+/* Carte / Panneau */
+.panel {
+    background: linear-gradient(160deg, var(--panel-dark) 0%, #181826 100%);
+    border: 1px solid var(--panel-light);
+    border-radius: var(--radius-cut);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+}
+
+/* Badge — capsule angulaire */
+.badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: var(--font-body); font-weight: 700;
+    font-size: 0.72rem; letter-spacing: 1.5px; text-transform: uppercase;
+    color: #fff;
+    background: var(--purple);
+    padding: 3px 12px;
+    clip-path: polygon(8% 0, 100% 0, 92% 100%, 0 100%);
+}
+.badge.hot { background: var(--magenta); }
+.badge.gold { background: linear-gradient(135deg, var(--gold), var(--warning)); color: #000; }
+
+/* Titre de section — bandeau incliné + speedlines */
+.sec-title {
+    font-family: var(--font-title); font-weight: 900;
+    font-size: 1.4rem; letter-spacing: 2px; text-transform: uppercase;
+    transform: skewX(-8deg);
+    position: relative; display: inline-block; padding: 6px 22px;
+    background:
+        repeating-linear-gradient(115deg, transparent 0 14px, rgba(255,255,255,0.08) 14px 15px, transparent 15px 28px),
+        linear-gradient(90deg, rgba(123,44,191,0.35), transparent 70%);
+    border-left: 3px solid var(--gold);
+    margin-bottom: 18px;
+}
+.sec-title .sub { display: block; font-family: var(--font-body); font-weight: 500; font-size: 0.75rem; letter-spacing: 3px; color: var(--text-dim); transform: skewX(8deg); }
+
+/* ============================================================
+   4. STRUCTURE ÉCRANS
+   ============================================================ */
+.app {
+    position: relative; z-index: 5;
+    height: 100vh; width: 100%;
+    display: flex; align-items: center; justify-content: center;
+    padding: 16px;
+}
+.phone-frame {
+    position: relative;
+    width: 100%; max-width: 460px; height: min(92vh, 860px);
+    background: rgba(15,12,27,0.55);
+    border: 1px solid rgba(123,44,191,0.45);
+    border-radius: 18px;
+    backdrop-filter: blur(16px);
+    box-shadow: 0 0 60px rgba(123,44,191,0.25), 0 30px 80px rgba(0,0,0,0.6);
+    overflow: hidden;
+    display: flex; flex-direction: column;
+}
+.phone-frame::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px;
+    background: linear-gradient(90deg, var(--gold), var(--magenta), var(--cyan));
+    z-index: 30;
+}
+
+.screen {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    padding: 22px;
+    opacity: 0; pointer-events: none;
+    transform: translateY(24px) scale(0.985);
+    transition: opacity 0.28s ease, transform 0.28s ease;
+    overflow-y: auto;
+}
+.screen.active { opacity: 1; pointer-events: auto; transform: translateY(0) scale(1); }
+.screen::-webkit-scrollbar { width: 4px; }
+.screen::-webkit-scrollbar-thumb { background: var(--purple); border-radius: 4px; }
+
+/* ============================================================
+   5. ÉCRAN 0 — SPLASH
+   ============================================================ */
+#screen-splash { justify-content: center; align-items: center; z-index: 40; background: radial-gradient(800px 500px at 50% 30%, #1F1B2E, #0F0C1B 70%); }
+.splash-logo { text-align: center; }
+.splash-logo .logo-main {
+    font-family: var(--font-title); font-weight: 900;
+    font-size: 2.6rem; letter-spacing: 4px; line-height: 1.1;
+    background: linear-gradient(135deg, var(--gold), #fff8d0, var(--gold));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 0 18px rgba(255,199,0,0.5));
+    animation: logoPulse 1.6s ease-in-out infinite;
+}
+.splash-logo .logo-sub {
+    font-family: var(--font-body); font-weight: 600; letter-spacing: 8px;
+    color: var(--cyan); margin-top: 6px; font-size: 0.85rem;
+    text-shadow: 0 0 12px rgba(0,229,255,0.7);
+    animation: logoPulse 1.6s ease-in-out 0.3s infinite;
+}
+@keyframes logoPulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.85; transform: scale(1.02); } }
+.splash-slash {
+    margin-top: 30px; width: 220px; height: 4px; position: relative;
+    background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+    box-shadow: 0 0 18px var(--cyan);
+    animation: slash 1.1s ease-in-out infinite;
+    clip-path: polygon(0 40%, 100% 0, 100% 60%, 0 100%);
+}
+@keyframes slash {
+    0% { transform: scaleX(0.1) rotate(-8deg); opacity: 0; }
+    40% { transform: scaleX(1) rotate(-8deg); opacity: 1; }
+    100% { transform: scaleX(0.1) rotate(-8deg); opacity: 0; }
+}
+.splash-loading { margin-top: 34px; width: 200px; }
+.splash-loading .pbar-fill { width: 0%; }
+
+/* ============================================================
+   6. ÉCRAN 1 — LANGUE
+   ============================================================ */
+.lang-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px; }
+.lang-card {
+    display: flex; align-items: center; gap: 12px;
+    padding: 16px; cursor: pointer;
+    font-family: var(--font-title); font-weight: 800; letter-spacing: 2px;
+    background: var(--panel-dark); border: 1px solid var(--panel-light);
+    border-radius: var(--radius-cut);
+    transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+.lang-card:hover { border-color: var(--cyan); box-shadow: 0 0 14px rgba(0,229,255,0.3); transform: translateY(-2px); }
+.lang-card.selected { border-color: var(--gold); box-shadow: 0 0 16px rgba(255,199,0,0.35); }
+.lang-flag {
+    width: 38px; height: 26px; border-radius: 3px; border: 1px solid rgba(255,255,255,0.25);
+    background-size: cover; background-position: center; flex-shrink: 0;
+}
+.f-fr { background: linear-gradient(90deg,#0055A4 33%,#fff 33% 66%,#EF4135 66%); }
+.f-en { background: linear-gradient(180deg,#012169 50%,#C8102E 50%); }
+.f-es { background: linear-gradient(180deg,#AA151B 50%,#F1BF00 50%); }
+.f-pt { background: linear-gradient(90deg,#046A38 40%,#F1BF00 40% 60%,#046A38 60%); }
+.f-de { background: repeating-linear-gradient(180deg,#000 0 33%,#DD0000 33% 66%,#FFCE00 66%); }
+.f-it { background: linear-gradient(90deg,#009246 33%,#fff 33% 66%,#CE2B37 66%); }
+
+/* ============================================================
+   7. ÉCRAN 2 — CONNEXION
+   ============================================================ */
+.wallet-hero { text-align: center; margin: 10px 0 24px; }
+.wallet-hero .big-icon {
+    width: 84px; height: 84px; margin: 0 auto 14px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #2A243D, #12101E);
+    border: 2px solid var(--purple);
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 30px rgba(123,44,191,0.6);
+}
+.wallet-hero .big-icon svg { width: 40px; height: 40px; stroke: var(--cyan); }
+.conn-status {
+    margin-top: 20px; padding: 14px;
+    text-align: center; font-size: 0.95rem;
+    border-radius: var(--radius-cut);
+    background: rgba(0,230,118,0.08); border: 1px solid rgba(0,230,118,0.35);
+    color: var(--success);
+}
+.conn-status.off { background: rgba(255,145,0,0.08); border-color: rgba(255,145,0,0.35); color: var(--warning); }
+.conn-addr {
+    font-family: var(--font-body); font-weight: 600; font-size: 0.8rem;
+    color: var(--text-dim); word-break: break-all; margin-top: 4px;
+}
+
+/* ============================================================
+   8. ÉCRAN 3 — CHOIX DU MODE
+   ============================================================ */
+.mode-card {
+    position: relative; display: flex; align-items: center; gap: 16px;
+    width: 100%; text-align: left;
+    padding: 20px 22px; margin-bottom: 16px; cursor: pointer;
+    background: linear-gradient(150deg, var(--panel-dark), #191526);
+    border: 1px solid var(--panel-light);
+    border-radius: var(--radius-cut);
+    clip-path: polygon(0 0, 100% 0, 97% 100%, 2% 100%);
+    transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+    overflow: hidden;
+}
+.mode-card::after {
+    content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: 4px;
+    background: var(--mode-color, var(--cyan));
+    box-shadow: 0 0 12px var(--mode-color, var(--cyan));
+}
+.mode-card:hover { transform: translateX(6px) scale(1.01); box-shadow: 0 0 20px rgba(123,44,191,0.3); }
+.mode-card .m-icon {
+    width: 54px; height: 54px; flex-shrink: 0;
+    background: rgba(0,229,255,0.08);
+    border: 1px solid var(--mode-color, var(--cyan));
+    border-radius: 8px; display: flex; align-items: center; justify-content: center;
+}
+.mode-card .m-icon svg { width: 26px; height: 26px; stroke: var(--mode-color, var(--cyan)); }
+.mode-card .m-title { font-family: var(--font-title); font-weight: 900; font-size: 1.15rem; letter-spacing: 2px; }
+.mode-card .m-desc { font-size: 0.88rem; color: var(--text-dim); font-weight: 600; }
+.mode-card .m-tag { margin-left: auto; }
+
+/* ============================================================
+   9. ÉCRAN 4 — CHOIX DU PERSONNAGE
+   ============================================================ */
+.char-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.char-card {
+    padding: 16px; cursor: pointer; text-align: center;
+    background: var(--panel-dark); border: 1px solid var(--panel-light);
+    border-radius: var(--radius-cut);
+    transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+    position: relative;
+}
+.char-card:hover { transform: translateY(-3px); }
+.char-card.selected {
+    border-color: var(--cyan);
+    box-shadow: 0 0 18px rgba(0,229,255,0.4), inset 0 0 20px rgba(0,229,255,0.08);
+}
+.char-avatar {
+    width: 72px; height: 72px; margin: 0 auto 10px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, var(--c-light, #2A243D), var(--c-dark, #12101E));
+    border: 2px solid var(--c-main, var(--purple));
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 16px rgba(0,0,0,0.5);
+}
+.char-avatar svg { width: 32px; height: 32px; stroke: var(--c-main, var(--cyan)); }
+.char-card .ch-name { font-family: var(--font-title); font-weight: 800; font-size: 0.85rem; letter-spacing: 1px; }
+.char-card .ch-style { font-size: 0.72rem; color: var(--text-dim); font-weight: 600; letter-spacing: 1px; text-transform: uppercase; margin-top: 2px; }
+.char-card .ch-rarity { position: absolute; top: 8px; right: 8px; }
+
+/* ============================================================
+   10. LOBBY DUEL / BATTLE
+   ============================================================ */
+.topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.back-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: var(--font-body); font-weight: 700; font-size: 0.85rem; letter-spacing: 1px;
+    color: var(--text-dim); cursor: pointer; padding: 8px 12px;
+    background: rgba(0,0,0,0.35); border: 1px solid var(--panel-light); border-radius: 8px;
+    transition: color 0.15s, border-color 0.15s;
+}
+.back-btn:hover { color: var(--cyan); border-color: var(--cyan); }
+.back-btn svg { width: 18px; height: 18px; }
+
+.search-row { display: flex; gap: 10px; margin-bottom: 14px; }
+.search-wrap {
+    flex: 1; display: flex; align-items: center; gap: 8px;
+    background: var(--bg-cyber); border: 1px solid var(--panel-light);
+    border-radius: 8px; padding: 10px 14px;
+}
+.search-wrap svg { width: 18px; height: 18px; stroke: var(--text-dim); }
+.search-wrap input { flex: 1; background: transparent; border: none; outline: none; color: var(--text); font-family: var(--font-body); font-weight: 600; font-size: 0.95rem; }
+.search-wrap input::placeholder { color: var(--text-dim); }
+.qr-btn {
+    width: 46px; height: 46px; flex-shrink: 0;
+    background: var(--purple); border: 1px solid var(--panel-light); border-radius: 8px;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+    transition: box-shadow 0.15s;
+}
+.qr-btn:hover { box-shadow: 0 0 16px rgba(123,44,191,0.6); }
+.qr-btn svg { width: 20px; height: 20px; stroke: #fff; }
+
+.player-list { display: flex; flex-direction: column; gap: 10px; }
+.player-card {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 14px; background: var(--panel-dark);
+    border: 1px solid var(--panel-light); border-radius: 10px;
+}
+.player-card .p-avatar {
+    width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0;
+    background: radial-gradient(circle at 35% 30%, var(--panel-light), #12101E);
+    border: 1.5px solid var(--purple);
+    display: flex; align-items: center; justify-content: center;
+}
+.player-card .p-avatar svg { width: 20px; height: 20px; stroke: var(--cyan); }
+.player-card .p-info { flex: 1; min-width: 0; }
+.player-card .p-name { font-family: var(--font-title); font-weight: 700; font-size: 0.85rem; letter-spacing: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.player-card .p-meta { font-size: 0.75rem; color: var(--text-dim); font-weight: 600; }
+.player-card .p-action { margin-left: auto; }
+.challenge-btn {
+    font-family: var(--font-title); font-weight: 800; font-size: 0.72rem; letter-spacing: 1px;
+    color: #000; background: linear-gradient(135deg, var(--gold), var(--warning));
+    border: 1.5px solid #fff; padding: 7px 16px; cursor: pointer;
+    clip-path: polygon(10% 0, 100% 0, 90% 100%, 0 100%);
+    transition: transform 0.12s, box-shadow 0.12s;
+}
+.challenge-btn:hover { transform: scale(1.06); box-shadow: 0 0 12px var(--gold); }
+.challenge-btn.busy { background: var(--panel-light); color: var(--text-dim); border-color: var(--panel-light); box-shadow: none; cursor: not-allowed; }
+
+.br-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 12px; }
+.room-card {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 14px; background: var(--panel-dark);
+    border: 1px solid var(--panel-light); border-radius: 10px; margin-bottom: 10px;
+}
+.room-card .r-info { flex: 1; }
+.room-card .r-name { font-family: var(--font-title); font-weight: 700; font-size: 0.85rem; letter-spacing: 1px; }
+.room-card .r-meta { font-size: 0.75rem; color: var(--text-dim); font-weight: 600; }
+.pbar { height: 8px; background: var(--bg-cyber); border-radius: 4px; margin-top: 6px; overflow: hidden; box-shadow: inset 0 2px 4px rgba(0,0,0,0.6); }
+.pbar-fill {
+    height: 100%; border-radius: 4px;
+    background: repeating-linear-gradient(135deg, var(--cyan) 0 10px, rgba(0,229,255,0.6) 10px 14px);
+    box-shadow: 0 0 10px rgba(0,229,255,0.5);
+    transition: width 0.4s ease;
+}
+.pbar-fill.gold { background: repeating-linear-gradient(135deg, var(--gold) 0 10px, rgba(255,199,0,0.6) 10px 14px); box-shadow: 0 0 10px rgba(255,199,0,0.5); }
+
+/* ============================================================
+   11. MODALES
+   ============================================================ */
+.modal-overlay {
+    position: absolute; inset: 0; z-index: 60;
+    background: rgba(10,8,18,0.72);
+    backdrop-filter: blur(16px);
+    display: none; align-items: center; justify-content: center; padding: 24px;
+}
+.modal-overlay.open { display: flex; }
+.modal-card {
+    width: 100%; max-width: 400px;
+    background: var(--bg-deep);
+    border: 1px solid var(--panel-light);
+    border-radius: 12px;
+    border-top: 4px solid var(--gold);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.7), 0 0 30px rgba(123,44,191,0.2);
+    padding: 26px;
+    animation: modalIn 0.25s ease;
+}
+@keyframes modalIn { from { opacity: 0; transform: translateY(16px) scale(0.96); } to { opacity: 1; transform: none; } }
+.modal-card h3 { font-family: var(--font-title); font-weight: 900; font-size: 1.1rem; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 6px; }
+.modal-card .m-sub { color: var(--text-dim); font-size: 0.85rem; font-weight: 600; margin-bottom: 16px; }
+.form-input {
+    width: 100%; padding: 12px 14px; margin-bottom: 12px;
+    background: var(--bg-cyber); border: 1px solid var(--panel-light); border-radius: 8px;
+    color: var(--text); font-family: var(--font-body); font-weight: 600; font-size: 1rem; outline: none;
+    transition: border-color 0.15s;
+}
+.form-input:focus { border-color: var(--cyan); box-shadow: 0 0 10px rgba(0,229,255,0.2); }
+.btn-row { display: flex; gap: 10px; margin-top: 14px; }
+.btn-row .btn-fight { flex: 1; padding: 12px 10px; font-size: 0.9rem; }
+.btn-cancel {
+    font-family: var(--font-body); font-weight: 700; letter-spacing: 1px;
+    background: transparent; border: 1px solid var(--panel-light); color: var(--text-dim);
+    padding: 12px; border-radius: 8px; cursor: pointer; flex: 1;
+    transition: color 0.15s, border-color 0.15s;
+}
+.btn-cancel:hover { color: var(--magenta); border-color: var(--magenta); }
+.bet-presets { display: flex; gap: 8px; margin-bottom: 14px; }
+.bet-presets button {
+    flex: 1; padding: 8px; font-family: var(--font-title); font-weight: 800; font-size: 0.8rem;
+    background: var(--bg-cyber); color: var(--cyan); border: 1px solid var(--panel-light); border-radius: 6px; cursor: pointer;
+}
+.bet-presets button:hover { border-color: var(--cyan); box-shadow: 0 0 10px rgba(0,229,255,0.25); }
+
+/* ============================================================
+   12. TOASTS
+   ============================================================ */
+#toast-zone {
+    position: fixed; top: 24px; right: 24px; z-index: 100;
+    display: flex; flex-direction: column; gap: 10px; pointer-events: none;
+}
+.toast {
+    min-width: 240px; padding: 12px 16px;
+    background: var(--bg-deep); border: 1px solid var(--panel-light);
+    border-left: 4px solid var(--cyan);
+    font-family: var(--font-body); font-weight: 600; font-size: 0.9rem;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    animation: toastIn 0.3s ease;
+}
+.toast.success { border-left-color: var(--success); }
+.toast.error { border-left-color: var(--error); }
+.toast.warn { border-left-color: var(--warning); }
+@keyframes toastIn { from { opacity: 0; transform: translateX(30px); } to { opacity: 1; transform: none; } }
+
+/* ============================================================
+   13. ÉCRAN COMBAT (placeholder Godot)
+   ============================================================ */
+#screen-combat { justify-content: center; align-items: center; text-align: center; background: var(--bg-cyber); }
+.combat-vs { display: flex; align-items: center; gap: 30px; margin: 30px 0; }
+.combat-vs .vs-fighter {
+    width: 90px; height: 90px; border-radius: 50%;
+    border: 2px solid var(--gold); background: radial-gradient(circle at 35% 30%, #2A243D, #0F0C1B);
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 30px rgba(255,199,0,0.4);
+}
+.combat-vs .vs-fighter svg { width: 40px; height: 40px; stroke: var(--gold); }
+.combat-vs .vs-middle { font-family: var(--font-title); font-weight: 900; font-size: 2rem; color: var(--magenta); text-shadow: 0 0 20px rgba(255,0,85,0.8); }
+
+/* Scrollbar globale */
+body::-webkit-scrollbar { width: 0; }
+</style>
+</head>
+<body>
+
+<!-- ===================== FOND ===================== -->
+<div class="bg-layer">
+    <div class="bg-img"></div>
+    <div class="bg-vignette"></div>
+    <div class="bg-overlay"></div>
+    <div class="bg-speedlines"></div>
+    <canvas id="particles"></canvas>
+    <div class="bg-noise"></div>
+</div>
+
+<!-- ===================== TOASTS ===================== -->
+<div id="toast-zone"></div>
+
+<!-- ===================== APP ===================== -->
+<div class="app">
+<div class="phone-frame">
+
+    <!-- ÉCRAN 0 — SPLASH -->
+    <div class="screen" id="screen-splash">
+        <div class="splash-logo">
+            <div class="logo-main">NEO<br>STREET</div>
+            <div class="logo-sub">FIGHTER // ARENA</div>
+            <div class="splash-slash"></div>
+            <div class="splash-loading">
+                <div class="pbar"><div class="pbar-fill gold" id="splash-bar"></div></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ÉCRAN 1 — LANGUE -->
+    <div class="screen" id="screen-lang">
+        <div class="sec-title">Choose Language<span class="sub">SELECT YOUR LANGUAGE</span></div>
+        <div class="lang-grid" id="lang-grid">
+            <div class="lang-card" data-lang="fr"><div class="lang-flag f-fr"></div><span>FRANÇAIS</span></div>
+            <div class="lang-card" data-lang="en"><div class="lang-flag f-en"></div><span>ENGLISH</span></div>
+            <div class="lang-card" data-lang="es"><div class="lang-flag f-es"></div><span>ESPAÑOL</span></div>
+            <div class="lang-card" data-lang="pt"><div class="lang-flag f-pt"></div><span>PORTUGUÊS</span></div>
+            <div class="lang-card" data-lang="de"><div class="lang-flag f-de"></div><span>DEUTSCH</span></div>
+            <div class="lang-card" data-lang="it"><div class="lang-flag f-it"></div><span>ITALIANO</span></div>
+        </div>
+    </div>
+
+    <!-- ÉCRAN 2 — CONNEXION -->
+    <div class="screen" id="screen-connect">
+        <div class="sec-title">Connexion<span class="sub">WALLET CONNECT</span></div>
+        <div class="wallet-hero">
+            <div class="big-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>
+            </div>
+            <h2 style="font-family:var(--font-title);font-weight:900;letter-spacing:2px;">READY TO FIGHT?</h2>
+            <p style="color:var(--text-dim);font-weight:600;margin-top:6px;">Connecte ton wallet pour entrer dans l'arène</p>
+        </div>
+        <div style="text-align:center;">
+            <button class="btn-fight" id="btn-connect" style="width:100%;">🦊 Connect Wallet</button>
+        </div>
+        <div class="conn-status off" id="conn-status" style="display:none;">
+            <div>Wallet connecté</div>
+            <div class="conn-addr" id="conn-addr"></div>
+        </div>
+    </div>
+
+    <!-- ÉCRAN 3 — CHOIX DU MODE -->
+    <div class="screen" id="screen-mode">
+        <div class="sec-title">Choix du Mode<span class="sub">SELECT GAME MODE</span></div>
+        <div class="mode-card" data-mode="duel" style="--mode-color:var(--cyan);">
+            <div class="m-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5"/><line x1="13" y1="19" x2="19" y2="13"/><line x1="16" y1="16" x2="20" y2="20"/><line x1="19" y1="21" x2="21" y2="19"/></svg></div>
+            <div>
+                <div class="m-title">DUEL</div>
+                <div class="m-desc">1 vs 1 en direct — défie n'importe qui</div>
+            </div>
+            <span class="badge hot m-tag">1v1</span>
+        </div>
+        <div class="mode-card" data-mode="battle" style="--mode-color:var(--gold);">
+            <div class="m-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg></div>
+            <div>
+                <div class="m-title">BATTLE</div>
+                <div class="m-desc">Tournois à élimination — salons publics & privés</div>
+            </div>
+            <span class="badge gold m-tag">ROYALE</span>
+        </div>
+        <div class="mode-card" data-mode="spirit" style="--mode-color:var(--magenta);">
+            <div class="m-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
+            <div>
+                <div class="m-title">SPIRIT FIGHT</div>
+                <div class="m-desc">L'univers BATTLEPOOL — marché, récompenses</div>
+            </div>
+            <span class="badge m-tag" style="background:var(--purple);">WEB3</span>
+        </div>
+    </div>
+
+    <!-- ÉCRAN 4 — CHOIX DU PERSONNAGE -->
+    <div class="screen" id="screen-char">
+        <div class="sec-title" id="char-title">Choisis ton Combattant<span class="sub">SELECT YOUR FIGHTER</span></div>
+        <div class="char-grid" id="char-grid"></div>
+        <div style="margin-top:22px; text-align:center;">
+            <button class="btn-fight" id="btn-confirm-char" disabled style="width:100%;">FIGHT !</button>
+        </div>
+    </div>
+
+    <!-- ÉCRAN 5A — LOBBY DUEL -->
+    <div class="screen" id="screen-duel">
+        <div class="topbar">
+            <div class="back-btn" onclick="go('screen-mode')"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>Retour</div>
+            <span class="badge" style="background:var(--cyan);color:#000;">DUEL</span>
+        </div>
+        <div class="sec-title">Trouver un Adversaire<span class="sub">ONLINE PLAYERS</span></div>
+        <div class="search-row">
+            <div class="search-wrap">
+                <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input type="text" id="search-input" placeholder="Pseudo ou adresse wallet..." oninput="filterPlayers(this.value)">
+            </div>
+            <button class="qr-btn" onclick="toast('Scanner QR', 'warn')"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg></button>
+        </div>
+        <div class="player-list" id="players-list"></div>
+    </div>
+
+    <!-- ÉCRAN 5B — LOBBY BATTLE -->
+    <div class="screen" id="screen-battle">
+        <div class="topbar">
+            <div class="back-btn" onclick="go('screen-mode')"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>Retour</div>
+            <button class="btn-fight ghost" style="padding:8px 18px;font-size:0.75rem;" onclick="openModal('create-pool-modal')">+ Créer Privée</button>
+        </div>
+        <div class="sec-title">Salons Battle Royale<span class="sub">OPEN ARENAS</span></div>
+        <div class="search-row">
+            <div class="search-wrap">
+                <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+                <input type="text" placeholder="Code d'invitation..." id="invite-code-input">
+            </div>
+            <button class="qr-btn" onclick="toast('Rejoindre par code', 'info')"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></button>
+        </div>
+        <div class="br-list" id="br-list"></div>
+    </div>
+
+    <!-- ÉCRAN 5C — SPIRIT FIGHT (placeholder BATTLEPOOL) -->
+    <div class="screen" id="screen-spirit">
+        <div class="topbar">
+            <div class="back-btn" onclick="go('screen-mode')"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>Retour</div>
+            <span class="badge" style="background:var(--purple);">SPIRIT</span>
+        </div>
+        <div class="sec-title">Battle Pool<span class="sub">SPIRIT FIGHT — APP 1</span></div>
+        <div class="panel" style="padding:30px;text-align:center;">
+            <div style="font-family:var(--font-title);font-weight:900;font-size:1.3rem;letter-spacing:2px;color:var(--gold);">BATTLE<span style="color:var(--cyan);">POOL</span></div>
+            <p style="color:var(--text-dim);font-weight:600;margin:12px 0 20px;font-size:0.9rem;">Ce mode ouvre l'univers complet : arène, marketplace, références et récompenses influencer.</p>
+            <button class="btn-fight" style="width:100%;" onclick="toast('Ouverture de BATTLEPOOL (App 1)...', 'success')">Lancer BATTLEPOOL</button>
+        </div>
+    </div>
+
+    <!-- ÉCRAN 6 — COMBAT (placeholder Godot) -->
+    <div class="screen" id="screen-combat">
+        <div class="sec-title" style="margin-bottom:0;">Chargement de l'Arène<span class="sub">3D ENGINE</span></div>
+        <div class="combat-vs">
+            <div class="vs-fighter"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+            <div class="vs-middle">VS</div>
+            <div class="vs-fighter"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+        </div>
+        <p style="color:var(--text-dim);font-weight:600;">Initialisation du moteur 3D...</p>
+        <div class="splash-loading">
+            <div class="pbar"><div class="pbar-fill" id="combat-bar"></div></div>
+        </div>
+    </div>
+
+    <!-- MODALE : CRÉER UNE POULE -->
+    <div class="modal-overlay" id="create-pool-modal">
+        <div class="modal-card">
+            <h3>Créer une Poule</h3>
+            <div class="m-sub">Configure ton tournoi privé</div>
+            <label style="color:var(--text-dim);font-size:0.8rem;font-weight:700;display:block;margin-bottom:4px;">MISE D'ENTRÉE (TKN)</label>
+            <input type="number" class="form-input" value="10" min="0" step="1">
+            <label style="color:var(--text-dim);font-size:0.8rem;font-weight:700;display:block;margin-bottom:4px;">JOUEURS MAX</label>
+            <input type="number" class="form-input" value="8" min="2" max="64">
+            <label style="color:var(--text-dim);font-size:0.8rem;font-weight:700;display:block;margin-bottom:4px;">RÈGLE D'ÉLIMINATION</label>
+            <select class="form-input"><option>Mort Subite (1 défaite = élimination)</option></select>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
+                <input type="checkbox" id="pool-private" style="width:18px;height:18px;accent-color:var(--cyan);">
+                <label for="pool-private" style="font-weight:600;font-size:0.9rem;">Poule privée (lien d'invitation requis)</label>
+            </div>
+            <div class="btn-row">
+                <button class="btn-fight" onclick="toast('Poule créée !', 'success'); closeModal('create-pool-modal'); go('screen-combat');">Créer & Rejoindre</button>
+                <button class="btn-cancel" onclick="closeModal('create-pool-modal')">Annuler</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODALE : PARI / DÉFI -->
+    <div class="modal-overlay" id="bet-modal">
+        <div class="modal-card">
+            <h3>Montant du Défi</h3>
+            <div class="m-sub">Adversaire : <strong id="bet-target" style="color:var(--gold);">—</strong></div>
+            <div class="bet-presets">
+                <button onclick="setBet(10)">10</button>
+                <button onclick="setBet(50)">50</button>
+                <button onclick="setBet(100)">100</button>
+                <button onclick="setBet(500)">MAX</button>
+            </div>
+            <input type="number" class="form-input" id="bet-amount" value="10" min="0" step="1">
+            <div class="btn-row">
+                <button class="btn-fight" onclick="toast('Défi envoyé !', 'success'); closeModal('bet-modal');">Valider & Défier</button>
+                <button class="btn-cancel" onclick="closeModal('bet-modal')">Annuler</button>
+            </div>
+        </div>
+    </div>
+
+</div><!-- /phone-frame -->
+</div><!-- /app -->
+
+<script>
+/* ============================================================
+   DONNÉES MOCK (prototype)
+   ============================================================ */
+const CHARACTERS = [
+    { id: 1, name: 'GUERRIER NINJA', style: 'Assassin Rapide',   cMain: '#00E5FF', cDark: '#06313a', cLight: '#0e5c6b' },
+    { id: 2, name: 'MUTANT CYBORG',  style: 'Tank Techno',       cMain: '#7B2CBF', cDark: '#230e3a', cLight: '#4a1c78' },
+    { id: 3, name: 'TOM FRAZER',     style: 'Striker Agile',     cMain: '#FFC700', cDark: '#3a2e06', cLight: '#6b540e' },
+    { id: 4, name: 'BIG CHOCO',      style: 'Brute Power',       cMain: '#FF0055', cDark: '#3a0615', cLight: '#6b0e26' }
+];
+
+const PLAYERS = [
+    { name: 'ShadowBlade_99',  rank: 'S',  tier: 'Diamond I',  busy: false },
+    { name: 'CyberMecha',      rank: 'A',  tier: 'Platinum II', busy: false },
+    { name: 'VioletFury',      rank: 'S',  tier: 'Diamond III', busy: false },
+    { name: 'KageRyu',         rank: 'B',  tier: 'Gold I',      busy: true  },
+    { name: 'LunarSword',      rank: 'A',  tier: 'Platinum I',  busy: false },
+];
+
+const ROOMS = [
+    { name: 'ARENA #042', mode: 'Public',  players: 6, max: 8, fee: 10,  status: 'EN ATTENTE' },
+    { name: 'ARENA #137', mode: 'Public',  players: 4, max: 8, fee: 50,  status: 'EN ATTENTE' },
+    { name: 'ARENA #200', mode: 'Privée',  players: 7, max: 8, fee: 100, status: 'PRESQUE PLEIN' },
+    { name: 'ARENA #318', mode: 'Public',  players: 2, max: 8, fee: 10,  status: 'OUVERT' },
+];
+
+/* ============================================================
+   NAVIGATION
+   ============================================================ */
+const SCREENS = ['screen-splash','screen-lang','screen-connect','screen-mode','screen-char','screen-duel','screen-battle','screen-spirit','screen-combat'];
+
+function go(id) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    const el = document.getElementById(id);
+    if (el) el.classList.add('active');
+    else if (id === 'screen-mode') document.getElementById('screen-mode').classList.add('active');
+}
+
+/* ============================================================
+   SPLASH → LANGUE (auto après 2.4s avec barre de progression)
+   ============================================================ */
+function runSplash() {
+    const bar = document.getElementById('splash-bar');
+    let p = 0;
+    const t = setInterval(() => {
+        p += 6;
+        bar.style.width = p + '%';
+        if (p >= 100) { clearInterval(t); setTimeout(() => go('screen-lang'), 250); }
+    }, 120);
+}
+go('screen-splash');
+runSplash();
+
+/* ============================================================
+   LANGUE
+   ============================================================ */
+document.querySelectorAll('.lang-card').forEach(card => {
+    card.addEventListener('click', () => {
+        document.querySelectorAll('.lang-card').forEach(c => c.classList.remove('selected'));
+        card.classList.add('selected');
+        setTimeout(() => go('screen-connect'), 350);
+    });
+});
+
+/* ============================================================
+   CONNEXION (simulée)
+   ============================================================ */
+document.getElementById('btn-connect').addEventListener('click', () => {
+    const addr = '0x7099...d17dc79C8';
+    document.getElementById('conn-addr').textContent = addr;
+    const st = document.getElementById('conn-status');
+    st.style.display = 'block';
+    st.classList.remove('off');
+    toast('Wallet connecté', 'success');
+    setTimeout(() => go('screen-mode'), 600);
+});
+
+/* ============================================================
+   MODE → PERSONNAGE
+   ============================================================ */
+let selectedMode = null;
+document.querySelectorAll('.mode-card').forEach(card => {
+    card.addEventListener('click', () => {
+        selectedMode = card.dataset.mode;
+        const titles = {
+            duel:   ['MODE DUEL', 'CHOOSE YOUR FIGHTER'],
+            battle: ['MODE BATTLE', 'CHOOSE YOUR FIGHTER'],
+            spirit: ['MODE SPIRIT FIGHT', 'CHOOSE YOUR FIGHTER'],
+        };
+        document.getElementById('char-title').innerHTML =
+            (titles[selectedMode]?.[0] || 'Choisis ton Combattant') +
+            '<span class="sub">' + (titles[selectedMode]?.[1] || 'SELECT YOUR FIGHTER') + '</span>';
+        go('screen-char');
+    });
+});
+
+/* ============================================================
+   PERSONNAGES
+   ============================================================ */
+let selectedChar = null;
+const charGrid = document.getElementById('char-grid');
+function renderChars() {
+    charGrid.innerHTML = '';
+    CHARACTERS.forEach(c => {
+        const card = document.createElement('div');
+        card.className = 'char-card';
+        card.dataset.id = c.id;
+        card.style.setProperty('--c-main', c.cMain);
+        card.style.setProperty('--c-dark', c.cDark);
+        card.style.setProperty('--c-light', c.cLight);
+        card.innerHTML = `
+            <span class="badge ch-rarity" style="background:${c.cMain};color:#000;">LV ${c.id}</span>
+            <div class="char-avatar">
+                <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            </div>
+            <div class="ch-name">${c.name}</div>
+            <div class="ch-style">${c.style}</div>`;
+        card.addEventListener('click', () => {
+            document.querySelectorAll('.char-card').forEach(x => x.classList.remove('selected'));
+            card.classList.add('selected');
+            selectedChar = c.id;
+            document.getElementById('btn-confirm-char').disabled = false;
+        });
+        charGrid.appendChild(card);
+    });
+}
+renderChars();
+
+document.getElementById('btn-confirm-char').addEventListener('click', () => {
+    toast('Combattant sélectionné !', 'success');
+    if (selectedMode === 'duel') go('screen-duel');
+    else if (selectedMode === 'battle') go('screen-battle');
+    else if (selectedMode === 'spirit') go('screen-spirit');
+    else go('screen-mode');
+});
+
+/* ============================================================
+   LOBBY DUEL
+   ============================================================ */
+const playersList = document.getElementById('players-list');
+function renderPlayers(filter) {
+    playersList.innerHTML = '';
+    PLAYERS.filter(p => !filter || p.name.toLowerCase().includes(filter.toLowerCase()))
+        .forEach(p => {
+            const row = document.createElement('div');
+            row.className = 'player-card';
+            row.innerHTML = `
+                <div class="p-avatar"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+                <div class="p-info">
+                    <div class="p-name">${p.name}</div>
+                    <div class="p-meta">Rang ${p.rank} · ${p.tier}</div>
+                </div>
+                <button class="challenge-btn ${p.busy ? 'busy' : ''}" ${p.busy ? 'disabled' : ''}
+                    onclick="openBet('${p.name}')">${p.busy ? 'EN COMBAT' : 'DÉFIER'}</button>`;
+            playersList.appendChild(row);
+        });
+}
+renderPlayers();
+
+function filterPlayers(v) { renderPlayers(v); }
+
+function openBet(name) {
+    document.getElementById('bet-target').textContent = name;
+    document.getElementById('bet-amount').value = 10;
+    openModal('bet-modal');
+}
+function setBet(v) { document.getElementById('bet-amount').value = v; }
+
+/* ============================================================
+   LOBBY BATTLE
+   ============================================================ */
+const brList = document.getElementById('br-list');
+function renderRooms() {
+    brList.innerHTML = '';
+    ROOMS.forEach(r => {
+        const pct = Math.round(r.players / r.max * 100);
+        const full = r.players >= r.max;
+        const row = document.createElement('div');
+        row.className = 'room-card';
+        row.innerHTML = `
+            <div class="r-info">
+                <div class="r-name">${r.name} <span class="badge" style="background:${r.mode==='Privée'?'var(--magenta)':'var(--purple)'};margin-left:6px;">${r.mode}</span></div>
+                <div class="r-meta">Mise ${r.fee} TKN · ${r.status}</div>
+                <div class="pbar"><div class="pbar-fill ${pct>=90?'gold':''}" style="width:${pct}%"></div></div>
+            </div>
+            <div style="text-align:center;margin-left:10px;">
+                <div style="font-family:var(--font-title);font-weight:900;font-size:1.1rem;color:var(--cyan);">${r.players}/${r.max}</div>
+                <button class="challenge-btn ${full?'busy':''}" ${full?'disabled':''}
+                    onclick="joinRoom('${r.name}')">${full ? 'PLEIN' : 'REJOINDRE'}</button>
+            </div>`;
+        brList.appendChild(row);
+    });
+}
+renderRooms();
+
+function joinRoom(name) {
+    toast('Rejoins ' + name + ' ...', 'info');
+    setTimeout(() => go('screen-combat'), 800);
+}
+
+/* ============================================================
+   MODALES
+   ============================================================ */
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+/* ============================================================
+   TOASTS
+   ============================================================ */
+function toast(msg, type) {
+    const zone = document.getElementById('toast-zone');
+    const el = document.createElement('div');
+    el.className = 'toast ' + (type || 'info');
+    el.textContent = msg;
+    zone.appendChild(el);
+    setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity 0.3s'; }, 2600);
+    setTimeout(() => el.remove(), 3000);
+}
+
+/* ============================================================
+   PARTICULES D'ÉNERGIE (Aura Energy Particles)
+   ============================================================ */
+(function particles() {
+    const canvas = document.getElementById('particles');
+    const ctx = canvas.getContext('2d');
+    let W, H, parts = [];
+
+    function resize() {
+        W = canvas.width = window.innerWidth;
+        H = canvas.height = window.innerHeight;
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    const COLORS = ['#FFC700', '#7B2CBF', '#00E5FF'];
+    for (let i = 0; i < 46; i++) {
+        parts.push({
+            x: Math.random() * 1000,
+            y: Math.random() * 900,
+            r: 1 + Math.random() * 2.6,
+            c: COLORS[Math.floor(Math.random() * COLORS.length)],
+            s: 0.3 + Math.random() * 0.9,
+            o: 0.15 + Math.random() * 0.6,
+            w: Math.random() * Math.PI * 2
+        });
+    }
+
+    (function loop() {
+        ctx.clearRect(0, 0, W, H);
+        parts.forEach(p => {
+            p.y -= p.s;
+            p.x += Math.sin(p.w) * 0.4;
+            p.w += 0.01;
+            if (p.y < -10) { p.y = H + 10; p.x = Math.random() * W; }
+            ctx.globalAlpha = p.o * (0.6 + 0.4 * Math.sin(p.w * 2));
+            ctx.fillStyle = p.c;
+            ctx.shadowColor = p.c;
+            ctx.shadowBlur = 8;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+            ctx.fill();
+        });
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = 1;
+        requestAnimationFrame(loop);
+    })();
+})();
+</script>
+</body>
+</html>

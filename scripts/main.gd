@@ -355,6 +355,7 @@ func _on_choice_made(player_choice: Choice):
 		return
 	is_fighting = true
 	my_choice = player_choice
+	Sfx.play("click")
 	
 	status_label.text = "COMBAT EN COURS..."
 	rps_ui_container.hide() # On cache les boutons de combat
@@ -445,12 +446,15 @@ func _start_endless_combat_loop():
 	await t0.finished
 	
 	# -- ÉTAPE 1 : BOUCLE INFINIE D'ÉCHANGE DE COUPS --
+	Sfx.play("countdown")
+	Sfx.start_music()
 	while is_waiting_for_result:
 		var attacker = randi_range(1, 2)
 		var defender = 2 if attacker == 1 else 1
 		
 		var attack_num = randi_range(1, 3)
 		set_state(attacker, "attack_" + str(attack_num))
+		Sfx.play("whoosh")
 		set_state(defender, "idle")
 		
 		await get_tree().create_timer(0.7).timeout
@@ -458,9 +462,11 @@ func _start_endless_combat_loop():
 		
 		sparks_node.amount = 20
 		sparks_node.emitting = true
+		Sfx.play("impact")
 		_shake_camera(0.05)
 		
 		set_state(defender, "reaction")
+		Sfx.play("hurt")
 		await get_tree().create_timer(0.5).timeout
 		if not is_waiting_for_result: break
 		
@@ -483,6 +489,7 @@ func _play_combat_climax(winner: int, final_result_txt: String):
 		
 		var attack_num = randi_range(1, 3)
 		set_state(winner, "attack_" + str(attack_num))
+		Sfx.play("whoosh")
 		await get_tree().create_timer(0.7).timeout
 		
 		if effect == 1: Engine.time_scale = 0.2
@@ -495,11 +502,13 @@ func _play_combat_climax(winner: int, final_result_txt: String):
 		_shake_camera(0.2)
 		sparks_node.amount = 100
 		sparks_node.emitting = true
+		Sfx.play("impact")
 		
 		await get_tree().create_timer(0.1 * Engine.time_scale).timeout
 		Engine.time_scale = 1.0
 		
 		set_state(loser, "death")
+		Sfx.play("death")
 		var l_pos = 2.5 if winner == 1 else -2.5
 		var l_node = player1_node if loser == 1 else player2_node
 		var tfall = create_tween()
@@ -528,6 +537,7 @@ func _play_combat_climax(winner: int, final_result_txt: String):
 	else:
 		set_state(1, "attack_" + str(randi_range(1, 3)))
 		set_state(2, "attack_" + str(randi_range(1, 3)))
+		Sfx.play("whoosh")
 		await get_tree().create_timer(0.7).timeout
 		
 		if effect == 1: Engine.time_scale = 0.2
@@ -537,12 +547,14 @@ func _play_combat_climax(winner: int, final_result_txt: String):
 		_shake_camera(0.2)
 		sparks_node.amount = 100
 		sparks_node.emitting = true
+		Sfx.play("impact")
 		
 		await get_tree().create_timer(0.1 * Engine.time_scale).timeout
 		Engine.time_scale = 1.0
 		
 		set_state(1, "reaction")
 		set_state(2, "reaction")
+		Sfx.play("hurt")
 		
 		var tfall = create_tween().set_parallel(true)
 		tfall.tween_property(player1_node, "position:x", -2.0, 0.5).set_trans(Tween.TRANS_SINE)
@@ -561,6 +573,9 @@ func _play_combat_climax(winner: int, final_result_txt: String):
 		set_state(1, "idle")
 		set_state(2, "idle")
 	is_fighting = false
+	Sfx.stop_music()
+	if winner != 0:
+		Sfx.play("victory")
 	if my_choice_label: my_choice_label.hide()
 
 	if OS.has_feature("web"):
