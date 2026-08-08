@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <!-- Mutant Cyborg — visière cyborg, circuits cyan -->
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="40%" r="70%">
+      <stop offset="0%" stop-color="#06222e"/>
+      <stop offset="100%" stop-color="#01090d"/>
+    </radialGradient>
+  </defs>
+  <rect width="120" height="120" fill="url(#bg)"/>
+  <circle cx="60" cy="58" r="42" fill="none" stroke="#00E5FF" stroke-opacity="0.35" stroke-width="2"/>
+  <path d="M30 120 C32 96 44 88 60 88 C76 88 88 96 90 120 Z" fill="#04141c"/>
+  <path d="M40 120 C42 102 50 96 60 96 C70 96 78 102 80 120 Z" fill="#07222e"/>
+  <!-- tête métallique -->
+  <ellipse cx="60" cy="52" rx="21" ry="24" fill="#7d8b96"/>
+  <ellipse cx="60" cy="52" rx="17" ry="20" fill="#9aa8b3"/>
+  <!-- plaque frontale -->
+  <path d="M42 34 L78 34 L74 46 L46 46 Z" fill="#6b7883"/>
+  <!-- visière lumineuse -->
+  <rect x="44" y="46" width="32" height="12" rx="3" fill="#0c222e" stroke="#00E5FF" stroke-width="2"/>
+  <line x1="52" y1="52" x2="56" y2="52" stroke="#00E5FF" stroke-width="2"/>
+  <line x1="64" y1="52" x2="68" y2="52" stroke="#00E5FF" stroke-width="2"/>
+  <!-- circuits -->
+  <path d="M34 62 L42 60 M86 62 L78 60" stroke="#00E5FF" stroke-width="2" opacity="0.9"/>
+  <circle cx="34" cy="62" r="2" fill="#00E5FF"/>
+  <circle cx="86" cy="62" r="2" fill="#00E5FF"/>
+  <path d="M48 70 L56 68 L56 74 L64 70 L72 73" stroke="#00E5FF" stroke-width="1.8" fill="none" opacity="0.7"/>
+  <!-- grille bouche -->
+  <path d="M52 66 H68 M52 70 H68" stroke="#4a545e" stroke-width="2"/>
+</svg>

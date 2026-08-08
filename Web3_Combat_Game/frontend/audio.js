@@ -20,6 +20,21 @@
     var menuFilter = null;
     var sfxEnabled = true;
     var musicEnabled = true;
+    var masterVolume = 0.85;    // 0..1 (niveau global)
+
+    // Applique le volume maître (0..100) avec un fondu court.
+    function setVolume(level) {
+        var v = Number(level);
+        if (isNaN(v)) return;
+        v = Math.max(0, Math.min(100, v)) / 100;
+        masterVolume = v;
+        if (!ctx || !master) return;
+        var t = ctx.currentTime;
+        master.gain.cancelScheduledValues(t);
+        master.gain.setValueAtTime(master.gain.value, t);
+        master.gain.linearRampToValueAtTime(v, t + 0.15);
+    }
+    function getVolume() { return Math.round(masterVolume * 100); }
 
     function ensure() {
         if (ctx) return true;
@@ -132,6 +147,8 @@
         setMusicEnabled: function (on) {
             musicEnabled = !!on;
             if (musicEnabled) startMenu(); else stopMenu();
-        }
+        },
+        setVolume: setVolume,
+        getVolume: getVolume
     };
 })();

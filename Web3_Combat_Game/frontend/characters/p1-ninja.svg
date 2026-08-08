@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <!-- Guerrier Ninja — arts martiaux, bandeau orange -->
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="40%" r="70%">
+      <stop offset="0%" stop-color="#3a2a10"/>
+      <stop offset="100%" stop-color="#120a02"/>
+    </radialGradient>
+  </defs>
+  <rect width="120" height="120" fill="url(#bg)"/>
+  <!-- halo -->
+  <circle cx="60" cy="58" r="42" fill="none" stroke="#FF9100" stroke-opacity="0.35" stroke-width="2"/>
+  <!-- corps / épaules -->
+  <path d="M30 120 C32 96 44 88 60 88 C76 88 88 96 90 120 Z" fill="#1b1308"/>
+  <path d="M40 120 C42 102 50 96 60 96 C70 96 78 102 80 120 Z" fill="#2a1d0a"/>
+  <!-- tête -->
+  <ellipse cx="60" cy="52" rx="21" ry="24" fill="#e8b98c"/>
+  <!-- bandeau ninja -->
+  <rect x="38" y="34" width="44" height="10" rx="2" fill="#FF9100"/>
+  <path d="M79 36 L90 40 L80 46 Z" fill="#FF9100"/>
+  <!-- yeux -->
+  <ellipse cx="53" cy="52" rx="4" ry="3.2" fill="#1a1208"/>
+  <ellipse cx="67" cy="52" rx="4" ry="3.2" fill="#1a1208"/>
+  <circle cx="54" cy="51" r="1.1" fill="#fff"/>
+  <circle cx="68" cy="51" r="1.1" fill="#fff"/>
+  <!-- masque bas du visage -->
+  <path d="M41 62 Q60 72 79 62 L77 70 Q60 78 43 70 Z" fill="#1a1208"/>
+  <!-- traits -->
+  <rect x="47" y="60" width="26" height="2.5" rx="1" fill="#FF9100" opacity="0.8"/>
+</svg>

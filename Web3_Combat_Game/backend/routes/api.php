@@ -47,9 +47,14 @@ Route::post('/broadcasting/auth', function (Request $request) {
     }
 
     // Créer un utilisateur "fantôme" à la volée avec GenericUser pour éviter le cast 'int' du model User
+    // Le pseudonyme du joueur (X-Player-Name) est prioritaire, sinon fallback "Joueur 0x..."
+    $playerName = trim((string) ($request->input('player_name') ?? $request->header('X-Player-Name')));
+    if ($playerName === '' || mb_strlen($playerName) > 24) {
+        $playerName = 'Joueur ' . substr($wallet, 0, 6);
+    }
     $user = new GenericUser([
         'id' => $wallet,
-        'name' => 'Joueur ' . substr($wallet, 0, 6)
+        'name' => $playerName
     ]);
     
     Auth::setUser($user);

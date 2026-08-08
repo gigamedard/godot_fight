@@ -31,6 +31,10 @@
             <span class="portal-title">BATTLEPOOL — APP 1</span>
             <span class="portal-spacer"></span>
         </div>
+        <div id="portal-loading" class="portal-loading">
+            <div class="portal-loader-spinner"></div>
+            <p>Chargement du portail BATTLEPOOL...</p>
+        </div>
         <iframe id="portal-iframe" src="about:blank" title="BATTLEPOOL App 1" allow="ethereum"></iframe>
     </div>
 
@@ -142,7 +146,16 @@
                         <button class="btn-back" onclick="navGoBack()"><i data-lucide="arrow-left"></i></button>
                         <h2 class="screen-title">SÉLECTION DU GUERRIER</h2>
                     </div>
+                    <div class="pseudo-field">
+                        <label for="player-pseudo-input">VOTRE PSEUDONYME</label>
+                        <input type="text" id="player-pseudo-input" maxlength="24" placeholder="Ex: ShadowBlade" autocomplete="nickname">
+                    </div>
                     <div id="character-grid" class="character-grid"></div>
+                    <div class="volume-field">
+                        <label for="volume-slider"><i data-lucide="volume-2" width="16"></i> VOLUME</label>
+                        <input type="range" id="volume-slider" min="0" max="100" value="85">
+                        <span id="volume-value">85%</span>
+                    </div>
                     <button id="btn-confirm-char" class="btn-cyber btn-primary-gold disabled" disabled>
                         <i data-lucide="check-circle"></i> CONFIRMER LE COMBATTANT
                     </button>
@@ -220,11 +233,13 @@
                         <span class="count-badge"><i data-lucide="users" width="18"></i> <span id="pool-room-count">1/4</span></span>
                     </div>
                     <div id="pool-invite-container" class="invite-share-box" style="display:none;">
-                        <p>Lien d'invitation du salon :</p>
+                        <p>Partagez l'invitation au salon :</p>
                         <div style="display:flex; gap:8px;">
                             <input type="text" id="pool-invite-link" readonly onclick="this.select()">
                             <button class="btn-cyber btn-cyan" style="padding:0 16px; width:auto; font-size:0.8rem;" onclick="copyInviteLink()">COPIER</button>
+                            <button class="btn-cyber btn-cyan" style="padding:0 16px; width:auto; font-size:0.8rem;" onclick="openInviteQR()"><i data-lucide="qr-code" width="16"></i> QR</button>
                         </div>
+                        <div id="pool-invite-qr" style="display:none; margin-top:12px; text-align:center;"></div>
                     </div>
                     <div class="section-label">COMBATTANTS DANS LA POULE</div>
                     <div class="list-container" id="pool-players-list"></div>
@@ -400,7 +415,10 @@
     </script>
 
     <script src="config.js"></script>
-    <script src="audio.js?v=1"></script>
-    <script src="app.js?v=3.4" defer></script>
+    <script src="audio.js?v=2"></script>
+    <!-- QR code : scan (html5-qrcode) + génération (qrcodejs) — locales pour hors-ligne -->
+    <script src="html5-qrcode.min.js"></script>
+    <script src="qrcode.min.js"></script>
+    <script src="app.js?v=3.6" defer></script>
 </body>
 </html>

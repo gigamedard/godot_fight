@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <!-- Tom Frazer — force brute, cicatrice rouge, mâchoire serrée -->
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="40%" r="70%">
+      <stop offset="0%" stop-color="#3a0e16"/>
+      <stop offset="100%" stop-color="#120305"/>
+    </radialGradient>
+  </defs>
+  <rect width="120" height="120" fill="url(#bg)"/>
+  <circle cx="60" cy="58" r="42" fill="none" stroke="#FF1744" stroke-opacity="0.35" stroke-width="2"/>
+  <path d="M24 120 C28 92 44 84 60 84 C76 84 92 92 96 120 Z" fill="#1d0a0e"/>
+  <path d="M36 120 C38 100 48 94 60 94 C72 94 82 100 84 120 Z" fill="#2b1016"/>
+  <!-- tête carrée -->
+  <rect x="41" y="30" width="38" height="44" rx="8" fill="#d8a077"/>
+  <!-- sourcils froncés -->
+  <rect x="45" y="40" width="11" height="3.5" rx="1.5" fill="#3a1d0c" transform="rotate(-8 50 42)"/>
+  <rect x="64" y="40" width="11" height="3.5" rx="1.5" fill="#3a1d0c" transform="rotate(8 69 42)"/>
+  <!-- yeux -->
+  <ellipse cx="52" cy="52" rx="4.5" ry="3.5" fill="#1a1208"/>
+  <ellipse cx="68" cy="52" rx="4.5" ry="3.5" fill="#1a1208"/>
+  <!-- cicatrice -->
+  <path d="M44 58 L54 66 L50 74" stroke="#FF1744" stroke-width="2.5" fill="none"/>
+  <!-- bouche serrée -->
+  <path d="M52 68 H68" stroke="#6b3a22" stroke-width="3" stroke-linecap="round"/>
+  <!-- barbe naissante -->
+  <path d="M46 70 Q60 80 74 70 L72 78 Q60 86 48 78 Z" fill="#5c3a24" opacity="0.8"/>
+</svg>

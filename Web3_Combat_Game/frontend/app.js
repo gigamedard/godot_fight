@@ -5,6 +5,7 @@ const AppState = {
     selectedGameMode: localStorage.getItem('web3combat_mode') || null, // 'DUEL' | 'BATTLE' | 'SPIRIT'
     language: localStorage.getItem('web3combat_lang') || null,
     walletAddress: null,
+    playerName: localStorage.getItem('web3combat_pseudo') || null,
     currentChallenger: null, 
     currentTargetId: null, 
     pendingChallengeParam: null, 
@@ -23,10 +24,10 @@ const AppState = {
 let onlinePlayers = []; // Mis à jour via Reverb
 
 const characters = [
-    { id: 1, name: 'Guerrier Ninja', style: 'Arts Martiaux', color: 'var(--color-orange)' },
-    { id: 2, name: 'Mutant Cyborg', style: 'Vitesse', color: 'var(--color-blue)' },
-    { id: 3, name: 'Tom Frazer', style: 'Force Brute', color: 'var(--color-red)' },
-    { id: 4, name: 'Big Choco', style: 'Magie', color: 'var(--color-purple)' }
+    { id: 1, name: 'Guerrier Ninja', style: 'Arts Martiaux', color: 'var(--color-orange)', photo: 'characters/p1-ninja.svg' },
+    { id: 2, name: 'Mutant Cyborg', style: 'Vitesse', color: 'var(--color-blue)', photo: 'characters/p2-cyborg.svg' },
+    { id: 3, name: 'Tom Frazer', style: 'Force Brute', color: 'var(--color-red)', photo: 'characters/p3-tom.svg' },
+    { id: 4, name: 'Big Choco', style: 'Magie', color: 'var(--color-purple)', photo: 'characters/p4-mage.svg' }
 ];
 
 const brLobbies = [
@@ -71,6 +72,40 @@ function copyInviteLink() {
     navigator.clipboard.writeText(link);
     showToast("Lien copié !", "success");
 }
+
+// Affiche / masque le QR code du lien d'invitation du salon (pool-room)
+window.openInviteQR = function() {
+    const qrBox = document.getElementById('pool-invite-qr');
+    if (!qrBox) return;
+    const linkInput = document.getElementById('pool-invite-link');
+    const link = linkInput ? linkInput.value : '';
+
+    if (qrBox.style.display !== 'none') {
+        qrBox.style.display = 'none';
+        qrBox.innerHTML = '';
+        return;
+    }
+    if (!link) {
+        showToast("Aucun lien d'invitation disponible.", "error");
+        return;
+    }
+    if (typeof QRCode === 'undefined') {
+        showToast("Générateur QR non chargé.", "error");
+        return;
+    }
+    qrBox.innerHTML = '';
+    // qrcodejs : taille en pixels, fond sombre, modules cyan
+    new QRCode(qrBox, {
+        text: link,
+        width: 168,
+        height: 168,
+        colorDark: "#00E5FF",
+        colorLight: "#0b0d18",
+        correctLevel: QRCode.CorrectLevel.M
+    });
+    qrBox.style.display = 'block';
+    showToast("QR code généré — faites-le scanner pour rejoindre le salon.", "success");
+};
 
 window.joinPoolByCode = function() {
     const input = document.getElementById('invite-code-input');
@@ -289,6 +324,12 @@ window.launchBattlePool = function() {
     }
 
     showToast("Ouverture de BATTLEPOOL (App 1)...", "info");
+    // Loader visible pendant le chargement de l'iframe
+    const loading = document.getElementById('portal-loading');
+    if (loading) loading.style.display = 'flex';
+    iframe.onload = function () {
+        if (loading) loading.style.display = 'none';
+    };
     iframe.src = portalUrl;
     overlay.classList.remove('hidden');
     if (typeof window.AUDIO_FX !== 'undefined') window.AUDIO_FX.success();
@@ -298,9 +339,12 @@ window.launchBattlePool = function() {
 window.closeBattlePool = function() {
     const overlay = document.getElementById('portal-overlay');
     const iframe = document.getElementById('portal-iframe');
+    const loading = document.getElementById('portal-loading');
+    if (loading) loading.style.display = 'flex'; // ré-armé pour la prochaine ouverture
     if (overlay) overlay.classList.add('hidden');
     if (iframe) {
         // On vide le src pour couper l'audio/WebRTC de l'App 1 immédiatement.
+        iframe.onload = null;
         iframe.src = 'about:blank';
     }
     if (typeof window.AUDIO_FX !== 'undefined') window.AUDIO_FX.click();
@@ -573,6 +617,24 @@ function renderCharacterSelect() {
     const grid = document.getElementById('character-grid');
     grid.innerHTML = '';
 
+    // Curseur de volume : restaure la valeur sauvegardée et l'applique
+    const volSlider = document.getElementById('volume-slider');
+    const volValue = document.getElementById('volume-value');
+    if (volSlider) {
+        const savedVol = localStorage.getItem('web3combat_volume');
+        const initial = (savedVol !== null) ? parseInt(savedVol, 10) : 85;
+        volSlider.value = initial;
+        if (volValue) volValue.innerText = initial + '%';
+        if (window.AUDIO_FX && window.AUDIO_FX.setVolume) window.AUDIO_FX.setVolume(initial);
+        volSlider.oninput = function () {
+            const v = parseInt(this.value, 10);
+            localStorage.setItem('web3combat_volume', String(v));
+            if (volValue) volValue.innerText = v + '%';
+            if (window.AUDIO_FX && window.AUDIO_FX.setVolume) window.AUDIO_FX.setVolume(v);
+            if (window.AUDIO_FX && window.AUDIO_FX.hover) window.AUDIO_FX.hover();
+        };
+    }
+
     characters.forEach(char => {
         const card = document.createElement('div');
         card.className = 'char-card';
@@ -581,7 +643,7 @@ function renderCharacterSelect() {
 
         card.innerHTML = `
             <div class="char-avatar" style="background-color: ${char.color}">
-                <i data-lucide="user" color="rgba(255,255,255,0.8)" width="32"></i>
+                <img src="${char.photo}" alt="${char.name}" class="char-photo" loading="lazy">
             </div>
             <h3>${char.name}</h3>
             <p style="font-size: 0.75rem; color: var(--text-gray-400); margin-top: 0.25rem;">${char.style}</p>
@@ -598,10 +660,24 @@ function selectCharacter(char) {
     const btn = document.getElementById('btn-confirm-char');
     btn.disabled = false;
     btn.classList.remove('disabled');
+    // Retour sonore : chaque combattant a une "signature" auditive
+    if (typeof window.AUDIO_FX !== 'undefined' && window.AUDIO_FX.success) {
+        window.AUDIO_FX.success();
+    }
 }
 
 function performLogin() {
+    // Sauvegarde du pseudonyme saisi (écran personnage) — clé partagée avec App 1
+    const pseudoInput = document.getElementById('player-pseudo-input');
+    if (pseudoInput && pseudoInput.value.trim() !== '') {
+        AppState.playerName = pseudoInput.value.trim();
+        localStorage.setItem('web3combat_pseudo', AppState.playerName);
+    } else {
+        AppState.playerName = AppState.playerName || localStorage.getItem('web3combat_pseudo') || null;
+    }
+
     window.gameConfig = { character: AppState.selectedCharacter.name };
+    if (AppState.playerName) window.gameConfig.playerName = AppState.playerName;
     
     const urlParams = new URLSearchParams(window.location.search);
     const playerParam = urlParams.get('player');
@@ -665,10 +741,10 @@ function performLogin() {
     // Mise à jour du badge dans le Menu Principal
     document.getElementById('player-badge').innerHTML = `
         <div class="char-avatar" style="background-color: ${AppState.selectedCharacter.color}; width: 40px; height: 40px;">
-            <i data-lucide="user" color="rgba(255,255,255,0.8)" width="24"></i>
+            <img src="${AppState.selectedCharacter.photo}" alt="${AppState.selectedCharacter.name}" class="char-photo" style="width: 40px; height: 40px;">
         </div>
         <div class="player-badge-info">
-            <div class="player-badge-name">${AppState.selectedCharacter.name} (${AppState.walletAddress.substring(0,6)}...)</div>
+            <div class="player-badge-name">${AppState.selectedCharacter.name} — ${AppState.playerName || AppState.walletAddress.substring(0,6) + '...'}</div>
             <div class="player-badge-balance" id="wallet-balance">-- ETH</div>
             <div id="pending-funds-container" style="display:none; margin-top: 5px;">
                 <button class="btn btn-challenge" style="font-size: 0.8rem; padding: 0.5rem;" onclick="claimPendingFunds()">
@@ -696,6 +772,7 @@ function performLogin() {
             auth: {
                 headers: {
                     'X-Wallet-Address': AppState.walletAddress,
+                    'X-Player-Name': AppState.playerName || '',
                     'Accept': 'application/json'
                 }
             }
@@ -787,6 +864,13 @@ function performLogin() {
         renderBRLobby();
     } else if (AppState.selectedGameMode === 'SPIRIT') {
         navigateTo('screen-spirit');
+        // Lancement auto du portail BATTLEPOOL (App 1) — petit délai pour laisser
+        // l'écran SPIRIT se dessiner (le bouton reste disponible en fallback).
+        setTimeout(() => {
+            if (AppState.currentScreen === 'screen-spirit') {
+                launchBattlePool();
+            }
+        }, 700);
     } else {
         navigateTo('screen-main');
     }
@@ -906,7 +990,7 @@ function openQRScanner() {
         html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: {width: 200, height: 200} }, false);
         html5QrcodeScanner.render(onScanSuccess, () => {});
     } else {
-        alert("Le scanner QR n'a pas pu être chargé.");
+        showToast("Le scanner QR n'a pas pu être chargé.", "error");
     }
 }
 
@@ -917,8 +1001,43 @@ function closeQRScanner() {
 
 function onScanSuccess(decodedText) {
     closeQRScanner();
-    document.getElementById('search-input').value = decodedText;
-    filterLobby(decodedText);
+    const text = decodedText.trim();
+
+    // Si le QR contient un lien d'invitation ?invite=CODE → on extrait le code
+    try {
+        const u = new URL(text);
+        const inviteCode = u.searchParams.get('invite');
+        if (inviteCode) {
+            fetch(`${APP_CONFIG.API_BASE_URL}/pools/invite/${inviteCode}`)
+                .then(res => {
+                    if (!res.ok) throw new Error("Poule introuvable");
+                    return res.json();
+                })
+                .then(pool => {
+                    document.getElementById('invite-message').innerText = `Vous êtes invité à la poule #${pool.id} (Mise: ${pool.entry_fee} TKN). Voulez-vous rejoindre ?`;
+                    document.getElementById('btn-accept-invite').onclick = () => {
+                        stopInviteModalGuard();
+                        document.getElementById('invite-modal').style.display = 'none';
+                        joinPool(pool.id);
+                    };
+                    document.getElementById('invite-modal').style.display = 'flex';
+                    AppState.pendingInvitePoolId = pool.id;
+                    AppState.pendingInvitePoolMax = pool.max_players;
+                    startInviteModalGuard(pool.id, pool.max_players);
+                })
+                .catch(err => {
+                    console.error(err);
+                    showToast("QR invalide : poule introuvable", "error");
+                });
+            return;
+        }
+    } catch (e) {
+        // Pas une URL → on traite comme un pseudo/texte simple
+    }
+
+    // Sinon, comportement d'origine : filtre du lobby par pseudo/wallet
+    document.getElementById('search-input').value = text;
+    filterLobby(text);
 }
 
 // --- GESTION DE LA MODALE DE PARI ---
@@ -1371,11 +1490,24 @@ window.animationFinished = function() {
         }
     })();
 
+    // Capturer l'adversaire du duel AVANT le reset (resetMatchState le nullifie)
+    const rematchOpponentId = (!AppState.currentPoolId)
+        ? (AppState.currentTargetId || AppState.currentChallenger || null)
+        : null;
+
     // Réinitialisation complète des états (incluant le statut serveur online)
     resetMatchState();
-    navigateTo(AppState.currentPoolId ? 'screen-pool-room' : 'screen-main');
+    const isPoolFight = !!AppState.currentPoolId;
+    navigateTo(isPoolFight ? 'screen-pool-room' : 'screen-main');
     
     AppState.pendingResult = null;
+
+    // Rematch en duel : proposer une revanche contre le même adversaire
+    if (!isPoolFight && rematchOpponentId) {
+        showRematchBanner(rematchOpponentId);
+    }
+    AppState.currentTargetId = null;
+    AppState.currentChallenger = null;
     
     // Traiter le prochain round s'il était en attente
     if (AppState.pendingPoolRoundEvent) {
@@ -1385,6 +1517,27 @@ window.animationFinished = function() {
         setTimeout(() => handlePoolRoundStarted(e), 1500); // Petit délai pour laisser l'UI respirer
     }
 };
+
+// Affiche une bannière "REMATCH" au-dessus de la liste des joueurs (duel uniquement).
+function showRematchBanner(opponentId) {
+    const list = document.getElementById('players-list');
+    if (!list) return;
+    const banner = document.createElement('div');
+    banner.className = 'rematch-banner';
+    const shortName = (opponentId || '').substring(0, 6) + '...';
+    banner.innerHTML = `
+        <div class="rematch-info">Revanche contre <strong>${shortName}</strong> ?</div>
+        <button class="btn btn-challenge" id="btn-rematch-yes">REMATCH</button>
+        <button class="btn btn-secondary" id="btn-rematch-no">Plus tard</button>
+    `;
+    list.prepend(banner);
+    document.getElementById('btn-rematch-yes').addEventListener('click', async () => {
+        banner.remove();
+        const defaultBet = AppState.defaultBetAmount || "10";
+        await initiateChallenge(opponentId, Number(defaultBet));
+    });
+    document.getElementById('btn-rematch-no').addEventListener('click', () => banner.remove());
+}
 
 window.getMatchInfo = function() {
     let opponentAddr = AppState.currentTargetId || AppState.currentChallenger || "0xOpponent";
