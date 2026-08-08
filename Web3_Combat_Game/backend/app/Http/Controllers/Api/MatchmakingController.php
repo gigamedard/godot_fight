@@ -75,10 +75,16 @@ class MatchmakingController extends Controller
         broadcast(new PlayerStatusChanged($targetId, 'in-game'));
 
         // Le target_id est celui qui a reçu le défi et l'accepte
+        // IMPORTANT : on broadcast avec les IDs BRUTS (casse exacte envoyée par le
+        // client, ex. checksum EIP-55). Le frontend s'abonne à
+        // `private-player.${AppState.walletAddress}` avec cette même casse.
+        // Reverb est case-sensitive sur les noms de canaux : un broadcast en
+        // lowercase (strtolower) n'atteindrait JAMAIS l'abonné (bug "le combat ne
+        // se lance pas"). La DB, elle, reste en lowercase (cf. $challengerId/$targetId).
         broadcast(new MatchStarted(
             $fight->id,
-            $challengerId,
-            $targetId,
+            $request->challenger_id,
+            $request->target_id,
             $request->challenger_char ?? 2,
             $request->target_char ?? 2,
             $request->bet_amount ?? 0
