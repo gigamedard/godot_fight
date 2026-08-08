@@ -322,7 +322,7 @@ window.navGoBack = function() {
 window.launchBattlePool = function() {
     const portalUrl = (typeof APP_CONFIG !== 'undefined' && APP_CONFIG.PORTAL_URL)
         ? APP_CONFIG.PORTAL_URL
-        : `http://${window.location.hostname}:8001/portal`;
+        : `http://${window.location.hostname}:8001/portal?v=4`;
 
     const overlay = document.getElementById('portal-overlay');
     const iframe = document.getElementById('portal-iframe');
