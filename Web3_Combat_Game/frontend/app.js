@@ -360,6 +360,14 @@ window.closeBattlePool = function() {
     if (typeof window.AUDIO_FX !== 'undefined') window.AUDIO_FX.click();
 };
 
+// Le portail App 1 (iframe cross-origin 8001) ne peut pas appeler closeBattlePool()
+// directement : il envoie un postMessage que l'on écoute ici.
+window.addEventListener('message', function (e) {
+    if (e.data && e.data.type === 'BATTLEPOOL_CLOSE') {
+        window.closeBattlePool();
+    }
+});
+
 // Confirmation du personnage : enregistre puis lance la connexion finale
 window.confirmCharacterSelection = function() {
     if (!AppState.selectedCharacter) return;
