@@ -73,6 +73,16 @@ function copyInviteLink() {
     showToast("Lien copié !", "success");
 }
 
+function copyInviteCode() {
+    const code = document.getElementById('pool-invite-code').value;
+    if (!code || code.trim() === '') {
+        showToast("Aucun code disponible.", "error");
+        return;
+    }
+    navigator.clipboard.writeText(code);
+    showToast("Code copié !", "success");
+}
+
 // Affiche / masque le QR code du lien d'invitation du salon (pool-room)
 window.openInviteQR = function() {
     const qrBox = document.getElementById('pool-invite-qr');
@@ -812,6 +822,11 @@ function performLogin() {
         window.echoInstance.private(`private-player.${AppState.walletAddress}`)
             .listen('ChallengeSent', (e) => {
                 console.log("Défi reçu de :", e.challengerId, "Pari :", e.betAmount);
+                // N'accepter le défi que si on est sur l'écran de lobby (screen-main)
+                if (AppState.currentScreen !== 'screen-main') {
+                    console.log("Défi ignoré : joueur pas sur l'écran de lobby (", AppState.currentScreen, ")");
+                    return;
+                }
                 AppState.currentChallenger = e.challengerId;
                 AppState.currentBetAmountOffchain = e.betAmount;
                 AppState.currentChallengerChar = e.challengerChar || 2;
@@ -822,6 +837,16 @@ function performLogin() {
                 const actions = document.getElementById('challenge-modal-actions');
                 if (actions) actions.style.display = 'flex';
                 document.getElementById('challenge-modal').style.display = 'flex';
+            })
+            .listen('ChallengesCancelled', (e) => {
+                console.log("Invitations annulées pour", e.playerId, "raison :", e.reason);
+                // Nettoyer les défis en attente si c'est pour ce joueur
+                if (e.playerId === AppState.walletAddress.toLowerCase()) {
+                    AppState.currentChallenger = null;
+                    AppState.currentBetAmountOffchain = null;
+                    const modal = document.getElementById('challenge-modal');
+                    if (modal) modal.style.display = 'none';
+                }
             })
             .listen('MatchStarted', (e) => {
                 console.log("Accord Off-Chain atteint ! Exécution On-Chain...", e);
@@ -2095,6 +2120,7 @@ async function renderPoolRoom() {
             document.getElementById('pool-invite-container').style.display = 'block';
             const inviteUrl = window.location.origin + window.location.pathname + "?invite=" + poolData.invite_code;
             document.getElementById('pool-invite-link').value = inviteUrl;
+            document.getElementById('pool-invite-code').value = poolData.invite_code;
         } else {
             document.getElementById('pool-invite-container').style.display = 'none';
         }

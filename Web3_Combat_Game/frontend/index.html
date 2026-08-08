@@ -234,10 +234,15 @@
                     </div>
                     <div id="pool-invite-container" class="invite-share-box" style="display:none;">
                         <p>Partagez l'invitation au salon :</p>
-                        <div style="display:flex; gap:8px;">
-                            <input type="text" id="pool-invite-link" readonly onclick="this.select()">
-                            <button class="btn-cyber btn-cyan" style="padding:0 16px; width:auto; font-size:0.8rem;" onclick="copyInviteLink()">COPIER</button>
+                        <div style="display:flex; gap:8px; margin-bottom:10px;">
+                            <input type="text" id="pool-invite-link" readonly onclick="this.select()" style="flex:1;">
+                            <button class="btn-cyber btn-cyan" style="padding:0 16px; width:auto; font-size:0.8rem;" onclick="copyInviteLink()">COPIER LIEN</button>
                             <button class="btn-cyber btn-cyan" style="padding:0 16px; width:auto; font-size:0.8rem;" onclick="openInviteQR()"><i data-lucide="qr-code" width="16"></i> QR</button>
+                        </div>
+                        <div style="display:flex; gap:8px; align-items:center;">
+                            <label style="font-size:0.8rem; color:var(--text-muted);">CODE :</label>
+                            <input type="text" id="pool-invite-code" readonly onclick="this.select()" style="flex:1; font-family:monospace; font-weight:700; letter-spacing:2px; text-align:center;">
+                            <button class="btn-cyber btn-cyan" style="padding:0 16px; width:auto; font-size:0.8rem;" onclick="copyInviteCode()">COPIER CODE</button>
                         </div>
                         <div id="pool-invite-qr" style="display:none; margin-top:12px; text-align:center;"></div>
                     </div>

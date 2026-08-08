@@ -9,6 +9,7 @@ use App\Events\ChallengeSent;
 use App\Events\MatchStarted;
 use App\Events\ChallengeDeclined;
 use App\Events\PlayerStatusChanged;
+use App\Events\ChallengesCancelled;
 use App\Models\Fight;
 
 class MatchmakingController extends Controller
@@ -37,24 +38,31 @@ class MatchmakingController extends Controller
             'bet_amount' => 'nullable|numeric|min:0',
         ]);
 
+        $challengerId = strtolower($request->challenger_id);
+        $targetId = strtolower($request->target_id);
+
+        // Annuler toutes les invitations pour les deux joueurs (envoyées et reçues)
+        broadcast(new ChallengesCancelled($challengerId, 'entered_duel'));
+        broadcast(new ChallengesCancelled($targetId, 'entered_duel'));
+
         // Créer le Fight en base pour permettre la résolution du match (statut, result, payout)
         $fight = Fight::create([
             'pool_id' => null,
-            'player1_wallet' => strtolower($request->challenger_id),
-            'player2_wallet' => strtolower($request->target_id),
+            'player1_wallet' => $challengerId,
+            'player2_wallet' => $targetId,
             'status' => 'waiting_for_commits',
             'base_bet_amount' => $request->bet_amount ?? 0,
         ]);
 
         // Mettre à jour le statut des joueurs (en combat)
-        broadcast(new PlayerStatusChanged($request->challenger_id, 'in-game'));
-        broadcast(new PlayerStatusChanged($request->target_id, 'in-game'));
+        broadcast(new PlayerStatusChanged($challengerId, 'in-game'));
+        broadcast(new PlayerStatusChanged($targetId, 'in-game'));
 
         // Le target_id est celui qui a reçu le défi et l'accepte
         broadcast(new MatchStarted(
             $fight->id,
-            $request->challenger_id,
-            $request->target_id,
+            $challengerId,
+            $targetId,
             $request->challenger_char ?? 2,
             $request->target_char ?? 2,
             $request->bet_amount ?? 0
