@@ -118,15 +118,39 @@ class MatchmakingController extends Controller
     /**
      * Vérifie si un joueur (wallet) est déjà impliqué dans un duel non terminé.
      * Un joueur en combat ne peut être ni invité, ni accepter un autre défi.
+     *
+     * IMPORTANT — fights orphelins : le timeout serveur (FIGHT_TIMEOUT_MS, ancré
+     * sur created_at) n'est appliqué que quand un client interroge /battle/status.
+     * Si les deux joueurs ferment la page sans résolution, un fight resterait
+     * "waiting_for_commits" pour toujours et bloquerait les joueurs indéfiniment.
+     * On applique donc ici la même deadline : un fight expiré est résolu (forfait)
+     * à la volée et le joueur redevient disponible.
      */
     private function playerInActiveFight(string $wallet): bool
     {
         $wallet = strtolower($wallet);
-        return Fight::where(function ($q) use ($wallet) {
+        $fight = Fight::where(function ($q) use ($wallet) {
             $q->where('player1_wallet', $wallet)
               ->orWhere('player2_wallet', $wallet);
         })
         ->whereIn('status', ['waiting_for_commits', 'waiting_for_reveals'])
-        ->exists();
+        ->latest('id')
+        ->first();
+
+        if (!$fight) {
+            return false;
+        }
+
+        // Deadline absolue (mêmes règles que BattleController::resolveIfExpired).
+        $timeoutMs = (int) config('game.fight_timeout_ms', 60000);
+        $deadline = ((int) $fight->created_at?->getTimestamp()) * 1000 + $timeoutMs;
+
+        if (time() * 1000 >= $deadline) {
+            // Combat expiré : forfait côté serveur, le joueur est libéré.
+            app(\App\Services\FightService::class)->resolveHybridFight($fight);
+            return false;
+        }
+
+        return true;
     }
 }
