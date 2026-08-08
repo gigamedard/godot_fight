@@ -17,7 +17,7 @@ const APP_CONFIG = {
     // de rock-paper-scissors, mapping 8001->8080). La route /portal sert portal.html.
     // Le paramètre ?v= est un cache-buster : à incrémenter à chaque évolution du
     // portail (menu, styles) pour forcer le navigateur à recharger la nouvelle version.
-    PORTAL_URL: `http://${window.location.hostname}:8001/portal?v=5`
+    PORTAL_URL: `http://${window.location.hostname}:8001/portal?v=6`
 };
 
 // Adresse du contrat CombatGame (déployée par le service blockchain).
