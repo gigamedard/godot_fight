@@ -13,8 +13,9 @@ const APP_CONFIG = {
     RPC_URL: `http://${window.location.hostname}:8545`,
 
     // Portail BATTLEPOOL (App 1) — cible du mode SPIRIT FIGHT.
-    // En dev : `php artisan serve --port=8090` depuis rock-paper-scissors-ref.
-    PORTAL_URL: `http://${window.location.hostname}:8090`
+    // L'App 1 (rock-paper-scissors) écoute sur le port 8001 (voir docker-compose.yml
+    // de rock-paper-scissors, mapping 8001->8080). La route /portal sert portal.html.
+    PORTAL_URL: `http://${window.location.hostname}:8001/portal`
 };
 
 // Adresse du contrat CombatGame (déployée par le service blockchain).

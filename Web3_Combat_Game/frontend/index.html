@@ -20,6 +20,21 @@
     </div>
 
     <!-- ============================================================
+         OVERLAY PORTAIL BATTLEPOOL (App 1) — z-index 30
+         iframe plein écran + bouton retour vers le jeu (App 2).
+         ============================================================ -->
+    <div id="portal-overlay" class="portal-overlay hidden">
+        <div class="portal-bar">
+            <button id="portal-back-btn" class="btn-back" onclick="closeBattlePool()">
+                <i data-lucide="arrow-left"></i> RETOUR AU JEU
+            </button>
+            <span class="portal-title">BATTLEPOOL — APP 1</span>
+            <span class="portal-spacer"></span>
+        </div>
+        <iframe id="portal-iframe" src="about:blank" title="BATTLEPOOL App 1" allow="ethereum"></iframe>
+    </div>
+
+    <!-- ============================================================
          TIMER DE TOUR (z-index 20) — superposé à Godot pendant combat
          ============================================================ -->
     <div id="turn-timer-overlay" class="turn-timer-badge hidden">

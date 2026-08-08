@@ -1041,6 +1041,67 @@ input:focus, select:focus { border-color: var(--cyan-spark) !important; box-shad
 
 body::-webkit-scrollbar { width: 0; }
 
+/* ==========================================================================
+   21. OVERLAY PORTAIL BATTLEPOOL (App 1) — iframe + barre de retour
+   ========================================================================== */
+.portal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 30; /* au-dessus de la UI (10) et du timer (20), sous les modales (100) */
+    background: #05060c;
+    display: flex;
+    flex-direction: column;
+}
+.portal-overlay.hidden { display: none; }
+
+.portal-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 14px;
+    background: linear-gradient(90deg, rgba(7,9,18,0.98), rgba(18,10,40,0.98));
+    border-bottom: 1px solid rgba(0,229,255,0.25);
+    min-height: 44px;
+}
+.portal-title {
+    flex: 1;
+    text-align: center;
+    font-family: var(--font-heading, 'Orbitron', sans-serif);
+    font-size: 0.85rem;
+    letter-spacing: 2px;
+    color: var(--text-muted, #8a8fa3);
+    text-transform: uppercase;
+}
+.portal-spacer { width: 120px; }
+
+#portal-back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: transparent;
+    border: 1px solid var(--cyan-spark, #00E5FF);
+    color: var(--cyan-spark, #00E5FF);
+    padding: 6px 14px;
+    font-family: var(--font-body, sans-serif);
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+#portal-back-btn:hover {
+    background: rgba(0,229,255,0.15);
+    box-shadow: 0 0 12px rgba(0,229,255,0.3);
+}
+
+#portal-iframe {
+    flex: 1;
+    width: 100%;
+    border: none;
+    background: #fff;
+}
+
 @media (max-width: 480px) {
     .ui-content { padding: 16px; }
     .game-logo { font-size: 2.4rem; }

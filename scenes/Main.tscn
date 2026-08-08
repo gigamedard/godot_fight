@@ -34,10 +34,10 @@ transform = Transform3D(1, 0, 0, 0, 0.965926, 0.258819, 0, -0.258819, 0.965926, 
 [node name="Fighters" type="Node3D" parent="." unique_id=973457131]
 
 [node name="Player1" type="Node3D" parent="Fighters" unique_id=87480832]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2, 0, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.5, 0.5, 0)
 
 [node name="Player2" type="Node3D" parent="Fighters" unique_id=649661241]
-transform = Transform3D(-1, 0, -8.74228e-08, 0, 1, 0, 8.74228e-08, 0, -1, 2, 0, 0)
+transform = Transform3D(-1, 0, -8.74228e-08, 0, 1, 0, 8.74228e-08, 0, -1, 1.5, 0.5, 0)
 
 [node name="Arena" type="Node3D" parent="."]
 script = ExtResource("2_arena")

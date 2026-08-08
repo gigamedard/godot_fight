@@ -29,8 +29,18 @@ var my_name = "Vous"
 var opponent_name = "Adversaire"
 var my_choice = -1
 
+# --- RÉGLAGES VISUELS / COMBATTANTS VISIBLES À L'ÉCRAN ---
+# Les modèles sont centrés : la boîte englobante va de y=-0.5 à y=0.5.
+# Pour poser les pieds sur le sol (y=0), les nœuds doivent être surélevés de 0.5.
+const FOOT_Y := 0.5
+# Position des combattants en attente (avant le combat) : bien dans le cadre caméra.
+const WAIT_X := 1.5
+
 enum Choice { PIERRE, FEUILLE, CISEAUX }
 const CHOICE_NAMES = ["PIERRE", "FEUILLE", "CISEAUX"]
+
+# Police cyber chargée depuis assets/fonts (embarquée dans l'export web)
+var _cyber_font: FontFile
 
 var roster = {
 	"p1": {
@@ -91,6 +101,10 @@ func _ready():
 		player2_node.rotation_degrees = Vector3(0, -90, 0)
 	if player1_camera:
 		player1_camera.keep_aspect = Camera3D.KEEP_HEIGHT
+		# FOV large : garantit les 2 combattants visibles même en format portrait
+		player1_camera.fov = 65.0
+		player1_camera.position = Vector3(0, 1.6, 4.6)
+		player1_camera.look_at(Vector3(0, 0.5, 0))
 		
 	setup_particles()
 	setup_ui()
@@ -128,6 +142,10 @@ func _on_spawn_player(args):
 		child.queue_free()
 	p1_models.clear()
 	
+	# Positionner le combattant face à la caméra, les pieds sur le sol
+	player1_node.position = Vector3(-WAIT_X, FOOT_Y, 0)
+	player1_node.rotation_degrees = Vector3(0, 90, 0)
+	
 	var p1_mat = null
 	if roster.has(player_prefix) and roster[player_prefix].texture != "":
 		p1_mat = StandardMaterial3D.new()
@@ -144,6 +162,10 @@ func _on_spawn_opponent(args):
 	for child in player2_node.get_children():
 		child.queue_free()
 	p2_models.clear()
+	
+	# Positionner l'adversaire en miroir, face au joueur
+	player2_node.position = Vector3(WAIT_X, FOOT_Y, 0)
+	player2_node.rotation_degrees = Vector3(0, -90, 0)
 	
 	var p2_mat = null
 	if roster.has(opponent_prefix) and roster[opponent_prefix].texture != "":
@@ -280,6 +302,11 @@ func setup_ui():
 	canvas = CanvasLayer.new()
 	add_child(canvas)
 	
+	# Police cyber embarquée (assets/fonts/*.ttf) — fonctionne sur web
+	_cyber_font = load("res://assets/fonts/RussoOne-Regular.ttf") as FontFile
+	if _cyber_font == null:
+		_cyber_font = load("res://assets/fonts/Orbitron-Variable.ttf") as FontFile
+	
 	flash_rect = ColorRect.new()
 	flash_rect.color = Color(1, 1, 1, 0)
 	flash_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -291,6 +318,11 @@ func setup_ui():
 	status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	status_label.text = "CHOISISSEZ VOTRE COMBATTANT"
 	status_label.add_theme_font_size_override("font_size", 32)
+	if _cyber_font:
+		status_label.add_theme_font_override("font", _cyber_font)
+	status_label.add_theme_color_override("font_color", Color(1.0, 0.9, 0.4))
+	status_label.add_theme_color_override("font_outline_color", Color(0.1, 0.0, 0.2))
+	status_label.add_theme_constant_override("outline_size", 6)
 	status_label.offset_top = 20
 	canvas.add_child(status_label)
 
@@ -299,13 +331,17 @@ func setup_ui():
 	my_choice_label.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
 	my_choice_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	my_choice_label.add_theme_font_size_override("font_size", 28)
+	if _cyber_font:
+		my_choice_label.add_theme_font_override("font", _cyber_font)
 	my_choice_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.2))
+	my_choice_label.add_theme_color_override("font_outline_color", Color(0.1, 0.0, 0.2))
+	my_choice_label.add_theme_constant_override("outline_size", 5)
 	my_choice_label.offset_top = -140
 	my_choice_label.offset_bottom = -80
 	my_choice_label.hide()
 	canvas.add_child(my_choice_label)
 	
-	# --- RPS UI ---
+	# --- RPS UI (icônes PFC procédurales + police cyber) ---
 	rps_ui_container = HBoxContainer.new()
 	canvas.add_child(rps_ui_container)
 	rps_ui_container.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
@@ -314,10 +350,17 @@ func setup_ui():
 	rps_ui_container.offset_top = -110
 	rps_ui_container.offset_bottom = -20
 	
+	var icon_pierre := _make_pfc_icon("pierre")
+	var icon_feuille := _make_pfc_icon("feuille")
+	var icon_ciseaux := _make_pfc_icon("ciseaux")
+	
 	var btn_p = Button.new()
 	btn_p.text = " PIERRE "
 	btn_p.custom_minimum_size = Vector2(130, 55)
 	btn_p.add_theme_font_size_override("font_size", 24)
+	if _cyber_font:
+		btn_p.add_theme_font_override("font", _cyber_font)
+	if icon_pierre: btn_p.icon = icon_pierre
 	btn_p.pressed.connect(func(): _on_choice_made(Choice.PIERRE))
 	rps_ui_container.add_child(btn_p)
 	
@@ -325,6 +368,9 @@ func setup_ui():
 	btn_f.text = " FEUILLE "
 	btn_f.custom_minimum_size = Vector2(130, 55)
 	btn_f.add_theme_font_size_override("font_size", 24)
+	if _cyber_font:
+		btn_f.add_theme_font_override("font", _cyber_font)
+	if icon_feuille: btn_f.icon = icon_feuille
 	btn_f.pressed.connect(func(): _on_choice_made(Choice.FEUILLE))
 	rps_ui_container.add_child(btn_f)
 	
@@ -332,6 +378,9 @@ func setup_ui():
 	btn_c.text = " CISEAUX "
 	btn_c.custom_minimum_size = Vector2(130, 55)
 	btn_c.add_theme_font_size_override("font_size", 24)
+	if _cyber_font:
+		btn_c.add_theme_font_override("font", _cyber_font)
+	if icon_ciseaux: btn_c.icon = icon_ciseaux
 	btn_c.pressed.connect(func(): _on_choice_made(Choice.CISEAUX))
 	rps_ui_container.add_child(btn_c)
 	
@@ -346,9 +395,80 @@ func setup_ui():
 		var btn = Button.new()
 		btn.text = " Jouer " + roster[prefix].name + " "
 		btn.add_theme_font_size_override("font_size", 28)
+		if _cyber_font:
+			btn.add_theme_font_override("font", _cyber_font)
 		# Capture de la variable locale
 		btn.pressed.connect(func(p=prefix): _start_game(p))
 		selection_ui_container.add_child(btn)
+
+# --- ICÔNES PIERRE / FEUILLE / CISEAUX (dessinées en code, embarquées) ---
+# Dessin pixel par pixel (Image n'a pas draw_circle/draw_line en Godot 4.x).
+func _make_pfc_icon(kind: String) -> ImageTexture:
+	var size := 48
+	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var center := Vector2(24, 24)
+	match kind:
+		"pierre":
+			# Pierre : cercle gris + facettes
+			for y in range(size):
+				for x in range(size):
+					var p := Vector2(x + 0.5, y + 0.5)
+					var d := p.distance_to(center)
+					if d <= 15.0:
+						img.set_pixel(x, y, Color(0.55, 0.55, 0.6))
+					elif d <= 17.0:
+						img.set_pixel(x, y, Color(0.25, 0.25, 0.3))
+			_fill_circle(img, Vector2i(17, 19), 2, Color(0.75, 0.75, 0.8))
+			_fill_circle(img, Vector2i(24, 15), 2, Color(0.75, 0.75, 0.8))
+			_fill_circle(img, Vector2i(30, 20), 2, Color(0.75, 0.75, 0.8))
+			_fill_circle(img, center, 11, Color(0.4, 0.4, 0.45))
+		"feuille":
+			# Feuille : disque vert + nervure centrale
+			for y in range(size):
+				for x in range(size):
+					var p := Vector2(x + 0.5, y + 0.5)
+					var d := p.distance_to(center)
+					if d <= 16.0:
+						img.set_pixel(x, y, Color(0.2, 0.7, 0.3))
+			_fill_line(img, Vector2i(24, 12), Vector2i(24, 36), 2, Color(0.8, 1.0, 0.6))
+			_fill_line(img, Vector2i(24, 20), Vector2i(15, 27), 2, Color(0.8, 1.0, 0.6))
+			_fill_line(img, Vector2i(24, 27), Vector2i(33, 33), 2, Color(0.8, 1.0, 0.6))
+		"ciseaux":
+			# Ciseaux : deux lames croisées + axe central
+			var red := Color(0.9, 0.2, 0.2)
+			_fill_line(img, Vector2i(10, 6), Vector2i(38, 42), 4, red)
+			_fill_line(img, Vector2i(38, 6), Vector2i(10, 42), 4, red)
+			_fill_circle(img, Vector2i(24, 24), 8, Color(0.9, 0.9, 0.95))
+			_fill_circle(img, Vector2i(24, 24), 4, Color(0.6, 0.6, 0.7))
+	return ImageTexture.create_from_image(img)
+
+# Remplit un disque plein dans l'image.
+func _fill_circle(img: Image, c: Vector2i, radius: int, col: Color) -> void:
+	for y in range(c.y - radius, c.y + radius + 1):
+		for x in range(c.x - radius, c.x + radius + 1):
+			if x < 0 or y < 0 or x >= img.get_width() or y >= img.get_height():
+				continue
+			var d := Vector2(x + 0.5, y + 0.5).distance_to(Vector2(c.x + 0.5, c.y + 0.5))
+			if d <= float(radius):
+				img.set_pixel(x, y, col)
+
+# Trace un segment épais dans l'image (distance point-segment).
+func _fill_line(img: Image, a: Vector2i, b: Vector2i, thickness: int, col: Color) -> void:
+	var pa := Vector2(a)
+	var pb := Vector2(b)
+	var half := float(thickness) / 2.0
+	for y in range(img.get_height()):
+		for x in range(img.get_width()):
+			var p := Vector2(x + 0.5, y + 0.5)
+			var d := _dist_to_segment(p, pa, pb)
+			if d <= half:
+				img.set_pixel(x, y, col)
+
+func _dist_to_segment(p: Vector2, a: Vector2, b: Vector2) -> float:
+	var ab := b - a
+	var t := clampf((p - a).dot(ab) / maxf(ab.length_squared(), 0.0001), 0.0, 1.0)
+	return p.distance_to(a + ab * t)
 
 func _on_choice_made(player_choice: Choice):
 	if is_fighting:
@@ -438,9 +558,9 @@ func _start_endless_combat_loop():
 		
 	# -- ÉTAPE 0 : RAPPROCHEMENT INITIAL --
 	var t0 = create_tween().set_parallel(true)
-	t0.tween_property(player1_node, "position", Vector3(-0.4, 0, 0), 0.5).set_trans(Tween.TRANS_CUBIC)
+	t0.tween_property(player1_node, "position", Vector3(-0.4, FOOT_Y, 0), 0.5).set_trans(Tween.TRANS_CUBIC)
 	t0.tween_property(player1_node, "rotation_degrees", Vector3(0, 90, 0), 0.5)
-	t0.tween_property(player2_node, "position", Vector3(0.4, 0, 0), 0.5).set_trans(Tween.TRANS_CUBIC)
+	t0.tween_property(player2_node, "position", Vector3(0.4, FOOT_Y, 0), 0.5).set_trans(Tween.TRANS_CUBIC)
 	t0.tween_property(player2_node, "rotation_degrees", Vector3(0, -90, 0), 0.5)
 	t0.tween_property(player1_camera, "fov", 45.0, 0.5).set_trans(Tween.TRANS_CUBIC)
 	await t0.finished
@@ -526,7 +646,7 @@ func _play_combat_climax(winner: int, final_result_txt: String):
 		
 		await get_tree().create_timer(1.5).timeout
 		
-		var w_pos = -2.0 if winner == 1 else 2.0
+		var w_pos = -WAIT_X if winner == 1 else WAIT_X
 		var w_node = player1_node if winner == 1 else player2_node
 		create_tween().tween_property(w_node, "position:x", w_pos, 0.5).set_trans(Tween.TRANS_SINE)
 		set_state(winner, "idle")
@@ -557,8 +677,8 @@ func _play_combat_climax(winner: int, final_result_txt: String):
 		Sfx.play("hurt")
 		
 		var tfall = create_tween().set_parallel(true)
-		tfall.tween_property(player1_node, "position:x", -2.0, 0.5).set_trans(Tween.TRANS_SINE)
-		tfall.tween_property(player2_node, "position:x", 2.0, 0.5).set_trans(Tween.TRANS_SINE)
+		tfall.tween_property(player1_node, "position:x", -WAIT_X, 0.5).set_trans(Tween.TRANS_SINE)
+		tfall.tween_property(player2_node, "position:x", WAIT_X, 0.5).set_trans(Tween.TRANS_SINE)
 		
 		await get_tree().create_timer(0.4).timeout
 		dust_node.position = Vector3(0, -0.5, 0)

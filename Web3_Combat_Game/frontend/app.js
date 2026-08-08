@@ -272,13 +272,38 @@ window.navGoBack = function() {
     navigateTo(prev);
 };
 
-// Lancement du portail BATTLEPOOL (App 1) depuis l'écran SPIRIT
+// Lancement du portail BATTLEPOOL (App 1) depuis l'écran SPIRIT.
+// Ouvre l'App 1 dans un overlay iframe plein écran (bouton retour vers le jeu).
 window.launchBattlePool = function() {
     const portalUrl = (typeof APP_CONFIG !== 'undefined' && APP_CONFIG.PORTAL_URL)
         ? APP_CONFIG.PORTAL_URL
-        : `http://${window.location.hostname}:8090`;
+        : `http://${window.location.hostname}:8001/portal`;
+
+    const overlay = document.getElementById('portal-overlay');
+    const iframe = document.getElementById('portal-iframe');
+    if (!overlay || !iframe) {
+        // Fallback si l'overlay n'existe pas (HTML obsolète) : navigation directe
+        showToast("Ouverture de BATTLEPOOL (App 1)...", "info");
+        setTimeout(() => { window.location.href = portalUrl; }, 400);
+        return;
+    }
+
     showToast("Ouverture de BATTLEPOOL (App 1)...", "info");
-    setTimeout(() => { window.location.href = portalUrl; }, 400);
+    iframe.src = portalUrl;
+    overlay.classList.remove('hidden');
+    if (typeof window.AUDIO_FX !== 'undefined') window.AUDIO_FX.success();
+};
+
+// Fermeture de l'overlay portail : retour au jeu (écran SPIRIT), Godot intact.
+window.closeBattlePool = function() {
+    const overlay = document.getElementById('portal-overlay');
+    const iframe = document.getElementById('portal-iframe');
+    if (overlay) overlay.classList.add('hidden');
+    if (iframe) {
+        // On vide le src pour couper l'audio/WebRTC de l'App 1 immédiatement.
+        iframe.src = 'about:blank';
+    }
+    if (typeof window.AUDIO_FX !== 'undefined') window.AUDIO_FX.click();
 };
 
 // Confirmation du personnage : enregistre puis lance la connexion finale
