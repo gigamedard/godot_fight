@@ -4,10 +4,11 @@ namespace App\Events;
 
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Broadcasting\PresenceChannel;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 
-class ChallengesCancelled implements ShouldBroadcast
+class ChallengesCancelled implements ShouldBroadcastNow
 {
     use Dispatchable, InteractsWithSockets;
 
@@ -22,8 +23,11 @@ class ChallengesCancelled implements ShouldBroadcast
 
     public function broadcastOn(): array
     {
+        // Broadcast sur le presence-lobby : TOUS les joueurs connectés le reçoivent.
+        // Chaque client décide quoi annuler (sa propre modale, ou celle d'un challenger
+        // parti en duel) — c'est le seul canal que tous les joueurs écoutent.
         return [
-            new Channel('lobby'),
+            new PresenceChannel('presence-lobby'),
         ];
     }
 

@@ -23,6 +23,17 @@ class MatchmakingController extends Controller
             'challenger_char' => 'nullable|integer',
         ]);
 
+        $targetId = strtolower($request->target_id);
+        $challengerId = strtolower($request->challenger_id);
+
+        // Un joueur déjà en duel (fight non terminé) ne peut PAS être invité.
+        if ($this->playerInActiveFight($targetId)) {
+            return response()->json(['status' => 'error', 'message' => 'Ce joueur est déjà en combat.'], 409);
+        }
+        if ($this->playerInActiveFight($challengerId)) {
+            return response()->json(['status' => 'error', 'message' => 'Vous êtes déjà en combat.'], 409);
+        }
+
         broadcast(new ChallengeSent($request->challenger_id, $request->target_id, $request->bet_amount, $request->challenger_char ?? 2));
 
         return response()->json(['status' => 'success', 'message' => 'Défi envoyé']);
@@ -40,6 +51,11 @@ class MatchmakingController extends Controller
 
         $challengerId = strtolower($request->challenger_id);
         $targetId = strtolower($request->target_id);
+
+        // Sécurité : refuser l'acceptation si l'un des joueurs est déjà en duel.
+        if ($this->playerInActiveFight($challengerId) || $this->playerInActiveFight($targetId)) {
+            return response()->json(['status' => 'error', 'message' => 'Un des joueurs est déjà en combat.'], 409);
+        }
 
         // Annuler toutes les invitations pour les deux joueurs (envoyées et reçues)
         broadcast(new ChallengesCancelled($challengerId, 'entered_duel'));
@@ -97,5 +113,20 @@ class MatchmakingController extends Controller
         broadcast(new PlayerStatusChanged($request->player_id, $request->status));
 
         return response()->json(['status' => 'success']);
+    }
+
+    /**
+     * Vérifie si un joueur (wallet) est déjà impliqué dans un duel non terminé.
+     * Un joueur en combat ne peut être ni invité, ni accepter un autre défi.
+     */
+    private function playerInActiveFight(string $wallet): bool
+    {
+        $wallet = strtolower($wallet);
+        return Fight::where(function ($q) use ($wallet) {
+            $q->where('player1_wallet', $wallet)
+              ->orWhere('player2_wallet', $wallet);
+        })
+        ->whereIn('status', ['waiting_for_commits', 'waiting_for_reveals'])
+        ->exists();
     }
 }

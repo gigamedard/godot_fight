@@ -362,9 +362,51 @@ window.closeBattlePool = function() {
 
 // Le portail App 1 (iframe cross-origin 8001) ne peut pas appeler closeBattlePool()
 // directement : il envoie un postMessage que l'on écoute ici.
+// On gère aussi la persistance de session cross-origin (le localStorage de l'iframe
+// peut être isolé par le navigateur : on garde user+auth_token côté App 2 et on les
+// redonne au portail à chaque ouverture).
 window.addEventListener('message', function (e) {
-    if (e.data && e.data.type === 'BATTLEPOOL_CLOSE') {
-        window.closeBattlePool();
+    if (!e.data || typeof e.data.type !== 'string') return;
+
+    switch (e.data.type) {
+        case 'BATTLEPOOL_CLOSE':
+            window.closeBattlePool();
+            break;
+
+        // Le portail vient de se connecter : on sauvegarde sa session côté App 2
+        // (même clés que l'App 1 : user + auth_token) pour la persistance.
+        case 'BATTLEPOOL_SESSION_SAVE':
+            try {
+                if (e.data.user) localStorage.setItem('user', JSON.stringify(e.data.user));
+                if (e.data.auth_token) localStorage.setItem('auth_token', e.data.auth_token);
+            } catch (err) { /* ignore */ }
+            break;
+
+        // Le portail demande une session existante : on la lui renvoie.
+        case 'BATTLEPOOL_SESSION_GET': {
+            let user = null, authToken = null;
+            try {
+                const raw = localStorage.getItem('user');
+                if (raw) user = JSON.parse(raw);
+                authToken = localStorage.getItem('auth_token');
+            } catch (err) { /* ignore */ }
+            if (e.source && user && authToken) {
+                e.source.postMessage({
+                    type: 'BATTLEPOOL_SESSION_RETURN',
+                    user: user,
+                    auth_token: authToken
+                }, '*');
+            }
+            break;
+        }
+
+        // Déconnexion depuis le portail : purge locale App 2 aussi.
+        case 'BATTLEPOOL_SESSION_CLEAR':
+            try {
+                localStorage.removeItem('user');
+                localStorage.removeItem('auth_token');
+            } catch (err) { /* ignore */ }
+            break;
     }
 });
 
@@ -774,6 +816,26 @@ function performLogin() {
     lucide.createIcons();
 
     // --- INITIALISATION LARAVEL ECHO / REVERB ---
+    // Nettoie les invitations en attente liées à un joueur qui entre en duel :
+    // - playerId === mon wallet  → mes propres invitations sont annulées
+    // - playerId === mon challenger → le joueur qui m'avait invité est parti en duel
+    // Déclarée au niveau de la connexion (portée accessible par les listeners Echo
+    // ET par initiateChallenge/le reste du code qui peut référencer cette logique).
+    window.cancelPendingChallengesFor = function (playerId) {
+        if (!playerId) return;
+        const pid = String(playerId).toLowerCase();
+        const myWallet = AppState.walletAddress ? AppState.walletAddress.toLowerCase() : null;
+
+        if (pid === myWallet || pid === (AppState.currentChallenger || '').toLowerCase()) {
+            AppState.currentChallenger = null;
+            AppState.currentBetAmountOffchain = null;
+            AppState.currentChallengerChar = null;
+            const modal = document.getElementById('challenge-modal');
+            if (modal) modal.style.display = 'none';
+            console.log("Invitations en attente annulées pour", pid);
+        }
+    };
+
     if (!window.echoInstance) {
         console.log("Tentative de connexion à Reverb...");
 
@@ -821,6 +883,14 @@ function performLogin() {
                     onlinePlayers[playerIndex].status = e.status;
                     renderDuelLobby();
                 }
+                // Un joueur passe "in-game" : toute invitation en attente liée à lui est caduque.
+                if (e.status === 'in-game') {
+                    window.cancelPendingChallengesFor(e.playerId);
+                }
+            })
+            .listen('ChallengesCancelled', (e) => {
+                console.log("=== REVERB: .listen(ChallengesCancelled) ===", e);
+                window.cancelPendingChallengesFor(e.playerId);
             })
             .error((error) => {
                 console.error("=== REVERB: ERREUR D'ABONNEMENT ===", error);
@@ -845,16 +915,6 @@ function performLogin() {
                 const actions = document.getElementById('challenge-modal-actions');
                 if (actions) actions.style.display = 'flex';
                 document.getElementById('challenge-modal').style.display = 'flex';
-            })
-            .listen('ChallengesCancelled', (e) => {
-                console.log("Invitations annulées pour", e.playerId, "raison :", e.reason);
-                // Nettoyer les défis en attente si c'est pour ce joueur
-                if (e.playerId === AppState.walletAddress.toLowerCase()) {
-                    AppState.currentChallenger = null;
-                    AppState.currentBetAmountOffchain = null;
-                    const modal = document.getElementById('challenge-modal');
-                    if (modal) modal.style.display = 'none';
-                }
             })
             .listen('MatchStarted', (e) => {
                 console.log("Accord Off-Chain atteint ! Exécution On-Chain...", e);
@@ -1075,8 +1135,13 @@ function onScanSuccess(decodedText) {
 
 // --- GESTION DE LA MODALE DE PARI ---
 function openBetModal(playerId) {
-    AppState.currentTargetId = playerId;
+    // Garde : un joueur déjà en duel ne peut plus être invité
     const targetPlayer = onlinePlayers.find(p => p.id === playerId);
+    if (targetPlayer && targetPlayer.status === 'in-game') {
+        showToast("Ce joueur est déjà en combat.", "error");
+        return;
+    }
+    AppState.currentTargetId = playerId;
     const targetName = targetPlayer ? targetPlayer.name : "Adversaire";
     document.getElementById('bet-target-name').innerText = targetName;
     document.getElementById('bet-amount').value = AppState.defaultBetAmount || "10";
@@ -1151,6 +1216,16 @@ async function initiateChallenge(playerId, betAmount) {
                 btn.innerHTML = '<i data-lucide="loader-2" width="16" height="16" style="margin-right: 0.5rem"></i> Attente Adv...';
                 lucide.createIcons();
             }
+        } else if (response.status === 409) {
+            // Le backend a refusé : joueur déjà en combat (invitation annulée côté serveur)
+            const data = await response.json().catch(() => null);
+            if(btn) {
+                btn.className = 'btn btn-challenge';
+                btn.innerHTML = 'Défier';
+                btn.disabled = false;
+            }
+            showToast((data && data.message) || "Ce joueur est déjà en combat.", "error");
+            window.cancelPendingChallengesFor(playerId);
         } else {
             throw new Error("API error");
         }
