@@ -1972,8 +1972,21 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // NOUVEAU FLOW : splash (2.5s) → sélection de la langue
-    // (screen-splash est l'écran actif par défaut dans le HTML)
+    // Auto-entrée depuis le portail Hôte App 1 si paramètre ?mode=DUEL ou ?mode=BATTLE
+    const urlParams = new URLSearchParams(window.location.search);
+    const modeParam = urlParams.get('mode');
+    if (modeParam) {
+        const mode = modeParam.toUpperCase();
+        if (mode === 'DUEL' || mode === 'BATTLE') {
+            console.log("[App2] Entrée automatique depuis le portail hôte App 1. Mode :", mode);
+            AppState.selectedGameMode = mode;
+            // Récupérer le wallet authentifié depuis App 1
+            window.connectWallet();
+            return;
+        }
+    }
+
+    // Flow autonome classique : splash (2.5s) → sélection de la langue
     setTimeout(() => {
         navigateTo('screen-language');
     }, 2600);
