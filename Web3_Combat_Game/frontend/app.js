@@ -306,8 +306,17 @@ window.selectGameMode = function(mode) {
     navigateTo('screen-character');
 };
 
-// Bouton retour : remonte d'un cran dans le flow
+// Bouton retour : remonte d'un cran dans le flow.
+// Si on est dans une iframe (portail App 1), le retour depuis l'écran de
+// personnage ou de mode ferme l'iframe au lieu de naviguer (évite le cycle
+// retour → screen-mode → re-choix → re-boucle).
 window.navGoBack = function() {
+    if (window.parent !== window) {
+        if (AppState.currentScreen === 'screen-character' || AppState.currentScreen === 'screen-mode') {
+            window.parent.postMessage({ type: 'BATTLEPOOL_CLOSE' }, '*');
+            return;
+        }
+    }
     const backMap = {
         'screen-language': 'screen-splash',
         'screen-connect': 'screen-language',
