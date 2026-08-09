@@ -284,7 +284,13 @@ window.connectWallet = function() {
     // Initialiser le provider Web3 (signataire déjà détecté)
     initWeb3();
 
-    setTimeout(() => navigateTo('screen-mode'), 500);
+    // Si le mode a déjà été défini par le portail hôte (paramètre URL ?mode=),
+    // sauter l'écran de choix de mode et aller directement à la sélection de personnage.
+    if (AppState.selectedGameMode && (AppState.selectedGameMode === 'DUEL' || AppState.selectedGameMode === 'BATTLE')) {
+        setTimeout(() => navigateTo('screen-character'), 500);
+    } else {
+        setTimeout(() => navigateTo('screen-mode'), 500);
+    }
 };
 
 // Étape 3 : Choix du mode de jeu
