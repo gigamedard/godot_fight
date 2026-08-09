@@ -231,6 +231,12 @@ window.connectWallet = function() {
     const urlParams = new URLSearchParams(window.location.search);
     const playerParam = urlParams.get('player');
 
+    // Si le wallet a déjà été injecté par l'auto-entrée portail (DOMContentLoaded),
+    // on le préserve et on saute toute la détection. Le portail est la source de vérité.
+    const portalWallet = AppState.walletAddress;
+    const portalMode = AppState.selectedGameMode;
+    const isPortalEntry = portalWallet && (portalMode === 'DUEL' || portalMode === 'BATTLE');
+
     let savedWallet = localStorage.getItem('web3combat_wallet');
     let savedPk = localStorage.getItem('web3combat_pk');
 
@@ -239,38 +245,40 @@ window.connectWallet = function() {
         savedPk = null;
     }
 
-    let app1User = null;
-    try {
-        app1User = JSON.parse(localStorage.getItem('user') || 'null');
-    } catch (e) {
-        app1User = null;
-    }
-    const app1Wallet = app1User && app1User.wallet_address ? app1User.wallet_address : null;
+    if (!isPortalEntry) {
+        let app1User = null;
+        try {
+            app1User = JSON.parse(localStorage.getItem('user') || 'null');
+        } catch (e) {
+            app1User = null;
+        }
+        const app1Wallet = app1User && app1User.wallet_address ? app1User.wallet_address : null;
 
-    if (playerParam === null && app1Wallet) {
-        AppState.walletAddress = app1Wallet;
-        AppState.privateKey = null;
-    } else if (savedWallet && savedPk) {
-        AppState.walletAddress = savedWallet;
-        AppState.privateKey = savedPk;
-    } else if (typeof HARDHAT_ACCOUNTS !== 'undefined' && HARDHAT_ACCOUNTS.length > 0) {
-        let accIndex = 1;
-        if (playerParam !== null && !isNaN(playerParam)) {
-            accIndex = parseInt(playerParam);
-            if (accIndex < 0 || accIndex >= HARDHAT_ACCOUNTS.length) accIndex = 1;
+        if (playerParam === null && app1Wallet) {
+            AppState.walletAddress = app1Wallet;
+            AppState.privateKey = null;
+        } else if (savedWallet && savedPk) {
+            AppState.walletAddress = savedWallet;
+            AppState.privateKey = savedPk;
+        } else if (typeof HARDHAT_ACCOUNTS !== 'undefined' && HARDHAT_ACCOUNTS.length > 0) {
+            let accIndex = 1;
+            if (playerParam !== null && !isNaN(playerParam)) {
+                accIndex = parseInt(playerParam);
+                if (accIndex < 0 || accIndex >= HARDHAT_ACCOUNTS.length) accIndex = 1;
+            } else {
+                accIndex = Math.floor(Math.random() * 4) + 1;
+            }
+            const account = HARDHAT_ACCOUNTS[accIndex];
+            AppState.walletAddress = account.address;
+            AppState.privateKey = account.privateKey;
+            if (playerParam === null) {
+                localStorage.setItem('web3combat_wallet', account.address);
+                localStorage.setItem('web3combat_pk', account.privateKey);
+            }
         } else {
-            accIndex = Math.floor(Math.random() * 4) + 1;
+            showToast("Aucun wallet détecté. Connectez-vous via App 1 puis réessayez.", "error");
+            return;
         }
-        const account = HARDHAT_ACCOUNTS[accIndex];
-        AppState.walletAddress = account.address;
-        AppState.privateKey = account.privateKey;
-        if (playerParam === null) {
-            localStorage.setItem('web3combat_wallet', account.address);
-            localStorage.setItem('web3combat_pk', account.privateKey);
-        }
-    } else {
-        showToast("Aucun wallet détecté. Connectez-vous via App 1 puis réessayez.", "error");
-        return;
     }
 
     // Afficher le wallet connecté sur l'écran de connexion
@@ -282,7 +290,13 @@ window.connectWallet = function() {
     showToast("Wallet connecté : " + AppState.walletAddress.substring(0, 6) + "...", "success");
 
     // Initialiser le provider Web3 (signataire déjà détecté)
-    initWeb3();
+    // En mode portail, on n'a pas de clé privée : on utilise le provider injecté (MetaMask)
+    // ou on saute initWeb3 si aucun signer n'est disponible.
+    if (isPortalEntry && !AppState.privateKey && typeof window.ethereum === 'undefined') {
+        console.log("[App2] Entrée portail sans clé privée ni MetaMask : initWeb3 sauté.");
+    } else {
+        initWeb3();
+    }
 
     // Si le mode a déjà été défini par le portail hôte (paramètre URL ?mode=),
     // sauter l'écran de choix de mode et aller directement à la sélection de personnage.
@@ -754,64 +768,71 @@ function performLogin() {
     window.gameConfig = { character: AppState.selectedCharacter.name };
     if (AppState.playerName) window.gameConfig.playerName = AppState.playerName;
     
-    const urlParams = new URLSearchParams(window.location.search);
-    const playerParam = urlParams.get('player');
-    
-    let savedWallet = localStorage.getItem('web3combat_wallet');
-    let savedPk = localStorage.getItem('web3combat_pk');
-    
-    if (playerParam !== null) {
-        // Ignorer le localStorage si un joueur spécifique est demandé via l'URL
-        savedWallet = null;
-        savedPk = null;
-    }
-    
-    // --- AUTH UNIFIÉE : reprendre la session wallet d'App 1 (rock-paper-scissors) ---
-    // App 1 stocke `user` (JSON avec wallet_address) + `auth_token` dans le localStorage.
-    // Même domaine derrière le proxy => ce localStorage est partagé avec App 2.
-    // L'identité d'App 2 est l'adresse wallet : on la reprend, sans toucher au token App 1.
-    let app1User = null;
-    try {
-        app1User = JSON.parse(localStorage.getItem('user') || 'null');
-    } catch (e) {
-        app1User = null;
-    }
-    const app1Wallet = app1User && app1User.wallet_address ? app1User.wallet_address : null;
-    
-    if (playerParam === null && app1Wallet) {
-        AppState.walletAddress = app1Wallet;
-        AppState.privateKey = null; // Pas de clé privée stockée : le provider injecté signera
-    } else if (savedWallet && savedPk) {
-        AppState.walletAddress = savedWallet;
-        AppState.privateKey = savedPk;
-    } else if (typeof HARDHAT_ACCOUNTS !== 'undefined' && HARDHAT_ACCOUNTS.length > 0) {
-        let accIndex = 1; // Par défaut, joueur de test #1
-        if (playerParam !== null && !isNaN(playerParam)) {
-            accIndex = parseInt(playerParam);
-            if (accIndex < 0 || accIndex >= HARDHAT_ACCOUNTS.length) accIndex = 1;
+    // Si le wallet a déjà été injecté par l'auto-entrée portail, on le préserve.
+    // Le portail est la source de vérité pour l'identité du joueur.
+    const portalWallet = AppState.walletAddress;
+    const portalMode = AppState.selectedGameMode;
+    const isPortalEntry = portalWallet && (portalMode === 'DUEL' || portalMode === 'BATTLE');
+
+    if (!isPortalEntry) {
+        const urlParams = new URLSearchParams(window.location.search);
+        const playerParam = urlParams.get('player');
+        
+        let savedWallet = localStorage.getItem('web3combat_wallet');
+        let savedPk = localStorage.getItem('web3combat_pk');
+        
+        if (playerParam !== null) {
+            savedWallet = null;
+            savedPk = null;
+        }
+        
+        let app1User = null;
+        try {
+            app1User = JSON.parse(localStorage.getItem('user') || 'null');
+        } catch (e) {
+            app1User = null;
+        }
+        const app1Wallet = app1User && app1User.wallet_address ? app1User.wallet_address : null;
+        
+        if (playerParam === null && app1Wallet) {
+            AppState.walletAddress = app1Wallet;
+            AppState.privateKey = null;
+        } else if (savedWallet && savedPk) {
+            AppState.walletAddress = savedWallet;
+            AppState.privateKey = savedPk;
+        } else if (typeof HARDHAT_ACCOUNTS !== 'undefined' && HARDHAT_ACCOUNTS.length > 0) {
+            let accIndex = 1;
+            if (playerParam !== null && !isNaN(playerParam)) {
+                accIndex = parseInt(playerParam);
+                if (accIndex < 0 || accIndex >= HARDHAT_ACCOUNTS.length) accIndex = 1;
+            } else {
+                accIndex = Math.floor(Math.random() * 4) + 1;
+            }
+            
+            const account = HARDHAT_ACCOUNTS[accIndex];
+            AppState.walletAddress = account.address;
+            AppState.privateKey = account.privateKey;
+            
+            if (playerParam === null) {
+                localStorage.setItem('web3combat_wallet', account.address);
+                localStorage.setItem('web3combat_pk', account.privateKey);
+            }
         } else {
-            // Aléatoire entre 1 et 4 si non spécifié
-            accIndex = Math.floor(Math.random() * 4) + 1;
+            showToast("Les clés Hardhat ne sont pas chargées. Veuillez générer le fichier hardhat_keys.js.", "error");
+            return;
         }
-        
-        const account = HARDHAT_ACCOUNTS[accIndex];
-        AppState.walletAddress = account.address;
-        AppState.privateKey = account.privateKey;
-        
-        if (playerParam === null) {
-            localStorage.setItem('web3combat_wallet', account.address);
-            localStorage.setItem('web3combat_pk', account.privateKey);
-        }
-    } else {
-        showToast("Les clés Hardhat ne sont pas chargées. Veuillez générer le fichier hardhat_keys.js.", "error");
-        return;
     }
     
     window.gameConfig.walletAddress = AppState.walletAddress;
     console.log("Wallet connecté :", AppState.walletAddress);
 
     // Initialisation du Provider Web3 et Contrat
-    initWeb3();
+    // En mode portail sans clé privée ni MetaMask, on saute initWeb3.
+    if (isPortalEntry && !AppState.privateKey && typeof window.ethereum === 'undefined') {
+        console.log("[App2] performLogin: entrée portail sans clé privée ni MetaMask, initWeb3 sauté.");
+    } else {
+        initWeb3();
+    }
 
     // Mise à jour du badge dans le Menu Principal
     document.getElementById('player-badge').innerHTML = `
@@ -1998,12 +2019,28 @@ document.addEventListener('DOMContentLoaded', () => {
             AppState.selectedGameMode = mode;
             // Nettoyer l'URL pour éviter la boucle de rechargement
             history.replaceState(null, '', window.location.pathname);
-            // Utiliser le wallet passé par le portail (cross-origin, localStorage différent)
+            // Utiliser le wallet passé par le portail (cross-origin, localStorage différent).
+            // Si le wallet correspond à un compte Hardhat (dev login), on récupère aussi
+            // sa clé privée pour pouvoir signer les commits/transactions on-chain.
             if (walletParam) {
                 AppState.walletAddress = walletParam;
                 AppState.privateKey = null;
                 console.log("[App2] Wallet reçu du portail :", walletParam);
+                // Recherche de la clé privée dans HARDHAT_ACCOUNTS (match case-insensitive)
+                if (typeof HARDHAT_ACCOUNTS !== 'undefined') {
+                    const match = HARDHAT_ACCOUNTS.find(
+                        a => a.address.toLowerCase() === walletParam.toLowerCase()
+                    );
+                    if (match) {
+                        AppState.privateKey = match.privateKey;
+                        console.log("[App2] Clé privée Hardhat retrouvée pour ce wallet.");
+                    }
+                }
             }
+            // Masquer la flèche de retour sur l'écran de sélection de personnage
+            // quand on vient du portail (l'iframe sera fermée par le bouton du portail).
+            const btnBackChar = document.getElementById('btn-back-character');
+            if (btnBackChar) btnBackChar.style.display = 'none';
             window.connectWallet();
             return;
         }
