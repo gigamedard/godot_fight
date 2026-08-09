@@ -1981,12 +1981,20 @@ document.addEventListener('DOMContentLoaded', () => {
     // Auto-entrée depuis le portail Hôte App 1 si paramètre ?mode=DUEL ou ?mode=BATTLE
     const urlParams = new URLSearchParams(window.location.search);
     const modeParam = urlParams.get('mode');
+    const walletParam = urlParams.get('wallet');
     if (modeParam) {
         const mode = modeParam.toUpperCase();
         if (mode === 'DUEL' || mode === 'BATTLE') {
             console.log("[App2] Entrée automatique depuis le portail hôte App 1. Mode :", mode);
             AppState.selectedGameMode = mode;
-            // Récupérer le wallet authentifié depuis App 1
+            // Nettoyer l'URL pour éviter la boucle de rechargement
+            history.replaceState(null, '', window.location.pathname);
+            // Utiliser le wallet passé par le portail (cross-origin, localStorage différent)
+            if (walletParam) {
+                AppState.walletAddress = walletParam;
+                AppState.privateKey = null;
+                console.log("[App2] Wallet reçu du portail :", walletParam);
+            }
             window.connectWallet();
             return;
         }
