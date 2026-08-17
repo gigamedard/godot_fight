@@ -43,15 +43,30 @@ services:
     restart: unless-stopped
     environment:
       RPC_URL: ws://blockchain:8545
+      RPC_HTTP_URL: http://blockchain:8545
       API_URL: http://api:8000/api/internal
       INDEXER_SECRET: super_secret_indexer_token
       CONTRACT_ADDRESS: 0x5FbDB2315678afecb367f032d93F642f64180aa3
       ARTIFACT_PATH: /srv/blockchain/artifacts/contracts/CombatGame.sol/CombatGame.json
+      # --- Indexation robuste (polling + reorg safety + idempotence) ---
+      DEPLOYMENT_BLOCK: 0
+      CONFIRMATIONS_REQUIRED: 5
+      POLL_INTERVAL_MS: 2000
+      MAX_BLOCK_RANGE: 1000
+      BACKOFF_BASE_MS: 2000
+      BACKOFF_MAX_MS: 30000
+      # --- MySQL (persistance d'état) ---
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_USERNAME: user
+      DB_PASSWORD: password
+      DB_DATABASE: web3_combat
     volumes:
       - ./blockchain:/srv/blockchain:ro
     depends_on:
       - blockchain
       - api
+      - db
 
   api:
     build:
