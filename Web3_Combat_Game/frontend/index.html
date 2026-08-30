@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BATTLEPOOL — Spirit Fight</title>
-    <link rel="stylesheet" href="style.css?v=3.3">
+    <link rel="stylesheet" href="style.css?v=3.5">
 </head>
 <body>
 
@@ -13,9 +13,34 @@
          ============================================================ -->
     <div id="godot-layer">
         <canvas id="canvas"></canvas>
-        <div id="godot-status" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1; text-align: center; color: white; display: none; background: rgba(0,0,0,0.85); padding: 20px; border-radius: 10px;">
-            <p style="margin-bottom: 10px; font-weight: bold;">Chargement du Moteur 3D...</p>
-            <progress id="godot-progress" value="0" max="1" style="width: 200px;"></progress>
+
+        <!-- Couche d'animation 2D ultra-légère (Combat Light pendant chargement 3D) -->
+        <div id="anim2d-layer" class="anim2d-layer">
+            <canvas id="anim2d-canvas"></canvas>
+            <div id="anim2d-hud">
+                <div class="anim2d-badge">
+                    <div class="anim2d-spinner"></div>
+                    <span id="anim2d-status-text">INITIALISATION DU MOTEUR 3D...</span>
+                </div>
+                <div class="anim2d-progress-bar">
+                    <div id="anim2d-progress-fill" style="width: 0%;"></div>
+                </div>
+            </div>
+
+            <!-- Barre de choix de coup (mode 2D) : visible uniquement quand le layer 2D est actif
+                 et qu'un match est en cours (masquée par défaut, affichée par app.js). -->
+            <div id="anim2d-move-bar" class="anim2d-move-bar hidden">
+                <span class="anim2d-move-label">À toi de jouer ! Choisis ton coup :</span>
+                <div class="anim2d-move-buttons">
+                    <button id="btn-move-1" class="anim2d-move-btn" onclick="window.submitMove2D(1)">✊ Pierre</button>
+                    <button id="btn-move-2" class="anim2d-move-btn" onclick="window.submitMove2D(2)">✋ Feuille</button>
+                    <button id="btn-move-3" class="anim2d-move-btn" onclick="window.submitMove2D(3)">✌ Ciseaux</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="godot-status" style="display: none;">
+            <progress id="godot-progress" value="0" max="1"></progress>
         </div>
     </div>
 
@@ -379,16 +404,17 @@
     <!-- ============================================================
          SCRIPTS (ordre préservé — ne pas modifier)
          ============================================================ -->
-    <script src="lucide.min.js"></script>
-    <script src="pusher.min.js"></script>
-    <script src="echo.iife.js"></script>
+    <script src="lucide.min.js?v=1"></script>
+    <script src="pusher.min.js?v=1"></script>
+    <script src="echo.iife.js?v=1"></script>
 
-    <script src="ethers.min.js"></script>
-    <script src="hardhat_keys.js"></script>
+    <script src="ethers.min.js?v=1"></script>
+    <script src="hardhat_keys.js?v=1"></script>
     <script src="contract_abi.js?v=3"></script>
 
     <!-- Moteur Godot (export web) -->
     <script src="godot/jeu.js?v=3"></script>
+    <script src="anim2d.js?v=3"></script>
     <script>
         const GODOT_CONFIG = {
             "args":[],
@@ -404,14 +430,19 @@
             const statusProgress = document.getElementById('godot-progress');
             engine.startGame({
                 'onProgress': function (current, total) {
+                    if (window.updateAnim2DProgress) {
+                        window.updateAnim2DProgress(current, total);
+                    }
                     if (total > 0) {
-                        if(statusOverlay) statusOverlay.style.display = 'block';
                         if(statusProgress) { statusProgress.value = current; statusProgress.max = total; }
                     } else {
                         if(statusProgress) { statusProgress.removeAttribute('value'); statusProgress.removeAttribute('max'); }
                     }
                 }
             }).then(() => {
+                if (window.transition2Dto3D) {
+                    window.transition2Dto3D();
+                }
                 if(statusOverlay) statusOverlay.style.display = 'none';
             }).catch(err => {
                 console.error("Erreur chargement Godot:", err);
@@ -422,8 +453,8 @@
     <script src="config.js?v=6"></script>
     <script src="audio.js?v=2"></script>
     <!-- QR code : scan (html5-qrcode) + génération (qrcodejs) — locales pour hors-ligne -->
-    <script src="html5-qrcode.min.js"></script>
-    <script src="qrcode.min.js"></script>
-    <script src="app.js?v=4.0" defer></script>
+    <script src="html5-qrcode.min.js?v=1"></script>
+    <script src="qrcode.min.js?v=1"></script>
+    <script src="app.js?v=4.4" defer></script>
 </body>
 </html>

@@ -24,10 +24,10 @@ const AppState = {
 let onlinePlayers = []; // Mis à jour via Reverb
 
 const characters = [
-    { id: 1, name: 'Guerrier Ninja', style: 'Arts Martiaux', color: 'var(--color-orange)', photo: 'characters/p1-ninja.svg' },
-    { id: 2, name: 'Mutant Cyborg', style: 'Vitesse', color: 'var(--color-blue)', photo: 'characters/p2-cyborg.svg' },
-    { id: 3, name: 'Tom Frazer', style: 'Force Brute', color: 'var(--color-red)', photo: 'characters/p3-tom.svg' },
-    { id: 4, name: 'Big Choco', style: 'Magie', color: 'var(--color-purple)', photo: 'characters/p4-mage.svg' }
+    { id: 1, name: 'Guerrier Ninja', style: 'Arts Martiaux', color: 'var(--color-orange)', photo: 'characters/p1-ninja.png?v=2' },
+    { id: 2, name: 'Mutant Cyborg', style: 'Vitesse', color: 'var(--color-blue)', photo: 'characters/p2-cyborg.png?v=2' },
+    { id: 3, name: 'Tom Frazer', style: 'Force Brute', color: 'var(--color-red)', photo: 'characters/p3-tom.png?v=2' },
+    { id: 4, name: 'Big Choco', style: 'Force Titan', color: 'var(--color-purple)', photo: 'characters/p4-mage.png?v=2' }
 ];
 
 const brLobbies = [
@@ -226,8 +226,11 @@ window.selectLanguage = function(lang) {
     navigateTo('screen-connect');
 };
 
-// Étape 2 : Connexion du wallet (détection App 1 / Hardhat / MetaMask)
-window.connectWallet = function() {
+// Étape 2 : Connexion du wallet — MetaMask obligatoire, sinon restauration localStorage.
+// Le fallback "compte Hardhat aléatoire" est ABANDONNÉ. HARDHAT_ACCOUNTS n'est utilisé
+// que pour : (a) l'entrée portail dev (DOMContentLoaded, l.2029-2038), (b) le mode e2e
+// explicite ?player=N (comptes déterministes, jamais aléatoires).
+window.connectWallet = async function() {
     const urlParams = new URLSearchParams(window.location.search);
     const playerParam = urlParams.get('player');
 
@@ -237,74 +240,126 @@ window.connectWallet = function() {
     const portalMode = AppState.selectedGameMode;
     const isPortalEntry = portalWallet && (portalMode === 'DUEL' || portalMode === 'BATTLE');
 
-    let savedWallet = localStorage.getItem('web3combat_wallet');
-    let savedPk = localStorage.getItem('web3combat_pk');
+    const savedWallet = localStorage.getItem('web3combat_wallet'); // adresse (jamais de clé privée)
+    const savedPk = localStorage.getItem('web3combat_pk');         // session dev explicite uniquement
 
-    if (playerParam !== null) {
-        savedWallet = null;
-        savedPk = null;
-    }
+    // Fonction interne commune : affichage + initWeb3 + navigation.
+    const finishConnection = function() {
+        // Afficher le wallet connecté sur l'écran de connexion
+        const statusBox = document.getElementById('wallet-status-box');
+        const addrDisplay = document.getElementById('wallet-addr-display');
+        if (statusBox) statusBox.style.display = 'block';
+        if (addrDisplay) addrDisplay.textContent = AppState.walletAddress;
 
-    if (!isPortalEntry) {
-        let app1User = null;
-        try {
-            app1User = JSON.parse(localStorage.getItem('user') || 'null');
-        } catch (e) {
-            app1User = null;
-        }
-        const app1Wallet = app1User && app1User.wallet_address ? app1User.wallet_address : null;
+        showToast("Wallet connecté : " + AppState.walletAddress.substring(0, 6) + "...", "success");
 
-        if (playerParam === null && app1Wallet) {
-            AppState.walletAddress = app1Wallet;
-            AppState.privateKey = null;
-        } else if (savedWallet && savedPk) {
-            AppState.walletAddress = savedWallet;
-            AppState.privateKey = savedPk;
-        } else if (typeof HARDHAT_ACCOUNTS !== 'undefined' && HARDHAT_ACCOUNTS.length > 0) {
-            let accIndex = 1;
-            if (playerParam !== null && !isNaN(playerParam)) {
-                accIndex = parseInt(playerParam);
-                if (accIndex < 0 || accIndex >= HARDHAT_ACCOUNTS.length) accIndex = 1;
-            } else {
-                accIndex = Math.floor(Math.random() * 4) + 1;
-            }
-            const account = HARDHAT_ACCOUNTS[accIndex];
-            AppState.walletAddress = account.address;
-            AppState.privateKey = account.privateKey;
-            if (playerParam === null) {
-                localStorage.setItem('web3combat_wallet', account.address);
-                localStorage.setItem('web3combat_pk', account.privateKey);
-            }
+        // Initialiser le provider Web3 (signataire déjà détecté).
+        // Sans clé privée et sans MetaMask (ex. restauration localStorage['user']),
+        // aucun signer n'est disponible : initWeb3 est sauté (mode dégradé).
+        if (!AppState.privateKey && typeof window.ethereum === 'undefined') {
+            console.log("[App2] Pas de clé privée ni MetaMask : initWeb3 sauté (mode dégradé).");
         } else {
-            showToast("Aucun wallet détecté. Connectez-vous via App 1 puis réessayez.", "error");
+            initWeb3();
+        }
+
+        // Si le mode a déjà été défini par le portail hôte (paramètre URL ?mode=),
+        // sauter l'écran de choix de mode et aller directement à la sélection de personnage.
+        if (AppState.selectedGameMode && (AppState.selectedGameMode === 'DUEL' || AppState.selectedGameMode === 'BATTLE')) {
+            setTimeout(() => navigateTo('screen-character'), 500);
+        } else {
+            setTimeout(() => navigateTo('screen-mode'), 500);
+        }
+    };
+
+    // ── 1. Entrée portail (?mode=…&wallet=… déjà traités par le DOMContentLoaded).
+    //    Chemin SYNCHRONE : ne pas redemander de connexion (popup interdite ici).
+    if (isPortalEntry) {
+        finishConnection();
+        return;
+    }
+
+    // ── 2. Mode e2e explicite ?player=N : compte Hardhat DÉTERMINISTE (jamais aléatoire).
+    if (playerParam !== null && typeof HARDHAT_ACCOUNTS !== 'undefined' && HARDHAT_ACCOUNTS.length > 0) {
+        let accIndex = parseInt(playerParam, 10);
+        if (isNaN(accIndex) || accIndex < 0 || accIndex >= HARDHAT_ACCOUNTS.length) accIndex = 1;
+        const account = HARDHAT_ACCOUNTS[accIndex];
+        AppState.walletAddress = account.address;
+        AppState.privateKey = account.privateKey;
+        localStorage.setItem('web3combat_wallet', account.address);
+        localStorage.setItem('web3combat_pk', account.privateKey);
+        console.log("[App2] Mode e2e ?player=" + playerParam + " → compte Hardhat #" + accIndex);
+        finishConnection();
+        return;
+    }
+
+    // ── 3. MetaMask présent : connexion demandée à l'utilisateur.
+    if (typeof window.ethereum !== 'undefined') {
+        try {
+            let accounts = [];
+            if (savedWallet) {
+                // Restauration silencieuse : si l'adresse sauvegardée est toujours
+                // autorisée dans MetaMask, on se reconnecte SANS popup.
+                try {
+                    accounts = (await window.ethereum.request({ method: 'eth_accounts' })) || [];
+                } catch (e) {
+                    accounts = [];
+                }
+                accounts = accounts.filter(a => typeof a === 'string' && a.toLowerCase() === savedWallet.toLowerCase());
+            }
+            if (accounts.length === 0) {
+                // Première connexion, ou adresse plus autorisée : popup MetaMask.
+                accounts = (await window.ethereum.request({ method: 'eth_requestAccounts' })) || [];
+            }
+            if (accounts.length === 0) {
+                console.warn("[App2] MetaMask n'a retourné aucun compte.");
+                showToast("Aucun compte autorisé dans MetaMask.", "error");
+                return;
+            }
+            AppState.walletAddress = accounts[0];
+            AppState.privateKey = null;
+            // Persistance : l'ADRESSE uniquement. La restauration passera par eth_accounts
+            // (silencieux) — jamais de clé privée stockée côté frontend.
+            localStorage.setItem('web3combat_wallet', AppState.walletAddress);
+            console.log("[App2] Wallet MetaMask connecté :", AppState.walletAddress);
+            finishConnection();
             return;
+        } catch (e) {
+            console.error("[App2] Connexion MetaMask refusée ou échouée :", e);
+            showToast("Connexion MetaMask refusée par l'utilisateur.", "error");
+            return; // rester sur screen-connect, l'utilisateur peut réessayer
         }
     }
 
-    // Afficher le wallet connecté sur l'écran de connexion
-    const statusBox = document.getElementById('wallet-status-box');
-    const addrDisplay = document.getElementById('wallet-addr-display');
-    if (statusBox) statusBox.style.display = 'block';
-    if (addrDisplay) addrDisplay.textContent = AppState.walletAddress;
-
-    showToast("Wallet connecté : " + AppState.walletAddress.substring(0, 6) + "...", "success");
-
-    // Initialiser le provider Web3 (signataire déjà détecté)
-    // En mode portail, on n'a pas de clé privée : on utilise le provider injecté (MetaMask)
-    // ou on saute initWeb3 si aucun signer n'est disponible.
-    if (isPortalEntry && !AppState.privateKey && typeof window.ethereum === 'undefined') {
-        console.log("[App2] Entrée portail sans clé privée ni MetaMask : initWeb3 sauté.");
-    } else {
-        initWeb3();
+    // ── 4. Pas de MetaMask : user localStorage (ancien login direct sur 8080,
+    //      ou session reçue du portail via BATTLEPOOL_SESSION_SAVE).
+    let app1User = null;
+    try {
+        app1User = JSON.parse(localStorage.getItem('user') || 'null');
+    } catch (e) {
+        app1User = null;
+    }
+    const app1Wallet = app1User && app1User.wallet_address ? app1User.wallet_address : null;
+    if (app1Wallet) {
+        AppState.walletAddress = app1Wallet;
+        AppState.privateKey = null;
+        console.log("[App2] Wallet restauré depuis localStorage['user'] :", app1Wallet);
+        finishConnection();
+        return;
     }
 
-    // Si le mode a déjà été défini par le portail hôte (paramètre URL ?mode=),
-    // sauter l'écran de choix de mode et aller directement à la sélection de personnage.
-    if (AppState.selectedGameMode && (AppState.selectedGameMode === 'DUEL' || AppState.selectedGameMode === 'BATTLE')) {
-        setTimeout(() => navigateTo('screen-character'), 500);
-    } else {
-        setTimeout(() => navigateTo('screen-mode'), 500);
+    // ── 5. Session dev explicite déjà persistée (paire adresse + clé privée stockée
+    //       par ?player=N ou par un e2e). Ce n'est PAS un fallback de connexion.
+    if (savedWallet && savedPk) {
+        AppState.walletAddress = savedWallet;
+        AppState.privateKey = savedPk;
+        console.log("[App2] Session dev restaurée depuis localStorage :", savedWallet);
+        finishConnection();
+        return;
     }
+
+    // ── 6. Rien du tout : erreur bloquante (aucun compte généré, aucune clé stockée).
+    showToast("Aucun wallet détecté. Installez MetaMask ou connectez-vous via le portail.", "error");
+    return;
 };
 
 // Étape 3 : Choix du mode de jeu
@@ -590,6 +645,10 @@ async function initWeb3() {
 }
 
 async function initSessionKey() {
+    if (typeof ethers === 'undefined' || !ethers.Wallet) {
+        console.warn("[App2] initSessionKey annulé : ethers.js non chargé.");
+        return;
+    }
     let sessionPk = localStorage.getItem('web3combat_session_pk');
     if (!sessionPk) {
         const sw = ethers.Wallet.createRandom();
@@ -651,6 +710,12 @@ async function refreshClaimable() {
 }
 
 function updateBalance() {
+    if (!provider) {
+        // Mode dégradé (aucun signer : portail MetaMask non-Hardhat sans extension,
+        // ou restauration localStorage['user']) : pas de provider on-chain.
+        console.log("[App2] updateBalance ignoré : pas de provider (mode dégradé).");
+        return;
+    }
     if(AppState.walletAddress) {
         provider.getBalance(AppState.walletAddress).then(bal => {
             const el = document.getElementById('wallet-balance');
@@ -753,6 +818,10 @@ function selectCharacter(char) {
     if (typeof window.AUDIO_FX !== 'undefined' && window.AUDIO_FX.success) {
         window.AUDIO_FX.success();
     }
+    // Le preloader 2D met en scène mon perso dès la sélection (l'adversaire, si connu).
+    if (typeof window.setFighters2D === 'function' && isAnim2DLayerVisible()) {
+        window.setFighters2D(char.id, anim2DCharId(AppState.opponentChar, 2));
+    }
 }
 
 function performLogin() {
@@ -777,49 +846,48 @@ function performLogin() {
     if (!isPortalEntry) {
         const urlParams = new URLSearchParams(window.location.search);
         const playerParam = urlParams.get('player');
-        
-        let savedWallet = localStorage.getItem('web3combat_wallet');
-        let savedPk = localStorage.getItem('web3combat_pk');
-        
+
+        // Mode e2e explicite ?player=N : compte Hardhat DÉTERMINISTE (jamais aléatoire),
+        // ré-écrit à chaque fois pour rester cohérent avec connectWallet().
         if (playerParam !== null) {
-            savedWallet = null;
-            savedPk = null;
-        }
-        
-        let app1User = null;
-        try {
-            app1User = JSON.parse(localStorage.getItem('user') || 'null');
-        } catch (e) {
-            app1User = null;
-        }
-        const app1Wallet = app1User && app1User.wallet_address ? app1User.wallet_address : null;
-        
-        if (playerParam === null && app1Wallet) {
-            AppState.walletAddress = app1Wallet;
-            AppState.privateKey = null;
-        } else if (savedWallet && savedPk) {
-            AppState.walletAddress = savedWallet;
-            AppState.privateKey = savedPk;
-        } else if (typeof HARDHAT_ACCOUNTS !== 'undefined' && HARDHAT_ACCOUNTS.length > 0) {
-            let accIndex = 1;
-            if (playerParam !== null && !isNaN(playerParam)) {
-                accIndex = parseInt(playerParam);
-                if (accIndex < 0 || accIndex >= HARDHAT_ACCOUNTS.length) accIndex = 1;
-            } else {
-                accIndex = Math.floor(Math.random() * 4) + 1;
+            if (typeof HARDHAT_ACCOUNTS === 'undefined' || HARDHAT_ACCOUNTS.length === 0) {
+                showToast("Les clés Hardhat ne sont pas chargées. Veuillez générer le fichier hardhat_keys.js.", "error");
+                return;
             }
-            
+            let accIndex = parseInt(playerParam, 10);
+            if (isNaN(accIndex) || accIndex < 0 || accIndex >= HARDHAT_ACCOUNTS.length) accIndex = 1;
             const account = HARDHAT_ACCOUNTS[accIndex];
             AppState.walletAddress = account.address;
             AppState.privateKey = account.privateKey;
-            
-            if (playerParam === null) {
-                localStorage.setItem('web3combat_wallet', account.address);
-                localStorage.setItem('web3combat_pk', account.privateKey);
-            }
+            localStorage.setItem('web3combat_wallet', account.address);
+            localStorage.setItem('web3combat_pk', account.privateKey);
+        } else if (AppState.walletAddress) {
+            // Wallet déjà établi par connectWallet() (MetaMask, localStorage['user']
+            // ou session dev restaurée) : on le GARDE tel quel. Aucun fallback
+            // aléatoire : un compte Hardhat ne doit jamais remplacer le wallet réel.
+            // (ancien comportement : écrasement par Math.random() → SUPPRIMÉ)
         } else {
-            showToast("Les clés Hardhat ne sont pas chargées. Veuillez générer le fichier hardhat_keys.js.", "error");
-            return;
+            // Sécurité (non atteignable dans le flow normal : connectWallet bloque avant).
+            const savedWallet = localStorage.getItem('web3combat_wallet');
+            const savedPk = localStorage.getItem('web3combat_pk');
+            let app1User = null;
+            try {
+                app1User = JSON.parse(localStorage.getItem('user') || 'null');
+            } catch (e) {
+                app1User = null;
+            }
+            const app1Wallet = app1User && app1User.wallet_address ? app1User.wallet_address : null;
+
+            if (savedWallet && savedPk) {
+                AppState.walletAddress = savedWallet;
+                AppState.privateKey = savedPk;
+            } else if (app1Wallet) {
+                AppState.walletAddress = app1Wallet;
+                AppState.privateKey = null;
+            } else {
+                showToast("Aucun wallet détecté. Installez MetaMask ou connectez-vous via le portail.", "error");
+                return;
+            }
         }
     }
     
@@ -873,6 +941,11 @@ function performLogin() {
     };
 
     if (!window.echoInstance) {
+        if (typeof Echo === 'undefined') {
+            console.error("[App2] Echo n'est pas défini (echo.iife.js ou pusher.min.js manquant).");
+            showToast("Module WebSocket non disponible. Veuillez rafraîchir la page.", "error");
+            return;
+        }
         console.log("Tentative de connexion à Reverb...");
 
         window.echoInstance = new Echo({
@@ -1086,6 +1159,14 @@ window.resetMatchState = function() {
     }
     
     updateBalance();
+
+    // Cacher la barre de choix 2D après le match (si elle était affichée).
+    window.showMoveBar2D(false);
+    // Réinitialiser le verrou anti-double-clic 2D et réactiver les boutons
+    // pour le round/match suivant.
+    window._move2DPending = false;
+    const moveBar2D = document.getElementById('anim2d-move-bar');
+    if (moveBar2D) moveBar2D.querySelectorAll('.anim2d-move-btn').forEach(b => b.disabled = false);
 };
 
 window.quitGodot = function() {
@@ -1508,6 +1589,42 @@ async function renderBRLobby() {
 // --- LANCEMENT DU JEU GODOT ---
 // (Le moteur Godot est maintenant chargé nativement depuis index.html au lancement de la page)
 
+// --- PONT ANIM 2D (préloader de combat pendant le chargement Godot) ---
+// Renvoie true si le layer 2D est actuellement affiché (Godot pas encore prêt,
+// ou mode ?mode2d=1). False = Godot 3D actif → tous les appels 2D deviennent no-op.
+function isAnim2DLayerVisible() {
+    const layer = document.getElementById('anim2d-layer');
+    if (!layer) return false;
+    return layer.style.display !== 'none' && !layer.classList.contains('hidden');
+}
+
+// Convertit "p1".."p4" (ou un id numérique) en entier 1-4 valable pour anim2d.js.
+function anim2DCharId(charValue, fallback) {
+    const n = parseInt(String(charValue || '').replace('p', ''), 10);
+    return (n >= 1 && n <= 4) ? n : (fallback || 1);
+}
+
+// Met à jour les combattants du preloader 2D (idle face à face).
+// No-op si le layer 2D est masqué (Godot 3D déjà actif) ou si anim2d.js est absent.
+window.syncFighters2D = function() {
+    if (typeof window.setFighters2D !== 'function' || !isAnim2DLayerVisible()) return;
+    const myId = anim2DCharId(AppState.myChar, AppState.selectedCharacter ? AppState.selectedCharacter.id : 1);
+    const oppId = anim2DCharId(AppState.opponentChar, 2);
+    window.setFighters2D(myId, oppId);
+    console.log("[App2] anim2D : combattants en idle " + myId + " vs " + oppId);
+};
+
+// Déclenche la séquence de combat 2D pour un résultat. myResult : 1 = victoire,
+// 2 = défaite, 0 = égalité. MON perso est affiché à gauche (p1) → winner 2D = 1 si j'ai gagné.
+window.playRound2D = function(myResult) {
+    if (typeof window.triggerRound2D !== 'function' || !isAnim2DLayerVisible()) return;
+    const myId = anim2DCharId(AppState.myChar, AppState.selectedCharacter ? AppState.selectedCharacter.id : 1);
+    const oppId = anim2DCharId(AppState.opponentChar, 2);
+    const winner2D = (myResult === 1) ? 1 : ((myResult === 2) ? 2 : 0); // 0 → choix aléatoire côté anim2d
+    window.triggerRound2D(winner2D, myId, oppId);
+    console.log("[App2] anim2D : séquence de round déclenchée (résultat " + myResult + ").");
+};
+
 function launchGodot(targetId) {
     console.log("Lancement du combat contre :", targetId);
     
@@ -1528,6 +1645,14 @@ function launchGodot(targetId) {
     // Masquer complètement l'UI Web pour afficher Godot au premier plan
     const overlay = document.getElementById('ui-overlay');
     if (overlay) overlay.classList.add('hidden');
+
+    // Mettre en scène le duel dans le preloader 2D si Godot 3D n'est pas encore prêt.
+    window.syncFighters2D();
+
+    // Barre de choix de coup en mode 2D (Godot pas encore prêt).
+    if (isAnim2DLayerVisible()) {
+        window.showMoveBar2D(true);
+    }
 
     if (window.godotSpawnOpponent) {
         window.godotSpawnOpponent("p" + (AppState.opponentChar ? AppState.opponentChar.replace('p','') : "2"));
@@ -1749,12 +1874,74 @@ window.submitMove = async function(moveNum) {
 
             AppState.hasCommitted = true;
 
+            // 2D : désactiver les boutons de la barre de choix après le commit.
+            const moveBar2D = document.getElementById('anim2d-move-bar');
+            if (moveBar2D && isAnim2DLayerVisible()) {
+                moveBar2D.querySelectorAll('.anim2d-move-btn').forEach(b => b.disabled = true);
+            }
+
             startUnifiedMatchPolling();
 
         } catch (e) {
             console.error("Erreur Web3 (Commit/Reveal) :", e);
         }
     }
+};
+
+// === MODE 2D : barre de choix du coup (pipeline identique à Godot) ===
+// Appelée par les boutons de #anim2d-move-bar. Réutilise submitMove (pipeline
+// complet : secret → hash → signature session → POST /battle/commit → polling).
+// Verrou synchrone (_move2DPending) : submitMove ne pose hasCommitted=true qu'après
+// ses awaits (secret/signature) — un double-clic dans cette fenêtre doit être bloqué
+// ici pour ne générer qu'un seul commit.
+window._move2DPending = false;
+window.submitMove2D = function(moveNum) {
+    if (!isAnim2DLayerVisible()) return;              // 3D active → ne jamais accepter
+    if (AppState.hasCommitted) {
+        console.log("[App2] Coup déjà soumis (2D).");
+        return;
+    }
+    if (window._move2DPending) {
+        console.log("[App2] Commit déjà en cours (2D) : clic ignoré.");
+        return;
+    }
+    if (!AppState.currentMatchId) {
+        console.log("[App2] Aucun match actif : bouton 2D ignoré.");
+        return;
+    }
+    console.log("[App2] Coup choisi en 2D :", moveNum);
+    window._move2DPending = true;
+
+    // Feedback immédiat : désactiver les boutons dès le clic (hasCommitted n'est
+    // posé qu'après la signature) — la post-vérification reste dans submitMove.
+    const barLock = document.getElementById('anim2d-move-bar');
+    if (barLock) barLock.querySelectorAll('.anim2d-move-btn').forEach(b => b.disabled = true);
+
+    Promise.resolve(window.submitMove(moveNum)).then(() => {
+        window._move2DPending = false;
+        // Échec avant commit (ex : signature refusée) → rénabler pour nouvelle tentative.
+        if (!AppState.hasCommitted && isAnim2DLayerVisible()) {
+            const barRetry = document.getElementById('anim2d-move-bar');
+            if (barRetry) barRetry.querySelectorAll('.anim2d-move-btn').forEach(b => b.disabled = false);
+        }
+    }).catch(e => {
+        window._move2DPending = false;
+        console.error("[App2] Erreur submitMove2D :", e);
+        if (!AppState.hasCommitted && isAnim2DLayerVisible()) {
+            const barRetry = document.getElementById('anim2d-move-bar');
+            if (barRetry) barRetry.querySelectorAll('.anim2d-move-btn').forEach(b => b.disabled = false);
+        }
+    });
+};
+
+// Affiche/masque la barre de choix 2D. Sans argument : inverse l'état courant.
+// Aucun effet si la barre n'existe pas ; le masquage parent (#anim2d-layer.hidden)
+// suffit à la cacher quand Godot 3D devient actif.
+window.showMoveBar2D = function(show) {
+    const bar = document.getElementById('anim2d-move-bar');
+    if (!bar) return;
+    if (typeof show === 'undefined') show = bar.classList.contains('hidden');
+    bar.classList.toggle('hidden', !show);
 };
 
 // --- TIMER VISIBLE (compte à rebours ancré sur la deadline serveur, identique pour tous) ---
@@ -1899,6 +2086,12 @@ function startUnifiedMatchPolling() {
                     opponentMoveInt = parseInt(opponentMoveRaw, 10);
                     if (isNaN(opponentMoveInt)) opponentMoveInt = 0;
                 }
+
+                // Preloader 2D : déclencher la séquence de combat si Godot n'est pas prêt.
+                window.playRound2D(godotResult);
+
+                // Masquer la barre de choix 2D le temps de l'animation de résultat.
+                window.showMoveBar2D(false);
 
                 if (window.receiveMatchResult) {
                     window.receiveMatchResult(godotResult, opponentMoveInt);
