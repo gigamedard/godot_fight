@@ -707,10 +707,14 @@ async function refreshClaimable() {
     if (!container || !amt) return;
 
     // FIX claim : le bouton ne doit apparaître QUE si ce wallet a un gain
-    // légitime à réclamer. Trois cas :
+    // légitime à réclamer. Quatre cas :
     //  1. Dernier match perdu (non-draw) → rien à réclamer, masquer.
-    //  2. Dernier match gagné (ou draw) → solde on-chain = gain à réclamer.
-    //  3. Aucun match récent → solde on-chain éventuel (dépôts divers).
+    //  2. Dernier match gagné MAIS consolidation pas encore visible on-chain
+    //     (userBalances == mise du match, le settle n'a pas encore tourné) →
+    //     masquer : afficher la mise seule serait trompeur (le gain = pot).
+    //  3. Dernier match gagné + consolidation visible (userBalances > mise ou
+    //     perdant à 0) → afficher le pot.
+    //  4. Aucun match récent → solde on-chain éventuel (dépôts divers).
     const w = AppState.walletAddress ? AppState.walletAddress.toLowerCase() : null;
     if (!w) { container.style.display = 'none'; return; }
 
@@ -721,9 +725,25 @@ async function refreshClaimable() {
             .then(r => r.ok ? r.json() : null)
             .catch(() => null);
 
-        // Si le dernier match déclare ce wallet PERDANT (et pas un draw), le
-        // bouton ne doit jamais s'afficher, même s'il reste un solde fantôme.
+        // Cas 1 : perdant du dernier match → jamais de bouton.
         if (lastResult && lastResult.result && lastResult.result !== 'draw' && lastResult.loser === w) {
+            container.style.display = 'none';
+            amt.innerText = '0';
+            return;
+        }
+
+        // Cas 2 : gagnant mais consolidation pas encore visible. Si le montant
+        // on-chain est EXACTEMENT la mise du dernier match, le pot n'est pas
+        // encore consolidé (après settle le gagnant a stake*2 - frais →
+        // toujours > stake du match). On masque : le bouton apparaîtra après
+        // la consolidation avec le bon montant.
+        const lastStake = lastResult && lastResult.base_bet_amount
+            ? BigInt(lastResult.base_bet_amount) : null;
+        if (lastResult && lastResult.result && lastResult.result !== 'draw'
+            && lastResult.loser !== null && lastResult.loser !== 'both'
+            && lastResult.loser !== w
+            && lastStake !== null && pending > 0n && pending === lastStake) {
+            console.log("[Claim] Consolidation en attente : montant on-chain = mise seule, masquage jusqu'au settle.");
             container.style.display = 'none';
             amt.innerText = '0';
             return;

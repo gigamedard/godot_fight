@@ -267,6 +267,7 @@ class BattleController extends Controller
             'match_id' => $fight->id,
             'result' => $fight->result,
             'loser' => $loser,
+            'base_bet_amount' => (string) $fight->base_bet_amount,
         ]);
     }
 
