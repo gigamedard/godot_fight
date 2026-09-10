@@ -783,11 +783,39 @@ function updateBalance() {
         return;
     }
     if(AppState.walletAddress) {
-        provider.getBalance(AppState.walletAddress).then(bal => {
+        // FIX staleness badge : le solde natif peut être lu AVEC RETARD après
+        // un retrait push (propagation RPC). On lit le solde DIRECTEMENT via
+        // le RPC public Hardhat (indépendant du provider MetaMask et de son
+        // cache) et on RELIT une seconde fois pour converger après minage.
+        const readNative = async () => {
+            try {
+                const res = await fetch(APP_CONFIG.RPC_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_getBalance', params: [AppState.walletAddress, 'latest'] })
+                });
+                const j = await res.json();
+                if (j.result) return BigInt(j.result);
+            } catch (e) { /* fallback provider */ }
+            return null;
+        };
+        (async () => {
+            let bal = await readNative();
+            if (bal === null) {
+                try { bal = await provider.getBalance(AppState.walletAddress); } catch (e) { return; }
+            }
             const el = document.getElementById('wallet-balance');
-            if(el) el.innerText = parseFloat(ethers.formatEther(bal)).toFixed(2) + " ETH";
-        });
-        
+            if (el) el.innerText = parseFloat(ethers.formatEther(bal)).toFixed(2) + " ETH";
+            // Deuxième lecture après 3s : si le retrait vient d'être miné, la
+            // première lecture peut renvoyer l'ancien solde.
+            setTimeout(async () => {
+                const bal2 = await readNative();
+                if (bal2 === null) return;
+                const el2 = document.getElementById('wallet-balance');
+                if (el2 && bal2 !== bal) el2.innerText = parseFloat(ethers.formatEther(bal2)).toFixed(2) + " ETH";
+            }, 3000);
+        })();
+
         refreshClaimable();
     }
 }
