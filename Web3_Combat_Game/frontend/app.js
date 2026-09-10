@@ -732,13 +732,27 @@ async function refreshClaimable() {
             return;
         }
 
+        // FIX claim : verrou post-claim. Pendant 20s après un claim réussi, le
+        // bouton reste masqué : le re-fetch du solde peut renvoyer l'ancienne
+        // valeur (retard de propagation du RPC) et ré-afficher un fantôme.
+        if (AppState.claimJustDone && (Date.now() - AppState.claimJustDone) < 20000) {
+            container.style.display = 'none';
+            amt.innerText = '0';
+            return;
+        }
+
         // Cas 2 : gagnant mais consolidation pas encore visible. Si le montant
         // on-chain est EXACTEMENT la mise du dernier match, le pot n'est pas
         // encore consolidé (après settle le gagnant a stake*2 - frais →
         // toujours > stake du match). On masque : le bouton apparaîtra après
         // la consolidation avec le bon montant.
-        const lastStake = lastResult && lastResult.base_bet_amount
-            ? BigInt(lastResult.base_bet_amount) : null;
+        // NB : base_bet_amount est stocké en DB en UNITÉS ETH (ex. "100" = 100
+        // ETH) tandis que pending est en WEI (100e18) — conversion obligatoire,
+        // sinon la comparaison échoue toujours et le filtre est inopérant.
+        let lastStake = null;
+        if (lastResult && lastResult.base_bet_amount && Number(lastResult.base_bet_amount) > 0) {
+            lastStake = ethers.parseEther(String(lastResult.base_bet_amount)); // ETH → wei
+        }
         if (lastResult && lastResult.result && lastResult.result !== 'draw'
             && lastResult.loser !== null && lastResult.loser !== 'both'
             && lastResult.loser !== w
@@ -810,12 +824,16 @@ async function claimPendingFunds() {
             return;
         }
         console.log("[Claim] Retrait push effectué par le serveur (gasless).", data.script_output || '');
-        // FIX claim : masquer immédiatement le bouton (la tx peut encore miner,
-        // le re-fetch du solde ré-afficherait un montant fantôme).
+        // FIX claim : masquer immédiatement le bouton ET mettre un verrou de
+        // session : tant que la tx push n'est pas minée (le backend attend
+        // tx.wait() donc le succès HTTP garantit le minage, mais le solde
+        // on-chain peut être lu avec un léger retard de propagation du RPC),
+        // refreshClaimable ré-afficherait un montant fantôme.
         const container = document.getElementById('pending-funds-container');
         if (container) container.style.display = 'none';
         const amt = document.getElementById('pending-amount');
         if (amt) amt.innerText = '0';
+        AppState.claimJustDone = Date.now();
         showToast("Fonds transférés avec succès dans votre wallet !", "success");
         updateBalance();
     } catch (err) {
