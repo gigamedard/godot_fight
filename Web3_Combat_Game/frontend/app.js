@@ -1934,11 +1934,25 @@ window.animationFinished = function() {
     }
 
     // Le règlement on-chain (settleLoser) peut prendre quelques secondes :
-    // re-synchroniser le solde à réclamer pour masquer/afficher le claim correctement
+    // re-synchroniser le solde à réclamer pour masquer/afficher le claim
+    // correctement. FIX : la boucle courte (15s) s'arrêtait AVANT que le
+    // settle backend ne consolide (le settle peut attendre 30s+ les dépôts)
+    // → le bouton n'apparaissait jamais. On garde un polling LONG qui se
+    // répète tant que la page reste sur le lobby (toutes les 4s), et qui
+    // s'arrête dès que le bouton est affiché ou après 5 min.
     (async () => {
-        for (let i = 0; i < 6; i++) {
-            await new Promise(r => setTimeout(r, 2500));
+        for (let i = 0; i < 75; i++) {
+            await new Promise(r => setTimeout(r, 4000));
+            // Le polling s'arrête si un match recommence
+            if (AppState.pendingResult || AppState.currentMatchId) return;
+            const container = document.getElementById('pending-funds-container');
+            const isVisible = container && container.style.display === 'block';
             await refreshClaimable();
+            // Si le bouton vient de s'afficher (gain consolidé), on peut stopper
+            if (container && container.style.display === 'block' && !isVisible) {
+                showToast("Votre gain est disponible ! Cliquez Réclamer.", "success");
+                return;
+            }
         }
     })();
 
