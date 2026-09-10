@@ -194,6 +194,34 @@ contract CombatGame {
     }
 
     /**
+     * @dev Retrait PUSH gasless : le backend signer soumet lui-même le transfert
+     * des ETH vers le wallet du joueur (le joueur ne signe rien, ne paie pas de
+     * gaz). Le backend signe : keccak256(abi.encodePacked(user, amount, nonce, address(this)))
+     * — MÊME message que withdraw() : le voucher existant est réutilisable tel quel.
+     * Le nonce est scoped par wallet (usedNonces[user][nonce]) pour éviter tout rejeu.
+     */
+    function withdrawTo(address user, uint256 amount, uint256 nonce, bytes memory signature) external {
+        require(user != address(0), "Zero address");
+        require(amount > 0, "Amount must be > 0");
+        require(userBalances[user] >= amount, "Insufficient on-chain balance");
+        require(!usedNonces[user][nonce], "Nonce already used");
+
+        bytes32 messageHash = keccak256(abi.encodePacked(user, amount, nonce, address(this)));
+        bytes32 ethSignedMessageHash = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", messageHash));
+
+        address recoveredSigner = recoverSigner(ethSignedMessageHash, signature);
+        require(recoveredSigner == backendSigner, "Invalid backend signature");
+
+        usedNonces[user][nonce] = true;
+        userBalances[user] -= amount;
+
+        (bool success, ) = user.call{value: amount}("");
+        require(success, "Transfer failed");
+
+        emit Withdrawal(user, amount, nonce);
+    }
+
+    /**
      * @dev Historical trace: A player can choose to commit their move hash on-chain.
      * This proves they locked in their choice before the reveal phase.
      */

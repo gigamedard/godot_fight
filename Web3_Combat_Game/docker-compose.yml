@@ -82,6 +82,7 @@ services:
       WEB3_BACKEND_SIGNER_KEY: 0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d
       WEB3_SETTLE_SCRIPT: /srv/blockchain/scripts/settle_fight.js
       WEB3_CONSOLIDATE_SCRIPT: /srv/blockchain/scripts/consolidate_pool.js
+      WEB3_WITHDRAW_PUSH_SCRIPT: /srv/blockchain/scripts/withdraw_push.js
       DB_CONNECTION: mysql
       DB_HOST: db
       DB_PORT: 3306

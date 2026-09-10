@@ -43,9 +43,12 @@ class MatchStarted implements ShouldBroadcastNow
      */
     public function broadcastOn(): array
     {
+        // NB : PrivateChannel préfixe automatiquement avec "private-" →
+        // passer 'player.X' (cf. ChallengeSent). Lowercase pour éviter
+        // tout mismatch checksum/lowercase entre publication et souscription.
         return [
-            new PrivateChannel('private-player.' . $this->player1),
-            new PrivateChannel('private-player.' . $this->player2),
+            new PrivateChannel('player.' . strtolower($this->player1)),
+            new PrivateChannel('player.' . strtolower($this->player2)),
         ];
     }
 }

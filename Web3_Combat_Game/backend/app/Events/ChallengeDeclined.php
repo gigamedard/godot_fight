@@ -35,8 +35,10 @@ class ChallengeDeclined implements ShouldBroadcastNow
      */
     public function broadcastOn(): array
     {
+        // NB : PrivateChannel préfixe automatiquement avec "private-" →
+        // passer 'player.X' (cf. ChallengeSent).
         return [
-            new PrivateChannel('private-player.' . $this->challengerId),
+            new PrivateChannel('player.' . strtolower($this->challengerId)),
         ];
     }
 }

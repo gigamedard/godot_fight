@@ -107,3 +107,12 @@ use App\Http\Controllers\Api\WithdrawController;
 Route::post('/withdraw/voucher', [WithdrawController::class, 'voucher']);
 Route::post('/withdraw/settle-voucher', [WithdrawController::class, 'settleVoucher']);
 Route::post('/withdraw/claim-pool-voucher', [WithdrawController::class, 'claimPoolVoucher']);
+
+// Règlement gasless d'un duel : le serveur soumet lui-même settleLoser via le
+// backend signer (0 validation MetaMask pour le gagnant). Rejouable/idempotent :
+// le contrat refuse un settle sur solde 0 ("Nothing to settle").
+Route::post('/battle/settle', [InternalController::class, 'settleDuel']);
+
+// Retrait PUSH gasless : le serveur soumet lui-même withdrawTo (voucher déjà
+// signé par le backend) — 0 validation MetaMask pour le joueur.
+Route::post('/withdraw/push', [InternalController::class, 'pushWithdraw']);

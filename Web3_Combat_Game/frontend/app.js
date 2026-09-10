@@ -1,4 +1,13 @@
 // 1. ÉTAT GLOBAL DE L'APPLICATION
+// ── SWITCH DE FLUX DÉPÔT/COMBAT ──────────────────────────────────────────────
+// true  = Option 1 (par défaut) : le combat se lance immédiatement, le dépôt
+//         on-chain se fait en parallèle (tx.wait() via MetaMask prend 12-28s
+//         mesurés — bloquer le combat derrière = écran figé + timeout).
+//         Si le dépôt échoue franchement (revert/refus), le match est annulé.
+// false = Option 2 (sécurité max) : le combat ne démarre QUE si le dépôt est
+//         confirmé on-chain (await depositForMatch) — jusqu'à ~30s d'attente.
+const LAUNCH_GAME_BEFORE_DEPOSIT_CONFIRM = true;
+// ────────────────────────────────────────────────────────────────────────────
 const AppState = {
     currentScreen: 'screen-splash',
     selectedCharacter: null,
@@ -727,39 +736,38 @@ function updateBalance() {
 }
 
 async function claimPendingFunds() {
-    if(!contract || !AppState.walletAddress) {
+    if(!AppState.walletAddress) {
         showToast("Portefeuille non connecté.", "error");
         return;
     }
+    // ICDM : le retrait est soumis par le SERVEUR (voucher backend + withdrawTo
+    // via le backend signer) — le joueur ne signe rien, ne paie pas de gaz,
+    // et voit ses ETH arriver directement dans son wallet. Idempotent :
+    // solde 0 → "rien à retirer".
     try {
-        // Lire le solde on-chain réel (userBalances du contrat CombatGame)
-        if (typeof contract.userBalances !== 'function') {
-            showToast("Fonction de réclamation indisponible.", "error");
-            return;
+        // Lire le solde on-chain réel (userBalances du contrat) pour un message
+        // informatif avant le push serveur
+        let pending = 0n;
+        if (typeof contract !== 'undefined' && contract && typeof contract.userBalances === 'function') {
+            pending = await contract.userBalances(AppState.walletAddress);
         }
-        const pending = await contract.userBalances(AppState.walletAddress);
         if (pending <= 0n) {
             showToast("Aucun fonds à réclamer.", "info");
             return;
         }
-        // Obtenir le voucher signé par le backend (withdraw(amount, nonce, signature))
-        const res = await fetch(`${APP_CONFIG.API_BASE_URL}/withdraw/voucher`, {
+        showToast("Transfert de vos gains en cours (sans signature)...", "info");
+        const res = await fetch(`${APP_CONFIG.API_BASE_URL}/withdraw/push`, {
             method: "POST",
             headers: { "Content-Type": "application/json", "Accept": "application/json" },
-            body: JSON.stringify({
-                wallet_address: AppState.walletAddress,
-                amount_wei: pending.toString()
-            })
+            body: JSON.stringify({ wallet_address: AppState.walletAddress })
         });
         const data = await res.json();
-        if (!res.ok || !data.signature) {
-            showToast("Bon de retrait refusé : " + (data.error || 'Erreur inconnue'), "error");
+        if (!res.ok) {
+            showToast("Retrait refusé : " + (data.message || data.error || 'Erreur inconnue'), "error");
             return;
         }
-        showToast("Transaction de retrait envoyée...", "info");
-        const tx = await contract.withdraw(BigInt(data.amount), BigInt(data.nonce), data.signature);
-        await tx.wait();
-        showToast("Fonds récupérés avec succès !", "success");
+        console.log("[Claim] Retrait push effectué par le serveur (gasless).", data.script_output || '');
+        showToast("Fonds transférés avec succès dans votre wallet !", "success");
         updateBalance();
     } catch (err) {
         console.error(err);
@@ -1005,8 +1013,13 @@ function performLogin() {
                 console.error("=== REVERB: ERREUR D'ABONNEMENT ===", error);
             });
 
-        // S'abonner au canal privé
-        window.echoInstance.private(`private-player.${AppState.walletAddress}`)
+        // S'abonner au canal privé.
+        // NB : Echo préfixe automatiquement "private-" au nom passé à .private() —
+        // il faut donc lui donner 'player.<wallet>' (et non 'private-player.…'
+        // qui produisait 'private-private-player.…'). Le wallet est normalisé en
+        // lowercase pour matcher le canal de publication du backend
+        // (PlayerChannel : 'player.' . strtolower($id)).
+        window.echoInstance.private(`player.${AppState.walletAddress.toLowerCase()}`)
             .listen('ChallengeSent', (e) => {
                 console.log("Défi reçu de :", e.challengerId, "Pari :", e.betAmount);
                 // N'accepter le défi que si on est sur l'écran de lobby (screen-main)
@@ -1528,15 +1541,37 @@ async function executeMatchOnChain(e) {
         AppState.myChar = "p" + (e.p2Char || 2);
     }
 
-    // Dépôt on-chain de la mise (escrow) au lancement du match
+    // Dépôt on-chain de la mise (escrow) au lancement du match.
+    // Option 1 (LAUNCH_GAME_BEFORE_DEPOSIT_CONFIRM = true) : le combat démarre
+    // tout de suite, le dépôt se poursuit en arrière-plan — annulation si le
+    // dépôt échoue franchement. Option 2 (= false) : le combat n'est lancé
+    // qu'après la confirmation on-chain du dépôt (flux séquentiel historique).
     const betAmount = AppState.currentBetAmountOffchain || AppState.defaultBetAmount || '0';
-    await depositForMatch(betAmount);
-
-    setTimeout(() => {
-        document.getElementById('challenge-modal').style.display = 'none';
-        AppState.lastActionTime = Date.now();
-        launchGodot(opponent);
-    }, 1000);
+    if (typeof LAUNCH_GAME_BEFORE_DEPOSIT_CONFIRM !== 'undefined' && LAUNCH_GAME_BEFORE_DEPOSIT_CONFIRM) {
+        depositForMatch(betAmount).then(ok => {
+            if (ok) {
+                console.log("[Match] Dépôt escrow confirmé (arrière-plan) pour le match", AppState.currentMatchId);
+            } else {
+                // Échec du dépôt : annulation du match en cours.
+                console.error("[Match] Dépôt échoué — annulation du match.");
+                showToast("Dépôt on-chain échoué — match annulé.", "error");
+                window.resetMatchState();
+                navigateTo('screen-main');
+            }
+        });
+        setTimeout(() => {
+            document.getElementById('challenge-modal').style.display = 'none';
+            AppState.lastActionTime = Date.now();
+            launchGodot(opponent);
+        }, 1000);
+    } else {
+        await depositForMatch(betAmount);
+        setTimeout(() => {
+            document.getElementById('challenge-modal').style.display = 'none';
+            AppState.lastActionTime = Date.now();
+            launchGodot(opponent);
+        }, 1000);
+    }
 }
 
 
@@ -1689,28 +1724,33 @@ window.onGodotReady = function() {
 async function settleMatchOnWin(godotResult) {
     if (godotResult !== 1) return;
     const loser = AppState.currentTargetId;
-    if (!loser || !contract || !AppState.walletAddress) return;
+    if (!loser || !AppState.walletAddress) return;
+    // ICDM : le règlement on-chain (settleLoser) est soumis par le SERVEUR via
+    // le backend signer — le gagnant ne signe rien (0 popup MetaMask).
+    // Idempotent : si le solde du perdant est déjà réglé, la route répond noop.
     try {
-        const res = await fetch(`${APP_CONFIG.API_BASE_URL}/withdraw/settle-voucher`, {
+        showToast("Consolidation du pot en arrière-plan...", "info");
+        const res = await fetch(`${APP_CONFIG.API_BASE_URL}/battle/settle`, {
             method: "POST",
             headers: { "Content-Type": "application/json", "Accept": "application/json" },
             body: JSON.stringify({
-                winner_address: AppState.walletAddress,
-                loser_address: loser
+                winner: AppState.walletAddress,
+                loser: loser
             })
         });
         const data = await res.json();
-        if (!res.ok || !data.signature) {
-            showToast("Bon de règlement refusé : " + (data.error || 'Erreur inconnue'), "error");
+        if (!res.ok) {
+            showToast("Règlement automatique refusé : " + (data.message || data.error || 'Erreur inconnue'), "error");
             return;
         }
-        showToast("Règlement on-chain en cours (transfert de la mise adverse)...", "info");
-        const tx = await contract.settleLoser(data.winner, data.loser, data.signature);
-        await tx.wait();
-        showToast("Pot consolidé ! Vous pouvez réclamer vos gains.", "success");
+        console.log("[Match] Règlement on-chain effectué par le serveur (gasless).", data.script_output || '');
+        showToast("Pot consolidé automatiquement ! Vous pouvez réclamer vos gains.", "success");
         updateBalance();
     } catch (err) {
-        console.error("Erreur lors du règlement:", err);
+        console.error("Erreur lors du règlement serveur:", err);
+        // Fallback UX : si la route échoue, on indique que la consolidation est
+        // retentée par la consolidation de poule / le prochain refresh.
+        showToast("Règlement différé : votre gain sera crédité sous quelques secondes.", "info");
     }
 }
 

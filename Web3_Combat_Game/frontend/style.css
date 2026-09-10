@@ -579,6 +579,114 @@ html, body {
     margin-top: 4px;
 }
 
+/* ---- 9bis. ÉCRAN 2 : CONNEXION — enrichissement UX (itération 1) ----
+   Nouvelles classes uniquement : aucun sélecteur existant modifié.
+   Tous les ids/handlers du contrat app.js sont conservés en l'état. */
+.connect-card { overflow: hidden; }
+
+/* Lueur d'arrière-plan discrète derrière le bouclier */
+.connect-card::before {
+    content: "";
+    position: absolute;
+    top: -70px; left: 50%;
+    width: 300px; height: 300px;
+    transform: translateX(-50%);
+    background: radial-gradient(circle, rgba(0,229,255,0.16) 0%, rgba(123,44,191,0.10) 45%, transparent 70%);
+    pointer-events: none;
+}
+
+.cyber-shield-icon {
+    position: relative;
+    box-shadow: 0 0 22px rgba(0,229,255,0.28), inset 0 0 14px rgba(0,229,255,0.10);
+    transition: box-shadow 0.25s ease, transform 0.25s ease;
+}
+.connect-card:hover .cyber-shield-icon {
+    box-shadow: 0 0 34px rgba(0,229,255,0.45), inset 0 0 18px rgba(0,229,255,0.16);
+    transform: translateY(-2px);
+}
+
+/* Anneau pulsant autour du bouclier (décoratif) */
+.cyber-shield-icon .shield-pulse {
+    position: absolute;
+    inset: -8px;
+    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+    border: 1.5px solid rgba(0,229,255,0.5);
+    animation: shieldPulse 2.4s ease-out infinite;
+    pointer-events: none;
+}
+@keyframes shieldPulse {
+    0%   { transform: scale(1);    opacity: 0.8; }
+    70%  { transform: scale(1.35); opacity: 0; }
+    100% { transform: scale(1.35); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .cyber-shield-icon .shield-pulse { animation: none; opacity: 0; }
+}
+
+.connect-subtitle { text-align: center; }
+
+/* Liste des bénéfices de la connexion */
+.connect-perks {
+    list-style: none;
+    margin: 0 0 20px 0;
+    padding: 12px 14px;
+    background: rgba(24,24,36,0.6);
+    border: 1px solid rgba(123,44,191,0.35);
+    clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+}
+.connect-perks li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--text-white);
+    letter-spacing: 0.3px;
+}
+.connect-perks li i,
+.connect-perks li svg {
+    width: 16px; height: 16px;
+    flex: 0 0 16px;
+    color: var(--cyan-spark);
+}
+
+/* CTA principal : accentuation sans toucher à .btn-primary-gold */
+.connect-cta {
+    position: relative;
+    font-size: 1.05rem;
+    padding: 16px 20px;
+    min-height: 52px; /* cible tactile confortable */
+}
+.connect-cta:focus-visible {
+    outline: 2px solid var(--cyan-spark);
+    outline-offset: 3px;
+}
+
+/* Mention rassurante sous le CTA */
+.connect-hint {
+    margin-top: 10px;
+    text-align: center;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    letter-spacing: 0.3px;
+}
+
+/* Badge de statut : label avec icône (l'ID .wallet-status-box est inchangé) */
+.wallet-status-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-heading);
+    font-size: 0.85rem;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+}
+.wallet-status-label i,
+.wallet-status-label svg { width: 16px; height: 16px; }
+
 /* ==========================================================================
    10. ÉCRAN 3 : MODE
    ========================================================================== */
@@ -1322,36 +1430,255 @@ body::-webkit-scrollbar { width: 0; }
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
 }
 .anim2d-move-bar.hidden { display: none; }
-.anim2d-move-label {
-    font-family: var(--font-heading);
-    font-size: 0.95rem;
+
+/* Instruction : Rajdhani 1.1rem, uppercase, cyan avec glow */
+.move-bar-instruction {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 1.1rem;
     font-weight: 700;
-    color: var(--text-white);
-    text-shadow: 0 0 10px rgba(0,0,0,0.8);
+    color: #00E5FF;
+    text-transform: uppercase;
     letter-spacing: 1px;
+    text-shadow: 0 0 10px rgba(0, 229, 255, 0.6);
+    margin-bottom: 8px;
+    text-align: center;
 }
-.anim2d-move-buttons { display: flex; gap: 12px; }
+
+.anim2d-move-buttons { display: flex; gap: 14px; }
+
+/* Boutons cyber biseautés : fond sombre, accent lumineux distinct par coup */
 .anim2d-move-btn {
-    min-width: 108px;
-    padding: 12px 18px;
+    min-width: 112px;
+    padding: 13px 18px;
     font-family: var(--font-heading);
     font-weight: 800;
-    font-size: 1rem;
-    color: #000;
-    background: linear-gradient(135deg, var(--cyan-spark, #00E5FF), var(--purple-neon, #7B2CBF));
-    border: none;
-    border-radius: 12px;
+    font-size: 0.95rem;
+    color: var(--text-white);
+    background: #1F1B2E;
+    border: 1.5px solid var(--cyan-spark);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
     cursor: pointer;
     letter-spacing: 1px;
-    box-shadow: 0 8px 22px rgba(0,229,255,0.35);
-    transition: transform .12s, box-shadow .12s, filter .15s;
+    text-transform: uppercase;
+    clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+    box-shadow: 0 0 12px rgba(0,229,255,0.25);
+    transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.15s ease, background 0.15s ease;
 }
-.anim2d-move-btn:hover:not(:disabled) { transform: translateY(-2px); filter: brightness(1.12); }
-.anim2d-move-btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; box-shadow: none; }
-@media (max-width: 480px) {
-    .anim2d-move-buttons { flex-wrap: wrap; justify-content: center; }
-    .anim2d-move-btn { min-width: 88px; padding: 10px 14px; font-size: 0.9rem; }
+/* Icônes Lucide dans les boutons */
+.anim2d-move-btn i,
+.anim2d-move-btn svg { width: 18px; height: 18px; flex: 0 0 18px; }
+
+/* Accents distincts : Pierre cyan / Feuille violet / Ciseaux or */
+.move-rock    { border-color: var(--cyan-spark);    box-shadow: 0 0 12px rgba(0,229,255,0.35); }
+.move-paper   { border-color: var(--purple-neon);   box-shadow: 0 0 12px rgba(123,44,191,0.45); }
+.move-scissors{ border-color: var(--gold-primary);  box-shadow: 0 0 12px rgba(255,199,0,0.35); }
+.move-rock svg    { color: var(--cyan-spark); }
+.move-paper svg   { color: var(--purple-neon); filter: brightness(1.6) saturate(1.2); }
+.move-scissors svg{ color: var(--gold-primary); }
+
+/* Hover : glow renforcé + translation */
+.anim2d-move-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    filter: brightness(1.15);
+}
+.move-rock:hover:not(:disabled)     { box-shadow: 0 0 20px rgba(0,229,255,0.65); }
+.move-paper:hover:not(:disabled)    { box-shadow: 0 0 20px rgba(123,44,191,0.75); }
+.move-scissors:hover:not(:disabled) { box-shadow: 0 0 20px rgba(255,199,0,0.65); }
+
+/* Active : compression tactile */
+.anim2d-move-btn:active:not(:disabled) { transform: scale(0.95); }
+
+.anim2d-move-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+    filter: grayscale(0.8);
+}
+
+/* Responsive mobile-first : barre ancrée en bas, instruction au-dessus des boutons */
+@media (max-width: 768px) {
+    .anim2d-move-bar {
+        position: fixed;
+        bottom: 10px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 95%;
+        z-index: 21; /* au-dessus du layer 2D, sous les modales (100) — inchangé */
+        gap: 6px;
+        padding: 0 4px;
+    }
+    .move-bar-instruction {
+        font-size: 0.85rem;
+        margin-bottom: 6px;
+        overflow: visible;
+        white-space: nowrap; /* jamais de chevauchement : texte sur une ligne au-dessus des boutons */
+    }
+    .anim2d-move-buttons { gap: 8px; }
+    .anim2d-move-btn {
+        min-width: 0;
+        flex: 1 1 0;
+        max-width: 130px;
+        padding: 11px 8px;
+        font-size: 0.82rem;
+        clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+    }
+    .anim2d-move-btn i,
+    .anim2d-move-btn svg { width: 15px; height: 15px; flex: 0 0 15px; }
+}
+@media (max-width: 360px) {
+    .anim2d-move-btn { padding: 10px 4px; font-size: 0.75rem; letter-spacing: 0.5px; }
+    .anim2d-move-btn i,
+    .anim2d-move-btn svg { width: 13px; height: 13px; flex: 0 0 13px; }
+}
+
+/* ---- 18bis. FEEDBACK DU COUP CHOISI (Itération 4B) ---- */
+
+/* Bouton sélectionné dans la barre de choix : brillance + élévation + bordure épaisse */
+.anim2d-move-btn.selected {
+    transform: translateY(-4px);
+    border-width: 2.5px;
+    filter: brightness(1.25);
+    background: #2A243D;
+}
+.move-rock.selected     { box-shadow: 0 0 18px rgba(0,229,255,0.8); }
+.move-paper.selected    { box-shadow: 0 0 18px rgba(123,44,191,0.85); }
+.move-scissors.selected { box-shadow: 0 0 18px rgba(255,199,0,0.8); }
+.anim2d-move-btn.selected:active { transform: translateY(-4px) scale(0.95); }
+
+/* Badge du coup retenu, à côté de la barre de vie du joueur (HUD) */
+.selected-move-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    margin-top: 8px;
+    background: rgba(31, 27, 46, 0.9);
+    border: 2px solid var(--cyan-spark);
+    clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+    box-shadow: 0 0 15px #00E5FF, inset 0 0 8px rgba(0,229,255,0.35);
+    color: var(--cyan-spark);
+    pointer-events: none;
+}
+.selected-move-badge i,
+.selected-move-badge svg { width: 22px; height: 22px; }
+
+.selected-move-badge.hidden { display: none; }
+
+/* Animation d'apparition */
+.selected-move-badge.pop-in { animation: popIn 0.3s ease-out; }
+@keyframes popIn {
+    0%   { transform: scale(0.4); opacity: 0; }
+    70%  { transform: scale(1.12); opacity: 1; }
+    100% { transform: scale(1); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .selected-move-badge.pop-in { animation: none; }
+}
+
+/* Mobile : badge plus compact sous la barre de vie */
+@media (max-width: 768px) {
+    .selected-move-badge { width: 36px; height: 36px; margin-top: 6px; }
+    .selected-move-badge i,
+    .selected-move-badge svg { width: 18px; height: 18px; }
+}
+
+/* ==========================================================================
+   22. HUD COMBAT (Itération 3) — superposition écran de combat
+   Positions absolues DANS #screen-combat ; les barres de vie sont mises
+   à jour par app.js (largeur %) et les noms par anim2d.js (textContent).
+   ========================================================================== */
+#combat-hud-layer {
+    position: absolute;
+    top: 15px;
+    left: 20px;
+    right: 20px;
+    z-index: 15; /* au-dessus des fonds (5) et de la barre 2D (21 ? NON : sous la barre) */
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    pointer-events: none; /* ne bloque aucun clic sur l'arène/boutons */
+}
+
+.combat-hud-side { flex: 1 1 0; min-width: 0; }
+.combat-hud-right { text-align: right; }
+
+/* Pseudo + wallet partiel */
+.hud-player-info { display: flex; flex-direction: column; gap: 2px; margin-bottom: 6px; }
+.combat-hud-right .hud-player-info { align-items: flex-end; }
+
+.hud-player-name {
+    font-family: var(--font-heading);
+    font-size: 0.9rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--text-white);
+    text-shadow: 0 2px 8px rgba(0,0,0,0.9), 0 0 6px rgba(0,229,255,0.35);
+    letter-spacing: 1px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+.hud-player-wallet {
+    font-family: var(--font-body);
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    text-shadow: 0 1px 4px rgba(0,0,0,0.9);
+}
+
+/* Barres de vie : biseau symétrique, fond sombre translucide, bordure fine */
+.hud-health-bar-container {
+    height: 20px;
+    width: 100%;
+    max-width: 300px;
+    background: rgba(31, 27, 46, 0.75);
+    border: 1px solid rgba(160, 153, 184, 0.35);
+    box-shadow: 0 2px 10px rgba(0,0,0,0.55), inset 0 0 8px rgba(0,0,0,0.5);
+    padding: 2px;
+}
+.combat-hud-left  .hud-health-bar-container { margin-right: auto;  clip-path: polygon(0 0, 100% 0, calc(100% - 12px) 100%, 0 100%); }
+.combat-hud-right .hud-health-bar-container { margin-left: auto;   clip-path: polygon(12px 0, 100% 0, 100% 100%, 0 100%); }
+
+/* Remplissage */
+.hud-health-bar-fill {
+    height: 100%;
+    width: 100%; /* état initial plein ; app.js pilote la largeur (%) */
+    background: var(--cyan-spark);
+    box-shadow: 0 0 10px rgba(0, 229, 255, 0.7);
+    transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.hud-health-right .hud-health-bar-fill {
+    float: right;
+    background: var(--error-red);
+    box-shadow: 0 0 10px rgba(255, 23, 68, 0.7);
+    /* Remplissage ancré à droite : la perte de vie "se vide" vers la gauche */
+}
+
+/* Responsive : HUD compact en mobile, sous le timer (z20, top 25px) */
+@media (max-width: 768px) {
+    #combat-hud-layer {
+        top: 50px; /* sous le badge timer, jamais recouvert */
+        left: 12px;
+        right: 12px;
+        z-index: 15; /* inchangé : sous timer (20) et barre 2D (21) */
+    }
+    .combat-hud-side { max-width: 46%; }
+    .hud-health-bar-container {
+        max-width: 120px;   /* barres de vie compactes */
+        width: 100%;
+        height: 16px;
+        padding: 1.5px;
+    }
+    .hud-player-name { font-size: 0.75rem; }
+    .hud-player-wallet { font-size: 0.6rem; }
 }

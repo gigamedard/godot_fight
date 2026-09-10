@@ -39,8 +39,14 @@ class ChallengeSent implements ShouldBroadcastNow
      */
     public function broadcastOn(): array
     {
+        // NB : PrivateChannel ajoute automatiquement le préfixe "private-" —
+        // passer 'player.X' (et non 'private-player.X' qui donnait
+        // 'private-private-player.X'). Le front souscrit à
+        // private-player.<wallet> ; publication et souscription doivent viser
+        // le même canal. Lowercase : Reverb distingue la casse et le front
+        // peut envoyer l'adresse en format checksum.
         return [
-            new PrivateChannel('private-player.' . $this->targetId),
+            new PrivateChannel('player.' . strtolower($this->targetId)),
         ];
     }
 }

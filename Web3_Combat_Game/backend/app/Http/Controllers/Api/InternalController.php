@@ -90,4 +90,86 @@ class InternalController extends Controller
 
         return response()->json(['status' => 'success']);
     }
+
+    /**
+     * Règlement gasless d'un DUEL : le serveur soumet lui-même settleLoser via
+     * le script settle_fight.js (backend signer — paie le gaz, 0 validation
+     * MetaMask pour le gagnant). Idempotent : si le solde du perdant est déjà 0,
+     * le script sort sans erreur ("rien à régler").
+     *
+     * Body : { winner_address, loser_address }
+     * Réponse : { status: success, tx_hash } ou { status: noop } si rien à régler.
+     */
+    public function settleDuel(Request $request)
+    {
+        $request->validate([
+            'winner' => 'required|string|size:42|starts_with:0x',
+            'loser'  => 'required|string|size:42|starts_with:0x',
+        ]);
+
+        $winner = $request->winner;
+        $loser  = $request->loser;
+
+        $script = (string) config('services.web3.settle_script');
+        if (!is_file($script)) {
+            return response()->json(['status' => 'error', 'message' => 'Script de règlement introuvable.'], 500);
+        }
+
+        $node = (string) config('services.web3.node_path', 'node');
+        $cmd = escapeshellarg($node)
+            . ' ' . escapeshellarg($script)
+            . ' 0' // pas de poule : duel
+            . ' ' . escapeshellarg($winner)
+            . ' ' . escapeshellarg($loser)
+            . ' 2>&1';
+
+        // Exécution SYNCHRONE (le front attend la confirmation du règlement
+        // pour afficher le crédit du pot). Durée typique : 1-3 s sur Hardhat.
+        $output = shell_exec($cmd);
+        \Log::info("Settle duel : {$winner} gagne sur {$loser}", ['output' => $output]);
+
+        return response()->json([
+            'status' => 'success',
+            'winner' => $winner,
+            'loser' => $loser,
+            'script_output' => $output,
+        ]);
+    }
+
+    /**
+     * Retrait PUSH gasless : le serveur soumet lui-même withdrawTo (voucher
+     * signé par le backend) — le joueur ne signe rien, ne paie pas de gaz.
+     * Idempotent : solde 0 → "rien à retirer".
+     *
+     * Body : { wallet_address }
+     * Réponse : { status: success, tx_hash } ou { status: noop } si solde 0.
+     */
+    public function pushWithdraw(Request $request)
+    {
+        $request->validate([
+            'wallet_address' => 'required|string|size:42|starts_with:0x',
+        ]);
+
+        $wallet = $request->wallet_address;
+
+        $script = (string) config('services.web3.withdraw_push_script');
+        if (!is_file($script)) {
+            return response()->json(['status' => 'error', 'message' => 'Script de retrait introuvable.'], 500);
+        }
+
+        $node = (string) config('services.web3.node_path', 'node');
+        $cmd = escapeshellarg($node)
+            . ' ' . escapeshellarg($script)
+            . ' ' . escapeshellarg($wallet)
+            . ' 2>&1';
+
+        $output = shell_exec($cmd);
+        \Log::info("Retrait push pour {$wallet}", ['output' => $output]);
+
+        return response()->json([
+            'status' => 'success',
+            'wallet_address' => $wallet,
+            'script_output' => $output,
+        ]);
+    }
 }

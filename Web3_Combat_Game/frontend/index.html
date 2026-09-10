@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BATTLEPOOL — Spirit Fight</title>
-    <link rel="stylesheet" href="style.css?v=3.5">
+    <link rel="stylesheet" href="style.css?v=4.0">
 </head>
 <body>
 
@@ -30,11 +30,11 @@
             <!-- Barre de choix de coup (mode 2D) : visible uniquement quand le layer 2D est actif
                  et qu'un match est en cours (masquée par défaut, affichée par app.js). -->
             <div id="anim2d-move-bar" class="anim2d-move-bar hidden">
-                <span class="anim2d-move-label">À toi de jouer ! Choisis ton coup :</span>
+                <span class="move-bar-instruction">À toi de jouer ! Choisis ton coup :</span>
                 <div class="anim2d-move-buttons">
-                    <button id="btn-move-1" class="anim2d-move-btn" onclick="window.submitMove2D(1)">✊ Pierre</button>
-                    <button id="btn-move-2" class="anim2d-move-btn" onclick="window.submitMove2D(2)">✋ Feuille</button>
-                    <button id="btn-move-3" class="anim2d-move-btn" onclick="window.submitMove2D(3)">✌ Ciseaux</button>
+                    <button id="btn-move-1" class="anim2d-move-btn move-rock" onclick="window.submitMove2D(1)"><i data-lucide="hand-metal"></i> Pierre</button>
+                    <button id="btn-move-2" class="anim2d-move-btn move-paper" onclick="window.submitMove2D(2)"><i data-lucide="hand"></i> Feuille</button>
+                    <button id="btn-move-3" class="anim2d-move-btn move-scissors" onclick="window.submitMove2D(3)"><i data-lucide="scissors"></i> Ciseaux</button>
                 </div>
             </div>
         </div>
@@ -112,20 +112,27 @@
 
             <!-- ═══════════════ ÉCRAN 2 : CONNEXION ═══════════════ -->
             <div id="screen-connect" class="screen">
-                <div class="screen-card">
+                <div class="screen-card connect-card">
                     <div class="nav-header">
-                        <button class="btn-back" onclick="navGoBack()"><i data-lucide="arrow-left"></i></button>
+                        <button class="btn-back" onclick="navGoBack()" aria-label="Retour"><i data-lucide="arrow-left"></i></button>
                         <h2 class="screen-title">CONNEXION WEB3</h2>
                     </div>
                     <div class="cyber-shield-icon">
                         <i data-lucide="wallet"></i>
+                        <span class="shield-pulse" aria-hidden="true"></span>
                     </div>
-                    <p class="screen-subtitle">Connectez votre wallet pour accéder aux combats et à vos tokens.</p>
-                    <button class="btn-cyber btn-primary-gold" onclick="connectWallet()">
+                    <p class="screen-subtitle connect-subtitle">Connectez votre wallet pour accéder aux combats et à vos tokens.</p>
+                    <ul class="connect-perks" aria-label="Avantages de la connexion wallet">
+                        <li><i data-lucide="swords"></i> Duels 1v1 &amp; Battle Royale</li>
+                        <li><i data-lucide="shield-check"></i> Aucune clé privée stockée</li>
+                        <li><i data-lucide="flame"></i> Tokens &amp; récompenses on-chain</li>
+                    </ul>
+                    <button class="btn-cyber btn-primary-gold connect-cta" onclick="connectWallet()">
                         <i data-lucide="zap"></i> CONNECTER LE WALLET
                     </button>
+                    <p class="connect-hint">Signature gratuite — aucune transaction n'est envoyée.</p>
                     <div class="wallet-status-box" id="wallet-status-box" style="display:none;">
-                        <span>Wallet connecté</span>
+                        <span class="wallet-status-label"><i data-lucide="check-circle"></i> Wallet connecté</span>
                         <div class="wallet-addr-display" id="wallet-addr-display"></div>
                     </div>
                 </div>
@@ -278,6 +285,35 @@
 
             <!-- ═══════════════ ÉCRAN 6 : CHARGEMENT COMBAT ═══════════════ -->
             <div id="screen-combat" class="screen">
+                <!-- HUD COMBAT (Itération 3) : superposé au canvas 2D/3D.
+                     Les IDs hud-p1-name / hud-p2-name sont synchronisés par anim2d.js ;
+                     barres de vie mises à jour par app.js via hud-set-health(). -->
+                <div id="combat-hud-layer" aria-hidden="true">
+                    <!-- JOUEUR 1 (gauche) -->
+                    <div class="combat-hud-side combat-hud-left">
+                        <div class="hud-player-info">
+                            <span class="hud-player-name" id="hud-p1-name">JOUEUR 1</span>
+                            <span class="hud-player-wallet" id="hud-p1-wallet">0x0000…0000</span>
+                        </div>
+                        <div class="hud-health-bar-container hud-health-left">
+                            <div class="hud-health-bar-fill" id="hud-p1-health" style="width: 100%;"></div>
+                        </div>
+                        <!-- Indicateur du coup retenu par le joueur (Itération 4B) -->
+                        <div id="player-selected-move" class="selected-move-badge hidden">
+                            <i id="selected-move-icon" data-lucide="hand-metal"></i>
+                        </div>
+                    </div>
+                    <!-- JOUEUR 2 (droite) -->
+                    <div class="combat-hud-side combat-hud-right">
+                        <div class="hud-player-info">
+                            <span class="hud-player-name" id="hud-p2-name">JOUEUR 2</span>
+                            <span class="hud-player-wallet" id="hud-p2-wallet">0x0000…0000</span>
+                        </div>
+                        <div class="hud-health-bar-container hud-health-right">
+                            <div class="hud-health-bar-fill" id="hud-p2-health" style="width: 100%;"></div>
+                        </div>
+                    </div>
+                </div>
                 <div class="combat-loader-card">
                     <h2 class="screen-title pulse">CHARGEMENT DE L'ARÈNE...</h2>
                     <div class="cyber-progress-container">
@@ -410,11 +446,11 @@
 
     <script src="ethers.min.js?v=1"></script>
     <script src="hardhat_keys.js?v=1"></script>
-    <script src="contract_abi.js?v=3"></script>
+    <script src="contract_abi.js?v=4"></script>
 
     <!-- Moteur Godot (export web) -->
     <script src="godot/jeu.js?v=3"></script>
-    <script src="anim2d.js?v=3"></script>
+    <script src="anim2d.js?v=9"></script>
     <script>
         const GODOT_CONFIG = {
             "args":[],
@@ -425,28 +461,86 @@
             "gdextensionLibs":[]
         };
         const engine = new Engine(GODOT_CONFIG);
+
+        // ── MODE LITE : priorité aux assets 2D, Godot en arrière-plan ─────────
+        // Avant : engine.startGame() au window.load → 142MB (wasm 37.7 + pck 104.5)
+        // saturés la bande passante et la mémoire AVANT les assets 2D.
+        // Désormais : 1) les sprites 2D se chargent en premier, 2) quand ils
+        // sont prêts (évent anim2d:ready), Godot démarre en parallèle — le jeu
+        // 2D reste jouable pendant ce téléchargement.
+        // Sécurité mémoire : si l'appareil semble limité, Godot n'est PAS
+        // démarré automatiquement (le mode 2D reste la seule arène active).
+        var GODOT_DEFERRED_TIMEOUT = 15000; // garde-fou si les sprites mettent trop de temps
+        var GODOT_STARTED = false;
+
+        function estimateDeviceMemoryGB() {
+            // navigator.deviceMemory : Chrome/Edge uniquement (approximatif).
+            var dmem = (navigator.deviceMemory || navigator.deviceMemory === 0)
+                ? navigator.deviceMemory
+                : (navigator.deviceMemory !== undefined ? navigator.deviceMemory : null);
+            if (dmem === null) return null;
+            return dmem;
+        }
+
+        function deviceLooksWeak() {
+            var mem = navigator.deviceMemory; // GB approx. (Chrome/Android)
+            var cores = navigator.hardwareConcurrency || 0;
+            // Seuils volontairement conservateurs : ≤2GB RAM ou ≤2 cores
+            return (mem !== undefined && mem > 0 && mem <= 2) || (cores > 0 && cores <= 2);
+        }
+
+        function startGodotDeferred() {
+            if (GODOT_STARTED) return;
+            GODOT_STARTED = true;
+            var statusOverlay = document.getElementById('godot-status');
+            var statusProgress = document.getElementById('godot-progress');
+            try {
+                engine.startGame({
+                    'onProgress': function (current, total) {
+                        if (window.updateAnim2DProgress) {
+                            window.updateAnim2DProgress(current, total);
+                        }
+                        if (total > 0) {
+                            if(statusProgress) { statusProgress.value = current; statusProgress.max = total; }
+                        } else {
+                            if(statusProgress) { statusProgress.removeAttribute('value'); statusProgress.removeAttribute('max'); }
+                        }
+                    }
+                }).then(() => {
+                    if (window.transition2Dto3D) {
+                        window.transition2Dto3D();
+                    }
+                    if(statusOverlay) statusOverlay.style.display = 'none';
+                }).catch(err => {
+                    console.error("Erreur chargement Godot:", err);
+                });
+            } catch (e) {
+                console.error("Impossible de démarrer Godot :", e);
+            }
+        }
+
         window.addEventListener('load', () => {
-            const statusOverlay = document.getElementById('godot-status');
-            const statusProgress = document.getElementById('godot-progress');
-            engine.startGame({
-                'onProgress': function (current, total) {
-                    if (window.updateAnim2DProgress) {
-                        window.updateAnim2DProgress(current, total);
-                    }
-                    if (total > 0) {
-                        if(statusProgress) { statusProgress.value = current; statusProgress.max = total; }
-                    } else {
-                        if(statusProgress) { statusProgress.removeAttribute('value'); statusProgress.removeAttribute('max'); }
-                    }
+            // 1) Attendre que les sprites 2D soient prêts (priorité Lite).
+            // 2) Garde-fou : si les sprites tardent > 15s, démarrer Godot quand même.
+            var started = false;
+            function go() {
+                if (started) return;
+                started = true;
+                document.removeEventListener('anim2d:ready', go);
+                if (deviceLooksWeak()) {
+                    console.log("[Lite] Appareil limité détecté (RAM ≤2GB ou ≤2 cores) : Godot NON démarré automatiquement — le mode 2D reste l'arène active.");
+                    if (window.updateAnim2DProgress) window.updateAnim2DProgress(1, 1); // barre complétée côté 2D
+                } else {
+                    console.log("[Lite] Assets 2D prêts → démarrage du téléchargement Godot en arrière-plan.");
+                    startGodotDeferred();
                 }
-            }).then(() => {
-                if (window.transition2Dto3D) {
-                    window.transition2Dto3D();
-                }
-                if(statusOverlay) statusOverlay.style.display = 'none';
-            }).catch(err => {
-                console.error("Erreur chargement Godot:", err);
-            });
+            }
+            if (window.isSprites2DReady && window.isSprites2DReady()) {
+                go();
+            } else {
+                document.addEventListener('anim2d:ready', go);
+                setTimeout(go, GODOT_DEFERRED_TIMEOUT); // ne jamais bloquer Godot indéfiniment
+            }
         });
     </script>
 
@@ -455,6 +549,6 @@
     <!-- QR code : scan (html5-qrcode) + génération (qrcodejs) — locales pour hors-ligne -->
     <script src="html5-qrcode.min.js?v=1"></script>
     <script src="qrcode.min.js?v=1"></script>
-    <script src="app.js?v=4.4" defer></script>
+    <script src="app.js?v=4.7" defer></script>
 </body>
 </html>
