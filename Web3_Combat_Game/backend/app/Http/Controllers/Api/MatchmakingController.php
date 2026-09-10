@@ -74,10 +74,18 @@ class MatchmakingController extends Controller
         broadcast(new PlayerStatusChanged($challengerId, 'in-game'));
         broadcast(new PlayerStatusChanged($targetId, 'in-game'));
 
-        // FIX ICDM #1 : MatchStarted n'est PLUS broadcasté ici. Il ne sera diffusé
-        // que lorsque les DEUX dépôts escrow seront confirmés on-chain
-        // (voir BattleController::depositConfirmed → checkDepositsAndBroadcast).
-        // Le front affiche un écran "attente de validation du dépôt" en attendant.
+        // FIX ICDM #1 : MatchStarted n'est PLUS broadcasté ici (le combat ne
+        // démarre qu'avec MatchReady, quand les DEUX dépôts escrow sont
+        // confirmés on-chain). On diffuse en revanche MatchDepositPending :
+        // le front OUVRE METAMASK pour le dépôt, sans lancer le combat.
+        broadcast(new \App\Events\MatchDepositPending(
+            $fight->id,
+            $request->challenger_id,
+            $request->target_id,
+            $request->challenger_char ?? 2,
+            $request->target_char ?? 2,
+            $request->bet_amount ?? 0
+        ));
 
         return response()->json(['status' => 'success', 'match_id' => $fight->id]);
     }

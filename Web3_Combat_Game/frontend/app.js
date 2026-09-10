@@ -1038,12 +1038,12 @@ function performLogin() {
                 if (actions) actions.style.display = 'flex';
                 document.getElementById('challenge-modal').style.display = 'flex';
             })
-            .listen('MatchStarted', (e) => {
-                // FIX ICDM #1 : MatchStarted = match créé + modale de dépôt ouverte.
-                // L'ouverture de MetaMask (depositForMatch) se fait ICI, mais le
-                // combat ne démarre pas : il attendra l'event MatchReady (les
-                // deux dépôts confirmés on-chain, cf. BattleController::depositConfirmed).
-                console.log("MatchStarted : match créé, ouverture du dépôt escrow...", e);
+            .listen('MatchDepositPending', (e) => {
+                // FIX (régression ICDM) : l'acceptation diffuse MatchDepositPending
+                // → le front OUVRE METAMASK (dépose escrow), mais ne lance PAS le
+                // combat : il attendra l'event MatchReady (les deux dépôts
+                // confirmés on-chain, cf. BattleController::depositConfirmed).
+                console.log("MatchDepositPending : match créé, ouverture du dépôt escrow (MetaMask)...", e);
                 window.gameConfig.matchId = e.matchId;
                 if (e.betAmount) AppState.currentBetAmountOffchain = e.betAmount;
 
