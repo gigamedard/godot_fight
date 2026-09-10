@@ -99,6 +99,84 @@ class BattleController extends Controller
         return response()->json(['status' => 'success', 'fight_status' => $fight->status]);
     }
 
+    /**
+     * Fix ICDM #1 : notification de dépôt escrow.
+     * Le front (depositForMatch) notifie le backend du tx hash une fois la tx
+     * SOUMISE ; le backend vérifie le receipt on-chain (poll court sur le RPC),
+     * flag p1/p2_deposited, et la route broadcast-side (checkDepositsAndBroadcast)
+     * diffuse MatchStarted quand les DEUX dépôts sont confirmés.
+     * Le combat ne démarre donc jamais sans escrow.
+     */
+    public function depositConfirmed(Request $request)
+    {
+        $request->validate([
+            'match_id' => 'required|integer',
+            'wallet_address' => 'required|string|size:42|starts_with:0x',
+            'tx_hash' => 'required|string|size:66|starts_with:0x',
+        ]);
+
+        $fight = \App\Models\Fight::findOrFail($request->match_id);
+        $wallet = strtolower($request->wallet_address);
+        $isP1 = ($fight->player1_wallet === $wallet);
+        $isP2 = ($fight->player2_wallet === $wallet);
+        if (!$isP1 && !$isP2) {
+            return response()->json(['error' => 'Not a participant in this match'], 403);
+        }
+
+        // Vérifier le receipt on-chain : la tx doit être minée et réussie
+        $rpc = (string) config('services.web3.rpc_url', 'http://127.0.0.1:8545');
+        $receipt = null;
+        for ($i = 0; $i < 10; $i++) {
+            try {
+                $res = \Http::withHeaders(['Content-Type' => 'application/json'])
+                    ->timeout(5)
+                    ->post($rpc, ['jsonrpc' => '2.0', 'id' => 1, 'method' => 'eth_getTransactionReceipt', 'params' => [$request->tx_hash]]);
+                $body = $res->json();
+                if (!empty($body['result']) && !empty($body['result']['status'])) {
+                    $receipt = $body['result'];
+                    break;
+                }
+            } catch (\Throwable $e) {
+                // retry
+            }
+            sleep(1);
+        }
+
+        if (!$receipt) {
+            // Tx pas encore minée : le front re-postera au prochain poll.
+            return response()->json(['status' => 'pending', 'message' => 'Transaction en attente de minage.'], 202);
+        }
+        if (strtolower((string) ($receipt['status'] ?? '')) !== '0x1') {
+            return response()->json(['status' => 'error', 'message' => 'Transaction échouée on-chain.'], 400);
+        }
+
+        // Flag le dépôt (côté déterministe : p1 = player1_wallet)
+        if ($isP1) {
+            $fight->p1_deposited = true;
+            $fight->p1_deposit_tx = $request->tx_hash;
+            $fight->p1_deposited_at = now();
+        } else {
+            $fight->p2_deposited = true;
+            $fight->p2_deposit_tx = $request->tx_hash;
+            $fight->p2_deposited_at = now();
+        }
+        $fight->save();
+
+        $both = $fight->p1_deposited && $fight->p2_deposited;
+
+        // FIX ICDM #1 : les DEUX dépôts confirmés → broadcast MatchStarted
+        // (le combat ne démarre que maintenant).
+        if ($both) {
+            app(\App\Http\Controllers\Api\MatchmakingController::class)->checkDepositsAndBroadcast($fight);
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'this_player_deposited' => true,
+            'both_deposited' => $both,
+        ]);
+    }
+
     public function claimTimeout(Request $request)
     {
         $request->validate([

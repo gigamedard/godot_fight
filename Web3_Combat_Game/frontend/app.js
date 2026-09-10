@@ -1039,15 +1039,26 @@ function performLogin() {
                 document.getElementById('challenge-modal').style.display = 'flex';
             })
             .listen('MatchStarted', (e) => {
-                console.log("Accord Off-Chain atteint ! Exécution On-Chain...", e);
+                // FIX ICDM #1 : MatchStarted = match créé + modale de dépôt ouverte.
+                // L'ouverture de MetaMask (depositForMatch) se fait ICI, mais le
+                // combat ne démarre pas : il attendra l'event MatchReady (les
+                // deux dépôts confirmés on-chain, cf. BattleController::depositConfirmed).
+                console.log("MatchStarted : match créé, ouverture du dépôt escrow...", e);
                 window.gameConfig.matchId = e.matchId;
                 if (e.betAmount) AppState.currentBetAmountOffchain = e.betAmount;
-                
+
                 // Déterminer qui est le challenger et qui est le target pour assigner le bon personnage adverse
                 const isChallenger = (AppState.walletAddress.toLowerCase() === e.player1.toLowerCase());
                 AppState.opponentChar = "p" + (isChallenger ? (e.p2Char || 2) : (e.p1Char || 2));
-                
+                AppState.myChar = "p" + (isChallenger ? (e.p1Char || 2) : (e.p2Char || 2));
+
                 executeMatchOnChain(e);
+            })
+            .listen('MatchReady', (e) => {
+                // Les deux dépôts sont confirmés on-chain → lancement du combat.
+                console.log("FIX ICDM : les deux dépôts sont confirmés — lancement du combat.", e);
+                AppState.depositsDone = true;
+                launchCombat(e);
             })
             .listen('ChallengeDeclined', (e) => {
                 console.log("Défi refusé par :", e.targetId);
@@ -1525,13 +1536,13 @@ async function claimPoolGains(poolId, winnerAddress) {
 async function executeMatchOnChain(e) {
     const isChallenger = (e.player1.toLowerCase() === AppState.walletAddress.toLowerCase());
     const opponent = isChallenger ? e.player2 : e.player1;
-    
-    document.getElementById('challenge-text').innerText = "Match validé ! Dépôt et lancement du combat...";
+
+    document.getElementById('challenge-text').innerText = "Validation du dépôt en cours (MetaMask)...";
     document.getElementById('challenge-modal-actions').style.display = 'none';
-    
+
     AppState.currentMatchId = e.matchId;
     AppState.currentTargetId = opponent;
-    
+
     // Si on a l'info du perso de l'adversaire via l'event (clés camelCase du broadcast Reverb)
     if (isChallenger) {
         AppState.opponentChar = "p" + (e.p2Char || 2);
@@ -1541,37 +1552,90 @@ async function executeMatchOnChain(e) {
         AppState.myChar = "p" + (e.p2Char || 2);
     }
 
-    // Dépôt on-chain de la mise (escrow) au lancement du match.
-    // Option 1 (LAUNCH_GAME_BEFORE_DEPOSIT_CONFIRM = true) : le combat démarre
-    // tout de suite, le dépôt se poursuit en arrière-plan — annulation si le
-    // dépôt échoue franchement. Option 2 (= false) : le combat n'est lancé
-    // qu'après la confirmation on-chain du dépôt (flux séquentiel historique).
+    // FIX ICDM #1 : dépôt soumis (tx signée), le tx hash notifié au backend qui
+    // vérifie le receipt. MatchReady (les DEUX dépôts confirmés) lance le
+    // combat via launchCombat — jamais avant l'escrow des deux joueurs.
     const betAmount = AppState.currentBetAmountOffchain || AppState.defaultBetAmount || '0';
-    if (typeof LAUNCH_GAME_BEFORE_DEPOSIT_CONFIRM !== 'undefined' && LAUNCH_GAME_BEFORE_DEPOSIT_CONFIRM) {
-        depositForMatch(betAmount).then(ok => {
-            if (ok) {
-                console.log("[Match] Dépôt escrow confirmé (arrière-plan) pour le match", AppState.currentMatchId);
-            } else {
-                // Échec du dépôt : annulation du match en cours.
-                console.error("[Match] Dépôt échoué — annulation du match.");
-                showToast("Dépôt on-chain échoué — match annulé.", "error");
-                window.resetMatchState();
-                navigateTo('screen-main');
-            }
-        });
-        setTimeout(() => {
-            document.getElementById('challenge-modal').style.display = 'none';
-            AppState.lastActionTime = Date.now();
-            launchGodot(opponent);
-        }, 1000);
-    } else {
-        await depositForMatch(betAmount);
-        setTimeout(() => {
-            document.getElementById('challenge-modal').style.display = 'none';
-            AppState.lastActionTime = Date.now();
-            launchGodot(opponent);
-        }, 1000);
+    AppState.depositsDone = false;
+    AppState.pendingDepositMatchId = e.matchId;
+    const txHash = await submitDepositTx(betAmount);
+    if (!txHash) {
+        console.error("[Match] Dépôt échoué — annulation du match.");
+        showToast("Dépôt on-chain échoué — match annulé.", "error");
+        window.resetMatchState();
+        navigateTo('screen-main');
+        return;
     }
+    notifyDepositToBackend(e.matchId, txHash);
+}
+
+// Soumet la tx register (MetaMask) et retourne le tx hash (ou null si échec).
+async function submitDepositTx(betAmount) {
+    if (!contract || !AppState.walletAddress || !betAmount || Number(betAmount) <= 0) return null;
+    try {
+        showToast(`Dépôt de ${betAmount} ETH sur la blockchain...`, "info");
+        const stakeWei = ethers.parseEther(String(betAmount));
+        const feeBps = typeof contract.feeBps === 'function' ? Number(await contract.feeBps()) : 250;
+        const feeWei = stakeWei * BigInt(feeBps) / 10000n;
+        const totalWei = stakeWei + feeWei;
+        showToast(`Dépôt de ${betAmount} ETH (mise) + ${ethers.formatEther(feeWei)} ETH (frais)...`, "info");
+        const tx = await contract.register(stakeWei, { value: totalWei });
+        const receipt = await tx.wait();
+        showToast("Dépôt confirmé sur la blockchain !", "success");
+        updateBalance();
+        return receipt.hash || tx.hash;
+    } catch (err) {
+        console.error("Erreur de dépôt:", err);
+        showToast("Échec du dépôt on-chain : " + (err.shortMessage || err.message || "erreur"), "error");
+        return null;
+    }
+}
+
+// Notifie le backend que la tx de dépôt est soumise (receipt vérifié côté
+// serveur, broadcast MatchReady quand les DEUX sont confirmés). Poll de secours
+// si la tx n'est pas encore minée (HTTP 202).
+async function notifyDepositToBackend(matchId, txHash) {
+    const wallet = AppState.walletAddress;
+    for (let attempt = 0; attempt < 20; attempt++) {
+        try {
+            const res = await fetch(`${APP_CONFIG.API_BASE_URL}/battle/deposited`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Accept": "application/json" },
+                body: JSON.stringify({
+                    match_id: matchId,
+                    wallet_address: wallet,
+                    tx_hash: txHash
+                })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (res.status === 202) {
+                // pas encore minée : re-poster
+                await new Promise(r => setTimeout(r, 1500));
+                continue;
+            }
+            if (res.ok) {
+                console.log("[Match] Dépôt notifié au backend. Les deux confirmés :", !!data.both_deposited);
+            } else {
+                console.error("[Match] Notification de dépôt refusée :", data.message || data.error);
+            }
+            return;
+        } catch (e) {
+            await new Promise(r => setTimeout(r, 1500));
+        }
+    }
+    console.error("[Match] Impossible de notifier le backend du dépôt (20 essais).");
+}
+
+// FIX ICDM #1 : lance le combat — appelé par l'event MatchReady (les deux
+// dépôts escrow confirmés on-chain).
+function launchCombat(e) {
+    const isChallenger = (e.player1.toLowerCase() === AppState.walletAddress.toLowerCase());
+    const opponent = isChallenger ? e.player2 : e.player1;
+
+    document.getElementById('challenge-modal').style.display = 'none';
+    document.getElementById('challenge-text').innerText = "Dépôts confirmés — que le combat commence !";
+    AppState.lastActionTime = Date.now();
+    launchGodot(opponent);
 }
 
 
@@ -1727,25 +1791,37 @@ async function settleMatchOnWin(godotResult) {
     if (!loser || !AppState.walletAddress) return;
     // ICDM : le règlement on-chain (settleLoser) est soumis par le SERVEUR via
     // le backend signer — le gagnant ne signe rien (0 popup MetaMask).
-    // Idempotent : si le solde du perdant est déjà réglé, la route répond noop.
+    // FIX ICDM #2 : la route attend maintenant activement les dépôts on-chain
+    // (jusqu'à 30s) avant de régler. Si elle répond noop (dépôt jamais arrivé),
+    // on RETENTE toutes les 5s (jusqu'à 2 min) — le règlement n'est plus perdu.
     try {
         showToast("Consolidation du pot en arrière-plan...", "info");
-        const res = await fetch(`${APP_CONFIG.API_BASE_URL}/battle/settle`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "Accept": "application/json" },
-            body: JSON.stringify({
-                winner: AppState.walletAddress,
-                loser: loser
-            })
-        });
-        const data = await res.json();
-        if (!res.ok) {
-            showToast("Règlement automatique refusé : " + (data.message || data.error || 'Erreur inconnue'), "error");
+        for (let attempt = 0; attempt < 24; attempt++) {
+            const res = await fetch(`${APP_CONFIG.API_BASE_URL}/battle/settle`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Accept": "application/json" },
+                body: JSON.stringify({
+                    winner: AppState.walletAddress,
+                    loser: loser
+                })
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                showToast("Règlement automatique refusé : " + (data.message || data.error || 'Erreur inconnue'), "error");
+                return;
+            }
+            if (data.status === 'noop') {
+                // Le règlement a été différé (dépôt pas encore miné) : retry
+                console.log("[Match] Règlement différé (dépôt adversaire en attente)... tentative " + (attempt + 1));
+                await new Promise(r => setTimeout(r, 5000));
+                continue;
+            }
+            console.log("[Match] Règlement on-chain effectué par le serveur (gasless).", data.script_output || '');
+            showToast("Pot consolidé automatiquement ! Vous pouvez réclamer vos gains.", "success");
+            updateBalance();
             return;
         }
-        console.log("[Match] Règlement on-chain effectué par le serveur (gasless).", data.script_output || '');
-        showToast("Pot consolidé automatiquement ! Vous pouvez réclamer vos gains.", "success");
-        updateBalance();
+        showToast("Consolidation en attente : le règlement se fera dès que les dépôts seront visibles on-chain.", "info");
     } catch (err) {
         console.error("Erreur lors du règlement serveur:", err);
         // Fallback UX : si la route échoue, on indique que la consolidation est

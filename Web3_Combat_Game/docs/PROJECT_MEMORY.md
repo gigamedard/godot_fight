@@ -104,6 +104,44 @@ const LAUNCH_GAME_BEFORE_DEPOSIT_CONFIRM = true;  // Option 1 (défaut)
   rester bloqué en contention avec le polling `updateBalance`) — la tx EST minée
   (prouvée par `eth_getTransactionReceipt`), seul le toast « confirmé » peut tarder.
 
+### §6ter. Sécurisation de l'escrow (fixs ICDM 1-2-3 — après le test utilisateur)
+
+Problèmes constatés en test navigateur :
+1. **Le combat se jouait avant la validation MetaMask du dépôt** (Option 1) →
+   le règlement tournait avant les dépôts → "solde 0" → **règlement perdu**.
+2. **Le perdant pouvait retirer sa mise** (conséquence du 1 : pot jamais consolidé).
+
+Correctifs (front + backend, sans toucher au contrat) :
+- **Nouvel event `MatchReady`** (backend/app/Events/MatchReady.php) : broadcast
+  uniquement quand les DEUX dépôts escrow sont confirmés on-chain. Distinct de
+  `MatchStarted` (création du match + modale de dépôt). Marqueur d'idempotence
+  en Cache (`matchready_broadcast_<id>`, 2h).
+- **Nouvelle colonnes fights** (migration 2026_09_10_130000) : p1/p2_deposited,
+  p1/p2_deposit_tx, p1/p2_deposited_at. `MatchStarted` n'est plus broadcasté à
+  l'acceptation (retiré de `MatchmakingController::acceptChallenge`).
+- **Route `POST /battle/deposited {match_id, wallet_address, tx_hash}`** :
+  vérifie le receipt on-chain (poll 10s), flag le dépôt, appelle
+  `checkDepositsAndBroadcast` (idempotent via Cache) → `MatchReady`.
+  Répond 202 si tx pas encore minée (front re-poste), 400 si tx échouée.
+- **Front** (app.js v4.8) : `MatchStarted` → `executeMatchOnChain` soumet la tx
+  (`submitDepositTx`) puis notifie le backend (`notifyDepositToBackend`, 20
+  essais avec re-post sur 202). Le combat est lancé par `MatchReady` →
+  `launchCombat(e)` → `launchGodot`. Plus de `setTimeout(launchGodot, 1000)`
+  aveugle ; le switch LAUNCH_GAME_BEFORE_DEPOSIT_CONFIRM est obsolète.
+- **Settle avec attente** (`InternalController::settleDuel`) : avant de régler,
+  poll eth_call userBalances(loser) jusqu'à 30s (15×2s) ; si toujours 0 →
+  réponse `noop` (aucune perte). Le front `settleMatchOnWin` **retry 24×5s**
+  sur noop → le règlement n'est plus jamais raté par une race de minage.
+- **Garde anti-perdant** (`WithdrawController::guardLoserWithdraw`) : le
+  dernier fight completed du wallet, si le wallet est le perdant (result non
+  draw) → 422 sur voucher ET sur `pushWithdraw` (wrapper public
+  `guardLoserWithdrawPublic`). Empêche un perdant de réclamer via l'UI.
+- **Pièges tests** : après accept, les fights en `waiting_for_commits` avec
+  dépôts non confirmés BLOQUENT les nouveaux matchs (409) → utiliser
+  `/battle/timeout {match_id}` pour purger ; `/matchmaking/accept` est
+  obligatoire après `/matchmaking/challenge` (le challenge seul ne crée pas
+  le Fight).
+
 ### §6bis. Règlement + retrait GASLESS (P1+P2 — itération ICDM)
 
 Objectif : éliminer les popups MetaMask après la connexion + l'auth de session.

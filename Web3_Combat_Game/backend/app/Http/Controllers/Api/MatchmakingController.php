@@ -74,21 +74,10 @@ class MatchmakingController extends Controller
         broadcast(new PlayerStatusChanged($challengerId, 'in-game'));
         broadcast(new PlayerStatusChanged($targetId, 'in-game'));
 
-        // Le target_id est celui qui a reçu le défi et l'accepte
-        // IMPORTANT : on broadcast avec les IDs BRUTS (casse exacte envoyée par le
-        // client, ex. checksum EIP-55). Le frontend s'abonne à
-        // `private-player.${AppState.walletAddress}` avec cette même casse.
-        // Reverb est case-sensitive sur les noms de canaux : un broadcast en
-        // lowercase (strtolower) n'atteindrait JAMAIS l'abonné (bug "le combat ne
-        // se lance pas"). La DB, elle, reste en lowercase (cf. $challengerId/$targetId).
-        broadcast(new MatchStarted(
-            $fight->id,
-            $request->challenger_id,
-            $request->target_id,
-            $request->challenger_char ?? 2,
-            $request->target_char ?? 2,
-            $request->bet_amount ?? 0
-        ));
+        // FIX ICDM #1 : MatchStarted n'est PLUS broadcasté ici. Il ne sera diffusé
+        // que lorsque les DEUX dépôts escrow seront confirmés on-chain
+        // (voir BattleController::depositConfirmed → checkDepositsAndBroadcast).
+        // Le front affiche un écran "attente de validation du dépôt" en attendant.
 
         return response()->json(['status' => 'success', 'match_id' => $fight->id]);
     }
@@ -158,5 +147,50 @@ class MatchmakingController extends Controller
         }
 
         return true;
+    }
+
+    /**
+     * FIX ICDM #1 : vérifie les dépôts escrow d'un fight et broadcast MatchStarted
+     * quand les DEUX sont confirmés. Appelé par le front (poll après chaque
+     * notification de dépôt) et via /battle/settle pour un filet de sécurité.
+     * Idempotent : ne broadcast JAMAIS deux fois (fight passe en
+     * waiting_for_commits → deposits_broadcast flag).
+     *
+     * IMPORTANT (casse Reverb) : broadcast avec les IDs BRUTS du front —
+     * cf. acceptChallenge avant-correction pour l'historique du bug.
+     */
+    public function checkDepositsAndBroadcast($fight): void
+    {
+        // Déjà diffusé ? (le statut n'a pas changé mais deposits_broadcasté est
+        // déduit des flags) : on regarde si p1_deposited && p2_deposited.
+        if (!($fight->p1_deposited && $fight->p2_deposited)) {
+            return;
+        }
+
+        // Idempotence : si le match a déjà démarré côté commits (les deux
+        // clients ont déjà reçu MatchReady), ne pas re-broadcast.
+        // Marqueur : on réutilise une seule exécution via le statut du fight :
+        // waiting_for_commits reste, mais on diffère par une vérification
+        // supplémentaire : si les deux fronts ont déjà reçu, ils rejettent
+        // l'événement (AppState.currentMatchId déjà lancé). Pour éviter tout
+        // double-launch côté serveur, on trace en cache.
+        $cacheKey = 'matchready_broadcast_' . $fight->id;
+        if (\Cache::has($cacheKey = 'matchready_broadcast_' . $fight->id)) {
+            return;
+        }
+        \Cache::put($cacheKey = $cacheKey ?? 'matchready_broadcast_' . $fight->id, true, now()->addHours(2));
+
+        // Casse Reverb : IDs bruts checksum (côté client, l'abonnement est fait
+        // sur la casse exacte du wallet du joueur).
+        $p1 = $fight->player1_wallet;
+        $p2 = $fight->player2_wallet;
+
+        // FIX ICDM #1 : broadcast MatchReady (combat lance par les deux fronts).
+        broadcast(new \App\Events\MatchReady(
+            $fight->id,
+            $p1,
+            $p2,
+            (float) $fight->base_bet_amount
+        ));
     }
 }

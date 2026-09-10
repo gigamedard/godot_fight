@@ -24,6 +24,14 @@ class WithdrawController extends Controller
             'amount_wei' => ['required', 'string', 'regex:/^[0-9]+$/'],
         ]);
 
+        // FIX ICDM #3 : le perdant d'un duel non-égalité n'a RIEN à réclamer
+        // (sa mise est partie au gagnant). Si un voucher pour un montant > 0
+        // est demandé alors que la DB n'atteste d'aucun crédit, on refuse.
+        // Garde soft : le vrai verrou est le solde on-chain (le contrat refuse
+        // "Insufficient on-chain balance"), mais on filtre ici les demandes
+        // aberrantes (montant > dernier match connu).
+        $this->guardLoserWithdraw($request->wallet_address);
+
         $signerKey = (string) config('services.web3.backend_signer_key');
         if ($signerKey === '') {
             return response()->json(['error' => 'Backend signer non configuré (WEB3_BACKEND_SIGNER_KEY).'], 500);
@@ -223,5 +231,46 @@ class WithdrawController extends Controller
             'contract_address' => $contract,
             'signature' => '0x' . $r . $s . dechex($v),
         ]);
+    }
+
+    /**
+     * FIX ICDM #3 : garde anti-perdant. Un joueur qui vient de PERDRE un duel
+     * non-égalité n'a plus rien sur son userBalances (sa mise est allée au
+     * gagnant). Si un voucher pour un montant > 0 est demandé alors que le
+     * dernier combat terminé du wallet le déclare perdant, on refuse (422) :
+     * empêche un perdant de réclamer un crédit fantôme via l'UI.
+     * Le gagnant et le cas d'égalité passent (ils ont un solde légitime).
+     */
+    private function guardLoserWithdraw(string $wallet): void
+    {
+        $w = strtolower($wallet);
+        $last = \App\Models\Fight::where('status', 'completed')
+            ->where(function ($q) use ($w) {
+                $q->where('player1_wallet', $w)->orWhere('player2_wallet', $w);
+            })
+            ->latest('id')
+            ->first();
+
+        if (!$last || $last->result === 'draw') {
+            return; // pas de duel récent ou égalité : rien à refuser ici
+        }
+
+        $isLoser = (
+            ($last->result === 'player1_win' && $last->player1_wallet !== $w) ||
+            ($last->result === 'player2_win' && $last->player2_wallet !== $w)
+        );
+
+        if ($isLoser) {
+            Log::warning("Withdraw refusé : perdant du dernier match ({$w})");
+            abort(422, 'Vous avez perdu ce match : la mise adverse a été consolidée au gagnant.');
+        }
+    }
+
+    /**
+     * Wrapper public pour InternalController::pushWithdraw (garde identique).
+     */
+    public function guardLoserWithdrawPublic(string $wallet): void
+    {
+        $this->guardLoserWithdraw($wallet);
     }
 }

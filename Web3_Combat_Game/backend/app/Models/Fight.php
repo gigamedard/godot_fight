@@ -19,7 +19,13 @@ class Fight extends Model
         'player2_move',
         'status',
         'result',
-        'base_bet_amount'
+        'base_bet_amount',
+        'p1_deposited',
+        'p2_deposited',
+        'p1_deposit_tx',
+        'p2_deposit_tx',
+        'p1_deposited_at',
+        'p2_deposited_at',
     ];
 
     public function pool()

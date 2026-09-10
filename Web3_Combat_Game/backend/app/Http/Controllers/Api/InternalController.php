@@ -97,7 +97,13 @@ class InternalController extends Controller
      * MetaMask pour le gagnant). Idempotent : si le solde du perdant est déjà 0,
      * le script sort sans erreur ("rien à régler").
      *
-     * Body : { winner_address, loser_address }
+     * FIX ICDM #2 : AVANT de régler, on vérifie que les DEUX dépôts escrow
+     * sont confirmés on-chain. Si le solde du perdant est 0 ALORS QUE ses
+     * dépôts sont confirmés → règlement déjà fait (idempotent) → noop.
+     * Si le dépôt du perdant n'est PAS confirmé → on retente jusqu'à 30s
+     * (polling receipt) : MetaMask peut miner lentement.
+     *
+     * Body : { winner, loser }
      * Réponse : { status: success, tx_hash } ou { status: noop } si rien à régler.
      */
     public function settleDuel(Request $request)
@@ -109,6 +115,45 @@ class InternalController extends Controller
 
         $winner = $request->winner;
         $loser  = $request->loser;
+
+        // Attente active : le perdant doit avoir un solde on-chain (les deux
+        // dépôts minés). MetaMask peut prendre 12-30s pour confirmer.
+        $rpc = (string) config('services.web3.rpc_url', 'http://127.0.0.1:8545');
+        $contract = strtolower((string) config('services.web3.contract_address'));
+        $loserLower = strtolower($loser);
+        $ready = false;
+        for ($i = 0; $i < 15; $i++) {
+            try {
+                $res = \Http::timeout(5)->post($rpc, [
+                    'jsonrpc' => '2.0', 'id' => 1,
+                    'method' => 'eth_call',
+                    'params' => [[
+                        'to' => config('services.web3.contract_address'),
+                        'data' => '0x' . $this->selectorUserBalances(),
+                        'from' => $winner,
+                    ], 'latest'],
+                ]);
+                $body = $res->json();
+                if (!empty($body['result']) && strlen($body['result']) >= 66) {
+                    $balHex = substr($body['result'], 2, 64);
+                    if (gmp_cmp(gmp_init($balHex, 16), 0) > 0) { $ready = true; break; }
+                }
+            } catch (\Throwable $e) {
+                // retry
+            }
+            sleep(2);
+        }
+
+        if (!$ready) {
+            // Solde du perdant toujours 0 après 30s : le dépôt n'est jamais
+            // arrivé. On ne règlemente PAS (aucune perte de fonds) et le front
+            // pourra retenter. Réponse noop.
+            \Log::warning("Settle duel avorté : solde perdant 0 après attente ({$loser})");
+            return response()->json([
+                'status' => 'noop',
+                'message' => 'Solde du perdant à 0 (dépôt non confirmé) — règlement différé, retenté automatiquement.',
+            ]);
+        }
 
         $script = (string) config('services.web3.settle_script');
         if (!is_file($script)) {
@@ -137,6 +182,15 @@ class InternalController extends Controller
     }
 
     /**
+     * Sélecteur calldata de userBalances(address) : 0x26224c64.
+     * Calculé en dur pour éviter la dépendance à l'ABI dans ce contrôleur.
+     */
+    private function selectorUserBalances(): string
+    {
+        return '26224c64'; // selector 4 bytes de userBalances(address)
+    }
+
+    /**
      * Retrait PUSH gasless : le serveur soumet lui-même withdrawTo (voucher
      * signé par le backend) — le joueur ne signe rien, ne paie pas de gaz.
      * Idempotent : solde 0 → "rien à retirer".
@@ -149,6 +203,9 @@ class InternalController extends Controller
         $request->validate([
             'wallet_address' => 'required|string|size:42|starts_with:0x',
         ]);
+
+        // FIX ICDM #3 : garde anti-perdant (même règle que le voucher classique).
+        app(\App\Http\Controllers\Api\WithdrawController::class)->guardLoserWithdrawPublic($request->wallet_address);
 
         $wallet = $request->wallet_address;
 

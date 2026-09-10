@@ -93,6 +93,7 @@ Route::post('/auth/session-key', [AuthController::class, 'registerSessionKey']);
 Route::post('/battle/commit', [BattleController::class, 'commitMove']);
 Route::post('/battle/reveal', [BattleController::class, 'revealMove']);
 Route::post('/battle/timeout', [BattleController::class, 'claimTimeout']);
+Route::post('/battle/deposited', [BattleController::class, 'depositConfirmed']);
 Route::get('/battle/status/{match_id}', [BattleController::class, 'getMatchStatus']);
 
 // Configuration de jeu exposée au frontend (durée du round, etc.)
