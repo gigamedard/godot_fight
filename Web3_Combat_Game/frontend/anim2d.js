@@ -410,6 +410,9 @@
         if (p1id && CHARS[p1id]) p1CharId = p1id;
         if (p2id && CHARS[p2id]) p2CharId = p2id;
         p1Pose='idle'; p2Pose='idle'; combatPhase=null; showVs=true;
+        // FIX ICDM : un nouveau match → réinitialiser le feedback du coup
+        // choisi (badge canvas + boutons .selected) du match précédent.
+        if (typeof window.clearSelectedMove2D === 'function') window.clearSelectedMove2D();
         if (!animRunning && spritesLoaded) startLoop();
     };
 
@@ -507,6 +510,34 @@
             }
         });
     }
+
+    // FIX ICDM : phase "attente de dépôt escrow" — affiche le layer 2D avec les
+    // deux combattants en idle (VS) pendant que MetaMask est ouvert chez les
+    // deux joueurs. Donne un contexte visuel au lieu d'une modale nue.
+    window.showDepositPending2D = function (p1id, p2id) {
+        var layer = document.getElementById('anim2d-layer');
+        if (!layer) return;
+        layer.style.display = 'flex';
+        requestAnimationFrame(function () { layer.classList.remove('hidden'); });
+        isGodotReady = false; animRunning = false;
+        if (p1id) p1CharId = p1id;
+        if (p2id) p2CharId = p2id;
+        p1Pose = 'idle'; p2Pose = 'idle'; combatPhase = null; showVs = true;
+        // Texte du HUD adapté à la phase (si pas en force2D, le badge HUD est
+        // visible : indiquer l'attente de dépôt plutôt que la progression).
+        var text = document.getElementById('anim2d-status-text');
+        if (text && !force2D) text.innerText = 'EN ATTENTE DES DÉPÔTS DES DEUX JOUEURS...';
+        if (typeof window.clearSelectedMove2D === 'function') window.clearSelectedMove2D();
+        if (spritesLoaded) startLoop();
+    };
+
+    // Réaffiche le HUD de chargement standard (après la phase attente dépôt)
+    window.restoreAnim2DHud = function () {
+        var hud = document.getElementById('anim2d-hud');
+        if (hud) hud.style.display = '';
+        var text = document.getElementById('anim2d-status-text');
+        if (text && !force2D) text.innerText = 'INITIALISATION DU MOTEUR 3D...';
+    };
 
     window.transition2Dto3D = function () {
         if (force2D) {

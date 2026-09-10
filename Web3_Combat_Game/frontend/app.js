@@ -1647,6 +1647,15 @@ async function executeMatchOnChain(e) {
         AppState.myChar = "p" + (e.p2Char || 2);
     }
 
+    // FIX ICDM (UI 2D) : afficher le layer 2D avec les combattants en idle
+    // pendant l'attente MetaMask — contexte visuel du duel au lieu d'une
+    // modale nue. Le combat ne démarre qu'au MatchReady.
+    const myId2D = anim2DCharId(AppState.myChar, AppState.selectedCharacter ? AppState.selectedCharacter.id : 1);
+    const oppId2D = anim2DCharId(AppState.opponentChar, 2);
+    if (typeof window.showDepositPending2D === 'function') {
+        window.showDepositPending2D(myId2D, oppId2D);
+    }
+
     // FIX ICDM #1 : dépôt soumis (tx signée), le tx hash notifié au backend qui
     // vérifie le receipt. MatchReady (les DEUX dépôts confirmés) lance le
     // combat via launchCombat — jamais avant l'escrow des deux joueurs.
@@ -1657,6 +1666,8 @@ async function executeMatchOnChain(e) {
     if (!txHash) {
         console.error("[Match] Dépôt échoué — annulation du match.");
         showToast("Dépôt on-chain échoué — match annulé.", "error");
+        // Masquer le layer 2D d'attente (retour au lobby)
+        if (typeof window.toggleAnim2D === 'function') window.toggleAnim2D(false);
         window.resetMatchState();
         navigateTo('screen-main');
         return;
@@ -1729,6 +1740,9 @@ function launchCombat(e) {
 
     document.getElementById('challenge-modal').style.display = 'none';
     document.getElementById('challenge-text').innerText = "Dépôts confirmés — que le combat commence !";
+    // FIX ICDM (UI 2D) : restaurer le HUD standard (le texte "EN ATTENTE DES
+    // DÉPÔTS" ne doit pas persister pendant le combat).
+    if (typeof window.restoreAnim2DHud === 'function') window.restoreAnim2DHud();
     AppState.lastActionTime = Date.now();
     launchGodot(opponent);
 }
