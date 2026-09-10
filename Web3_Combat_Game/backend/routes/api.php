@@ -95,6 +95,7 @@ Route::post('/battle/reveal', [BattleController::class, 'revealMove']);
 Route::post('/battle/timeout', [BattleController::class, 'claimTimeout']);
 Route::post('/battle/deposited', [BattleController::class, 'depositConfirmed']);
 Route::get('/battle/status/{match_id}', [BattleController::class, 'getMatchStatus']);
+Route::get('/battle/last-result', [BattleController::class, 'lastResult']);
 
 // Configuration de jeu exposée au frontend (durée du round, etc.)
 Route::get('/game-config', function () {

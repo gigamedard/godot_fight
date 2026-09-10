@@ -233,6 +233,44 @@ class BattleController extends Controller
     }
 
     /**
+     * FIX claim : renvoie le dernier match terminé du wallet (result + loser)
+     * pour que le front masque le bouton Réclamer des perdants.
+     * GET /battle/last-result?wallet=<addr>
+     */
+    public function lastResult(Request $request)
+    {
+        $w = strtolower((string) $request->query('wallet', ''));
+        if ($w === '') {
+            return response()->json(['result' => null, 'loser' => null]);
+        }
+        $fight = \App\Models\Fight::where('status', 'completed')
+            ->where(function ($q) use ($w) {
+                $q->where('player1_wallet', $w)->orWhere('player2_wallet', $w);
+            })
+            ->latest('id')
+            ->first();
+
+        if (!$fight) {
+            return response()->json(['result' => null, 'loser' => null]);
+        }
+
+        $loser = null;
+        if ($fight->result === 'player1_win') {
+            $loser = $fight->player2_wallet;
+        } elseif ($fight->result === 'player2_win') {
+            $loser = $fight->player1_wallet;
+        } elseif ($fight->result === 'double_elimination') {
+            $loser = 'both';
+        }
+
+        return response()->json([
+            'match_id' => $fight->id,
+            'result' => $fight->result,
+            'loser' => $loser,
+        ]);
+    }
+
+    /**
      * Résout un combat toujours en attente dont la deadline (durée fixe d'un round,
      * ancrée sur created_at, configurable via config/game.php) est dépassée.
      * Idempotent : ne fait rien si le combat est déjà résolu. La deadline ne glisse

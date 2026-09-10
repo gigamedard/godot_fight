@@ -142,6 +142,36 @@ Correctifs (front + backend, sans toucher au contrat) :
   obligatoire après `/matchmaking/challenge` (le challenge seul ne crée pas
   le Fight).
 
+### §6quater. Fixs bouton Réclamer (test utilisateur 2)
+
+Problèmes constatés :
+1. **Bouton Réclamer visible pour le PERDANT** avec le montant de sa mise :
+   cause racine = `refreshClaimable` affichait le bouton dès que
+   `userBalances > 0` sans tenir compte du résultat du match, et le settle
+   n'avait **jamais** consolidé (bug calldata, cf. ci-dessous) → solde
+   fantôme du perdant persistant.
+2. **Bouton réapparaissant après le claim** : la tx push n'est pas minée
+   instantanément au moment où le front re-fetch le solde.
+
+Correctifs :
+- **Bug calldata settleDuel corrigé** : l'eth_call de `userBalances(address)`
+  n'incluait PAS l'argument address (selector seul) → call en revert à
+  chaque fois → `ready=false` → **noop systématique** → jamais de règlement.
+  Fix : calldata complet `0x26224c64 + address paddée 64 hex`. Ce bug a
+  expliqué tous les "solde 0, rien à régler" précédents.
+- **Nouvelle route `GET /battle/last-result?wallet=`** (BattleController) :
+  renvoie `{result, loser}` du dernier fight completed du wallet. Le front
+  `refreshClaimable` masque le bouton si le wallet est le perdant d'un match
+  non-draw, même avec solde fantôme on-chain.
+- **ClaimPendingFunds** : masquage immédiat du bouton après le push serveur
+  (avant le re-fetch du solde) — le bouton ne réapparaît plus pendant le
+  minage.
+- **Nettoyage des soldes fantômes** : le settle corrigé consolide les mises
+  restées bloquées (B : 100 ETH consolidés vers A, puis retrait push par A).
+  En cas de solde fantôme historique : ré-émettre `POST /battle/settle` avec
+  le winner/loser du match concerné (idempotent, "Nothing to settle" si
+  déjà réglé).
+
 ### §6bis. Règlement + retrait GASLESS (P1+P2 — itération ICDM)
 
 Objectif : éliminer les popups MetaMask après la connexion + l'auth de session.

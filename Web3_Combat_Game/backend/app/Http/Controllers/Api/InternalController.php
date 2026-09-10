@@ -119,9 +119,12 @@ class InternalController extends Controller
         // Attente active : le perdant doit avoir un solde on-chain (les deux
         // dépôts minés). MetaMask peut prendre 12-30s pour confirmer.
         $rpc = (string) config('services.web3.rpc_url', 'http://127.0.0.1:8545');
-        $contract = strtolower((string) config('services.web3.contract_address'));
         $loserLower = strtolower($loser);
+        // calldata complet : selector userBalances(address) + address paddée
+        $calldata = '0x' . $this->selectorUserBalances()
+            . str_pad(substr($loserLower, 2), 64, '0', STR_PAD_LEFT);
         $ready = false;
+        $loserBal = '0';
         for ($i = 0; $i < 15; $i++) {
             try {
                 $res = \Http::timeout(5)->post($rpc, [
@@ -129,13 +132,13 @@ class InternalController extends Controller
                     'method' => 'eth_call',
                     'params' => [[
                         'to' => config('services.web3.contract_address'),
-                        'data' => '0x' . $this->selectorUserBalances(),
-                        'from' => $winner,
+                        'data' => $calldata,
                     ], 'latest'],
                 ]);
                 $body = $res->json();
                 if (!empty($body['result']) && strlen($body['result']) >= 66) {
                     $balHex = substr($body['result'], 2, 64);
+                    $loserBal = gmp_strval(gmp_init($balHex, 16));
                     if (gmp_cmp(gmp_init($balHex, 16), 0) > 0) { $ready = true; break; }
                 }
             } catch (\Throwable $e) {
@@ -145,9 +148,10 @@ class InternalController extends Controller
         }
 
         if (!$ready) {
-            // Solde du perdant toujours 0 après 30s : le dépôt n'est jamais
-            // arrivé. On ne règlemente PAS (aucune perte de fonds) et le front
-            // pourra retenter. Réponse noop.
+            // Solde du perdant toujours 0 après 30s : soit le dépôt n'est jamais
+            // arrivé (on ne règlemente PAS — aucune perte de fonds possible),
+            // soit le règlement a déjà été fait (idempotent). Réponse noop et
+            // le front pourra retenter.
             \Log::warning("Settle duel avorté : solde perdant 0 après attente ({$loser})");
             return response()->json([
                 'status' => 'noop',

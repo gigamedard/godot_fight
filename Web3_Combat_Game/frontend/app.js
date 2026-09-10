@@ -705,13 +705,36 @@ async function refreshClaimable() {
     const container = document.getElementById('pending-funds-container');
     const amt = document.getElementById('pending-amount');
     if (!container || !amt) return;
+
+    // FIX claim : le bouton ne doit apparaître QUE si ce wallet a un gain
+    // légitime à réclamer. Trois cas :
+    //  1. Dernier match perdu (non-draw) → rien à réclamer, masquer.
+    //  2. Dernier match gagné (ou draw) → solde on-chain = gain à réclamer.
+    //  3. Aucun match récent → solde on-chain éventuel (dépôts divers).
+    const w = AppState.walletAddress ? AppState.walletAddress.toLowerCase() : null;
+    if (!w) { container.style.display = 'none'; return; }
+
     try {
         const pending = await contract.userBalances(AppState.walletAddress);
+        // Consultons le dernier match terminé pour déterminer l'éligibilité.
+        const lastResult = await fetch(`${APP_CONFIG.API_BASE_URL}/battle/last-result?wallet=${w}`)
+            .then(r => r.ok ? r.json() : null)
+            .catch(() => null);
+
+        // Si le dernier match déclare ce wallet PERDANT (et pas un draw), le
+        // bouton ne doit jamais s'afficher, même s'il reste un solde fantôme.
+        if (lastResult && lastResult.result && lastResult.result !== 'draw' && lastResult.loser === w) {
+            container.style.display = 'none';
+            amt.innerText = '0';
+            return;
+        }
+
         if (pending > 0n) {
             container.style.display = 'block';
             amt.innerText = parseFloat(ethers.formatEther(pending)).toFixed(3);
         } else {
             container.style.display = 'none';
+            amt.innerText = '0';
         }
     } catch (e) {
         console.error("Error fetching userBalances:", e);
@@ -767,6 +790,12 @@ async function claimPendingFunds() {
             return;
         }
         console.log("[Claim] Retrait push effectué par le serveur (gasless).", data.script_output || '');
+        // FIX claim : masquer immédiatement le bouton (la tx peut encore miner,
+        // le re-fetch du solde ré-afficherait un montant fantôme).
+        const container = document.getElementById('pending-funds-container');
+        if (container) container.style.display = 'none';
+        const amt = document.getElementById('pending-amount');
+        if (amt) amt.innerText = '0';
         showToast("Fonds transférés avec succès dans votre wallet !", "success");
         updateBalance();
     } catch (err) {
