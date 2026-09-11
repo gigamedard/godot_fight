@@ -12,7 +12,11 @@ import socketserver
 import ssl
 import subprocess
 
-CERT_DIR = "/app/certs"
+# Les certificats sont cherchés dans /srv/www/certs (= ./frontend/certs monté
+# ro). Si un vrai certificat y est placé (ex: tailscale cert — Let's Encrypt
+# pour <machine>.ts.net, accepté nativement par MetaMask iOS), il est utilisé
+# tel quel ; sinon un auto-signé est généré (fallback dev local).
+CERT_DIR = "/srv/www/certs"
 CERT_FILE = os.path.join(CERT_DIR, "cert.pem")
 KEY_FILE = os.path.join(CERT_DIR, "key.pem")
 UPSTREAM_RPC = "http://blockchain:8545"
@@ -44,6 +48,27 @@ def generate_self_signed_cert():
 class RpcProxyHandler(http.server.BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
+    # Headers hop-by-hop à ne JAMAIS retransmettre à l'upstream.
+    # (accept-encoding exclu : urllib ne décompresse pas — on demande l'identité)
+    HOP_BY_HOP = {
+        "host", "connection", "content-length", "transfer-encoding",
+        "keep-alive", "upgrade", "accept-encoding", "proxy-authorization",
+    }
+
+    def _cors_headers(self, preflight: bool):
+        # Echo de l'Origin (évite le mode credentials interdit avec '*')
+        origin = self.headers.get("Origin")
+        self.send_header("Access-Control-Allow-Origin", origin or "*")
+        self.send_header("Vary", "Origin")
+        if preflight:
+            # Echo EXPLICITE des headers demandés par le preflight
+            # (x-player-name, authorization, etc.) — '*' ne suffit pas si le
+            # navigateur est strict, et le echo couvre tous les cas.
+            requested = self.headers.get("Access-Control-Request-Headers")
+            self.send_header("Access-Control-Allow-Headers", requested or "*")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+            self.send_header("Access-Control-Max-Age", "600")
+
     def _relay(self):
         import urllib.request
         import urllib.error
@@ -59,16 +84,18 @@ class RpcProxyHandler(http.server.BaseHTTPRequestHandler):
             path = path[len("/rpc-proxy"):] if path.startswith("/rpc-proxy") else path
             upstream_url = UPSTREAM_RPC + (path or "/")
         req = urllib.request.Request(upstream_url, data=body, method=self.command)
-        for h in ("Content-Type", "Accept", "Origin"):
-            if self.headers.get(h):
-                req.add_header(h, self.headers[h])
+        # Transmission de TOUS les headers utiles (x-player-name, authorization,
+        # content-type… sauf hop-by-hop) — l'API Laravel a besoin des headers
+        # custom du front (lobby, auth broadcasting).
+        for h, v in self.headers.items():
+            if h.lower() not in self.HOP_BY_HOP:
+                req.add_header(h, v)
         try:
             with urllib.request.urlopen(req, timeout=30) as upstream:
                 payload = upstream.read()
                 self.send_response(upstream.status)
                 self.send_header("Content-Type", upstream.headers.get("Content-Type", "application/json"))
-                self.send_header("Access-Control-Allow-Origin", "*")
-                self.send_header("Access-Control-Allow-Headers", "Content-Type")
+                self._cors_headers(preflight=False)
                 self.send_header("Connection", "close")
                 self.send_header("Content-Length", str(len(payload)))
                 self.end_headers()
@@ -76,8 +103,8 @@ class RpcProxyHandler(http.server.BaseHTTPRequestHandler):
         except urllib.error.HTTPError as e:
             payload = e.read()
             self.send_response(e.code)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Content-Type", e.headers.get("Content-Type", "application/json") if e.headers else "application/json")
+            self._cors_headers(preflight=False)
             self.send_header("Connection", "close")
             self.send_header("Content-Length", str(len(payload)))
             self.end_headers()
@@ -86,8 +113,8 @@ class RpcProxyHandler(http.server.BaseHTTPRequestHandler):
             msg = ('{"jsonrpc":"2.0","error":{"code":-32000,"message":"proxy error: %s"}}' % str(e)).encode()
             self.send_response(502)
             self.send_header("Content-Type", "application/json")
+            self._cors_headers(preflight=False)
             self.send_header("Content-Length", str(len(msg)))
-            self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             self.wfile.write(msg)
 
@@ -98,12 +125,11 @@ class RpcProxyHandler(http.server.BaseHTTPRequestHandler):
         self._relay()
 
     def do_OPTIONS(self):
-        # Préflight CORS (les appels https → même origin n'en ont pas besoin,
-        # mais les clients wallet peuvent en émettre)
+        # Préflight CORS : réponse LOCALE au proxy (l'upstream ne voit jamais
+        # les OPTIONS). Echo de l'Origin + des headers demandés — indispensable
+        # pour les headers custom du front (x-player-name…).
         self.send_response(204)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self._cors_headers(preflight=True)
         self.send_header("Content-Length", "0")
         self.end_headers()
 

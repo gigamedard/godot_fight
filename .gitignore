@@ -19,3 +19,6 @@ rock-paper-scissors-ref/
 
 # Originaux PNG du fond d'Ã©cran (backup local, servis ni rÃ©fÃ©rencÃ©s par le frontend)
 Web3_Combat_Game/frontend/bg/original/
+
+# Certificats TLS locaux (clé privée — jamais commités; tailscale cert régénère)
+Web3_Combat_Game/frontend/certs/

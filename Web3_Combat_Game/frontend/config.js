@@ -21,7 +21,7 @@ const APP_CONFIG = {
     // pas de mixed content) — route /api-proxy/* vers http://blockchain.../api.
     // (implémentation : voir tls_proxy.py route /api-proxy/<path>)
     API_BASE_URL: IS_HTTPS
-        ? `https://${window.location.hostname}:8443/api-proxy/api`
+        ? `https://${window.location.hostname}:8444/api-proxy/api`
         : `http://${window.location.hostname}:8000/api`,
 
     // Configuration WebSocket (Reverb) — wss requis en page https
@@ -33,7 +33,7 @@ const APP_CONFIG = {
 
     // Configuration Blockchain (Réseau Local Hardhat) — proxy TLS /rpc-proxy
     RPC_URL: IS_HTTPS
-        ? `https://${window.location.hostname}:8443/rpc-proxy`
+        ? `https://${window.location.hostname}:8444/rpc-proxy`
         : `http://${window.location.hostname}:8545`,
 
     // Portail BATTLEPOOL (App 1) — cible du mode SPIRIT FIGHT (http uniquement :
