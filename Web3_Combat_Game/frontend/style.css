@@ -687,6 +687,75 @@ html, body {
 .wallet-status-label i,
 .wallet-status-label svg { width: 16px; height: 16px; }
 
+/* ---- 9ter. Connexion par clé de démo (mobile/dev) ----
+   Nouvelles classes uniquement : aucun sélecteur existant modifié. */
+.connect-divider {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 14px 0;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    letter-spacing: 1px;
+}
+.connect-divider::before,
+.connect-divider::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: rgba(160,153,184,0.25);
+}
+.connect-demo { background: var(--panel-light); color: var(--cyan-spark); border: 1px solid var(--cyan-spark); }
+.connect-demo:hover { box-shadow: 0 0 15px rgba(0,229,255,0.4); filter: brightness(1.1); }
+
+.demo-key-box {
+    margin-top: 10px;
+    padding: 12px;
+    background: rgba(24,24,36,0.7);
+    border: 1px solid rgba(123,44,191,0.4);
+    clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.demo-key-note {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    line-height: 1.3;
+}
+.demo-quick-row { display: flex; gap: 6px; }
+.demo-quick-btn {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 7px 4px;
+    background: rgba(0,229,255,0.08);
+    border: 1px solid rgba(0,229,255,0.35);
+    color: var(--cyan-spark);
+    font-family: var(--font-body);
+    font-weight: 700;
+    font-size: 0.62rem;
+    cursor: pointer;
+    clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px);
+    transition: background 0.15s ease;
+}
+.demo-quick-btn:hover { background: rgba(0,229,255,0.2); }
+.demo-quick-addr { font-family: monospace; font-size: 0.68rem; }
+.demo-quick-label { color: var(--text-muted); }
+.demo-key-input {
+    width: 100%;
+    padding: 10px 12px;
+    background: rgba(15,12,27,0.8);
+    border: 1px solid rgba(0,229,255,0.35);
+    color: var(--text-white);
+    font-family: monospace;
+    font-size: 0.85rem;
+}
+.demo-key-input:focus { outline: 1px solid var(--cyan-spark); }
+.demo-key-go { padding: 10px 16px; }
+
 /* ==========================================================================
    10. ÉCRAN 3 : MODE
    ========================================================================== */

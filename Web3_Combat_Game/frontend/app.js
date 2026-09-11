@@ -367,8 +367,78 @@ window.connectWallet = async function() {
     }
 
     // ── 6. Rien du tout : erreur bloquante (aucun compte généré, aucune clé stockée).
-    showToast("Aucun wallet détecté. Installez MetaMask ou connectez-vous via le portail.", "error");
+    showToast("Aucun wallet détecté. Installez MetaMask, utilisez une clé de démo ou connectez-vous via le portail.", "error");
     return;
+};
+
+// ── Connexion sans MetaMask (mobile/démo) : clé privée collée ────────────────
+// FIX mobile : MetaMask Mobile refuse fréquemment les RPC http:// en clair
+// (chaîne locale) et le navigateur intégré coupe le VPN. Pour tester sur
+// téléphone avec les comptes Hardhat, on permet de coller une clé privée de
+// DÉMO directement. Le flux reprend ensuite exactement celui de ?player=N
+// (adresse + clé en localStorage → finishConnection).
+window.toggleDemoKeyBox = function() {
+    const box = document.getElementById('demo-key-box');
+    if (!box) return;
+    const show = box.style.display === 'none';
+    box.style.display = show ? 'block' : 'none';
+    if (show) {
+        // Raccourcis : les 3 premiers comptes Hardhat (clés publiques de test)
+        const quick = document.getElementById('demo-quick-accounts');
+        if (quick && typeof HARDHAT_ACCOUNTS !== 'undefined') {
+            quick.innerHTML = '';
+            HARDHAT_ACCOUNTS.slice(0, 3).forEach((acc, i) => {
+                const btn = document.createElement('button');
+                btn.className = 'demo-quick-btn';
+                btn.type = 'button';
+                btn.innerHTML = '<span class="demo-quick-addr">' + acc.address.substring(0, 8) + '…' + acc.address.substring(36, 42) + '</span><span class="demo-quick-label">Cpte #' + i + '</span>';
+                btn.onclick = () => {
+                    const input = document.getElementById('demo-private-key');
+                    if (input) input.value = acc.privateKey;
+                };
+                quick.appendChild(btn);
+            });
+        }
+    }
+};
+
+window.connectWithDemoKey = async function() {
+    const input = document.getElementById('demo-private-key');
+    if (!input) return;
+    let pk = (input.value || '').trim();
+    if (!pk) {
+        showToast("Collez une clé privée de démo (ou cliquez un raccourci Hardhat).", "error");
+        return;
+    }
+    if (!pk.startsWith('0x')) pk = '0x' + pk;
+    // Validation : 32 bytes
+    if (!/^0x[0-9a-fA-F]{64}$/.test(pk)) {
+        showToast("Clé privée invalide (attendu : 64 caractères hexadécimaux).", "error");
+        return;
+    }
+    try {
+        const wallet = new ethers.Wallet(pk);
+        const address = wallet.address;
+        console.log("[Demo] Connexion par clé privée de démo :", address);
+        // Persistance : même mécanique que ?player=N (session dev explicite)
+        AppState.walletAddress = address;
+        AppState.privateKey = pk;
+        localStorage.setItem('web3combat_wallet', address);
+        localStorage.setItem('web3combat_pk', pk);
+        showToast("Connecté en mode démo : " + address.substring(0, 8) + "...", "success");
+        // Réutilise la fin du flux connectWallet (initWeb3 + navigation).
+        // NB : initWeb3 utilise AppState.privateKey → provider JsonRpc direct,
+        // aucune interaction MetaMask nécessaire.
+        initWeb3();
+        const statusBox = document.getElementById('wallet-status-box');
+        const addrDisplay = document.getElementById('wallet-addr-display');
+        if (statusBox) statusBox.style.display = 'block';
+        if (addrDisplay) addrDisplay.textContent = address;
+        setTimeout(() => navigateTo('screen-mode'), 400);
+    } catch (e) {
+        console.error("[Demo] Connexion clé démo échouée :", e);
+        showToast("Clé privée invalide ou non signable.", "error");
+    }
 };
 
 // Étape 3 : Choix du mode de jeu
