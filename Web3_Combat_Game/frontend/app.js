@@ -672,8 +672,16 @@ async function initWeb3() {
         // AUTH UNIFIÉE : si une clé privée locale existe (mode dev Hardhat), on l'utilise.
         // Sinon, on passe par le provider injecté (MetaMask déjà connecté par App 1).
         if (AppState.privateKey) {
-            const providerUrl = "http://127.0.0.1:8545";
-            provider = new ethers.JsonRpcProvider(providerUrl);
+            // FIX mobile : l'RPC doit pointer vers LE PC (l'hôte qui sert la page),
+            // jamais 127.0.0.1 (qui désignerait le téléphone lui-même en mobile).
+            // Priorité : config.js RPC_URL (dynamique sur hostname) ; HTTPS si la
+            // page est servie en https (mixed content interdit).
+            const pageIsHttps = window.location.protocol === 'https:';
+            const rpcUrl = (APP_CONFIG && APP_CONFIG.RPC_URL)
+                ? APP_CONFIG.RPC_URL.replace('http://', pageIsHttps ? 'https://' : 'http://')
+                : "http://127.0.0.1:8545";
+            console.log("[App2] provider RPC :", rpcUrl);
+            provider = new ethers.JsonRpcProvider(rpcUrl);
             signer = new ethers.Wallet(AppState.privateKey, provider);
         } else if (window.ethereum) {
             provider = new ethers.BrowserProvider(window.ethereum);
@@ -1127,7 +1135,9 @@ function performLogin() {
             wsHost: APP_CONFIG.REVERB_HOST,
             wsPort: APP_CONFIG.REVERB_PORT,
             wssPort: APP_CONFIG.REVERB_PORT,
-            forceTLS: false,
+            // FIX https mobile : en page https, Reverb doit passer en wss.
+            // Le proxy TLS (8443) relaye le WebSocket vers Reverb (8081).
+            forceTLS: !!(APP_CONFIG.REVERB_TLS),
             disableStats: true,
             enabledTransports: ['ws', 'wss'],
             authEndpoint: `${APP_CONFIG.API_BASE_URL}/broadcasting/auth`,

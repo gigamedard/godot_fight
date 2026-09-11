@@ -106,6 +106,9 @@ services:
     restart: unless-stopped
     ports:
       - "8080:8080"
+      - "8443:8443"
+      - "8444:8444"
+      - "8445:8445"
     volumes:
       - ./frontend:/srv/www:ro
 
