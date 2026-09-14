@@ -159,7 +159,15 @@ def start_rpc_tls():
         def handle(client):
             upstream = None
             try:
+                # timeout=10 UNIQUEMENT pour l'établissement de la connexion ;
+                # ensuite on le retire — sinon tout silence >10s (joueur inactif
+                # dans le lobby, Reverb ne ping qu'après ~30s) lève socket.timeout
+                # dans pipe() → la connexion saine est fermée → cycle
+                # déconnexion/reconnexion (~15-25s) → joueurs qui clignotent
+                # dans la liste du lobby (leaving/joining en boucle).
                 upstream = socket.create_connection(UPSTREAM_REVERB, timeout=10)
+                upstream.settimeout(None)
+                client.settimeout(None)
                 # Relais bidirectionnel bloquant : 1 thread par direction.
                 def pipe(src, dst):
                     try:

@@ -113,16 +113,28 @@ window.openInviteQR = function() {
         return;
     }
     qrBox.innerHTML = '';
-    // qrcodejs : taille en pixels, fond sombre, modules cyan
+    // Styling du conteneur : fond BLANC avec marge (Quiet Zone) généreuse
+    // et ombre pour détacher nettement le QR du fond sombre de la page.
+    // Essentiel pour que les caméras détectent les motifs de repérage (finder patterns).
+    qrBox.style.background = '#ffffff';
+    qrBox.style.padding = '14px';
+    qrBox.style.borderRadius = '12px';
+    qrBox.style.boxShadow = '0 6px 24px rgba(0, 0, 0, 0.6)';
+    qrBox.style.display = 'inline-block';
+
+    // qrcodejs : taille portée à 256x256 px pour lisibilité optimale à distance de focus (~30 cm).
+    // Contenu = code d'invitation SEUL (ex: cUV9cQEK).
+    // Niveau de correction Q (25%) : résiste au moiré et reflets d'écran LCD.
+    const qrPayload = AppState.currentInviteQRPayload
+        || (linkInput && linkInput.value.includes('invite=') ? linkInput.value.split('invite=').pop() : link);
     new QRCode(qrBox, {
-        text: link,
-        width: 168,
-        height: 168,
-        colorDark: "#00E5FF",
-        colorLight: "#0b0d18",
-        correctLevel: QRCode.CorrectLevel.M
+        text: qrPayload,
+        width: 256,
+        height: 256,
+        colorDark: "#000000",
+        colorLight: "#ffffff",
+        correctLevel: QRCode.CorrectLevel.Q
     });
-    qrBox.style.display = 'block';
     showToast("QR code généré — faites-le scanner pour rejoindre le salon.", "success");
 };
 
@@ -1391,62 +1403,124 @@ function filterLobby(query) {
 }
 
 // --- GESTION DU SCANNER QR CODE ---
-let html5QrcodeScanner = null;
+// API directe Html5Qrcode (pas Html5QrcodeScanner) : pas d'UI par défaut
+// (boutons anglais), caméra arrière automatique.
+// SANS qrbox : la librairie croppe l'analyse à la zone qrbox — un QR qui la
+// dépasse est tronqué et jamais décodé (bug constaté : QR plus grand que le
+// cadre). On analyse donc la FRAME ENTIÈRE ; le cadre visuel est purement
+// décoratif (CSS, hors flux d'analyse).
+let html5QrcodeInstance = null;
+let _qrScanHandled = false;
 
 function openQRScanner() {
     document.getElementById('qr-modal').style.display = 'flex';
-    if (typeof Html5QrcodeScanner !== 'undefined') {
-        html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: {width: 200, height: 200} }, false);
-        html5QrcodeScanner.render(onScanSuccess, () => {});
-    } else {
+    if (typeof Html5Qrcode === 'undefined') {
         showToast("Le scanner QR n'a pas pu être chargé.", "error");
+        return;
     }
+    _qrScanHandled = false;
+
+    // Configuration optimisée de l'instance Html5Qrcode :
+    // - formatsToSupport : QR_CODE uniquement (décharge ZXing de tester 17 formats par trame -> +10x plus rapide)
+    // - experimentalFeatures : active le BarcodeDetector matériel natif (iOS 17+ / Android) dans le constructeur
+    const qrcodeFormats = typeof Html5QrcodeSupportedFormats !== 'undefined'
+        ? [ Html5QrcodeSupportedFormats.QR_CODE ]
+        : undefined;
+
+    html5QrcodeInstance = new Html5Qrcode("reader", {
+        verbose: false,
+        formatsToSupport: qrcodeFormats,
+        experimentalFeatures: { useBarCodeDetectorIfSupported: true }
+    });
+
+    // Configuration du flux caméra :
+    // - fps: 15 pour une analyse fluide sans surchauffe
+    // - videoConstraints : force Safari/iOS à négocier un flux HD (1280x720) avec la caméra arrière
+    //   (évite le sous-échantillonnage 480p de Safari qui rendait les QR flous sur écran)
+    const config = {
+        fps: 15,
+        videoConstraints: {
+            facingMode: "environment",
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+        }
+    };
+
+    const startScan = (streamConfig) => {
+        return html5QrcodeInstance.start(
+            { facingMode: "environment" },
+            streamConfig,
+            onScanSuccess,
+            function () { /* échec de décodage d'une frame : silencieux */ }
+        );
+    };
+
+    startScan(config).catch(err => {
+        console.warn("Démarrage caméra HD échoué, tentative fallback standard :", err);
+        // Fallback sans contraintes de résolution strictes si le matériel refuse le 720p
+        startScan({ fps: 10 }).catch(fallbackErr => {
+            console.error("Ouverture caméra échouée :", fallbackErr);
+            showToast("Accès caméra refusé ou indisponible.", "error");
+            closeQRScanner();
+        });
+    });
 }
 
 function closeQRScanner() {
     document.getElementById('qr-modal').style.display = 'none';
-    if(html5QrcodeScanner) html5QrcodeScanner.clear();
+    if (html5QrcodeInstance) {
+        const inst = html5QrcodeInstance;
+        html5QrcodeInstance = null;
+        inst.stop().then(() => inst.clear()).catch(() => { try { inst.clear(); } catch (e) {} });
+    }
 }
 
 function onScanSuccess(decodedText) {
+    // Garde anti double-déclenchement : la caméra peut décoder la même frame
+    // plusieurs fois avant l'arrêt du flux → un seul traitement.
+    if (_qrScanHandled) return;
+    _qrScanHandled = true;
     closeQRScanner();
     const text = decodedText.trim();
 
-    // Si le QR contient un lien d'invitation ?invite=CODE → on extrait le code
-    try {
-        const u = new URL(text);
-        const inviteCode = u.searchParams.get('invite');
-        if (inviteCode) {
-            fetch(`${APP_CONFIG.API_BASE_URL}/pools/invite/${inviteCode}`)
-                .then(res => {
-                    if (!res.ok) throw new Error("Poule introuvable");
-                    return res.json();
-                })
-                .then(pool => {
-                    document.getElementById('invite-message').innerText = `Vous êtes invité à la poule #${pool.id} (Mise: ${pool.entry_fee} TKN). Voulez-vous rejoindre ?`;
-                    document.getElementById('btn-accept-invite').onclick = () => {
-                        stopInviteModalGuard();
-                        document.getElementById('invite-modal').style.display = 'none';
-                        joinPool(pool.id);
-                    };
-                    document.getElementById('invite-modal').style.display = 'flex';
-                    AppState.pendingInvitePoolId = pool.id;
-                    AppState.pendingInvitePoolMax = pool.max_players;
-                    startInviteModalGuard(pool.id, pool.max_players);
-                })
-                .catch(err => {
-                    console.error(err);
-                    showToast("QR invalide : poule introuvable", "error");
-                });
-            return;
+    // QR de battle : le contenu est le code d'invitation SEUL (nouveau format),
+    // ou une URL ?invite=CODE (ancien format, compat). Dans les deux cas on
+    // résout la poule → rejoindre automatiquement (pas de saisie manuelle).
+    let inviteCode = null;
+    if (/^[A-Za-z0-9_-]{4,32}$/.test(text) && !text.includes('?')) {
+        inviteCode = text; // code brut
+    } else {
+        try {
+            const u = new URL(text);
+            inviteCode = u.searchParams.get('invite');
+        } catch (e) {
+            // Pas une URL ni un code → fallback : filtre du lobby par pseudo/wallet
         }
-    } catch (e) {
-        // Pas une URL → on traite comme un pseudo/texte simple
+    }
+
+    if (inviteCode) {
+        fetch(`${APP_CONFIG.API_BASE_URL}/pools/invite/${inviteCode}`)
+            .then(res => {
+                if (!res.ok) throw new Error("Poule introuvable");
+                return res.json();
+            })
+            .then(pool => {
+                showToast(`Battle #${pool.id} trouvée (mise ${pool.entry_fee} TKN) — rejoindre...`, "success");
+                joinPool(pool.id);
+            })
+            .catch(err => {
+                console.error(err);
+                showToast("QR invalide : battle introuvable", "error");
+            });
+        return;
     }
 
     // Sinon, comportement d'origine : filtre du lobby par pseudo/wallet
-    document.getElementById('search-input').value = text;
-    filterLobby(text);
+    const searchInput = document.getElementById('search-input');
+    if (searchInput) {
+        searchInput.value = text;
+        filterLobby(text);
+    }
 }
 
 // --- GESTION DE LA MODALE DE PARI ---
@@ -1933,6 +2007,13 @@ function launchGodot(targetId) {
     // Masquer complètement l'UI Web pour afficher Godot au premier plan
     const overlay = document.getElementById('ui-overlay');
     if (overlay) overlay.classList.add('hidden');
+
+    // Si Godot 3D est déjà chargé, l'arène reste 3D : s'assurer que le
+    // preloader 2D est masqué (un duel lancé après le chargement de Godot
+    // ne doit pas retomber dans le layer 2D — fix "duel reste en 2D").
+    if (typeof window.ensure3DActive === 'function') {
+        window.ensure3DActive();
+    }
 
     // Mettre en scène le duel dans le preloader 2D si Godot 3D n'est pas encore prêt.
     window.syncFighters2D();
@@ -2789,6 +2870,10 @@ async function renderPoolRoom() {
             const inviteUrl = window.location.origin + window.location.pathname + "?invite=" + poolData.invite_code;
             document.getElementById('pool-invite-link').value = inviteUrl;
             document.getElementById('pool-invite-code').value = poolData.invite_code;
+            // QR = code d'invitation SEUL (pas l'URL) : le scanner d'un autre
+            // joueur extrait le code et l'injecte dans le champ battle →
+            // rejoindre automatique, indépendant de l'origine hôte.
+            AppState.currentInviteQRPayload = poolData.invite_code;
         } else {
             document.getElementById('pool-invite-container').style.display = 'none';
         }

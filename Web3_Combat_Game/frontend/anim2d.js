@@ -76,6 +76,26 @@
     var shakeFrames = 0, shakeMag = 0;
     var showVs = true;
 
+    // Godot 3D prêt ? window.GODOT_READY est posé par index.html quand
+    // engine.startGame() résout (scène démarrée). Synchronise le flag interne
+    // pour que transition2Dto3D/toggleAnim2D restent cohérents.
+    function godotIsReady() {
+        if (window.GODOT_READY) isGodotReady = true;
+        return !!window.GODOT_READY;
+    }
+
+    // Masque le layer 2D si (et seulement si) Godot 3D est actif. Appelé après
+    // toute réaffection du layer (showDepositPending2D, toggleAnim2D) : sans ce
+    // garde, un duel démarré APRÈS le chargement de Godot reste bloqué en 2D
+    // (transition2Dto3D n'est consommée qu'une seule fois au boot).
+    window.ensure3DActive = function () {
+        if (!godotIsReady()) return false;
+        var layer = document.getElementById('anim2d-layer');
+        if (layer) { layer.classList.add('hidden'); setTimeout(function(){layer.style.display='none';},850); }
+        isGodotReady = true; animRunning = false;
+        return true;
+    };
+
     // ── Priorité au mode Lite : les sprites 2D sont l'asset critique ─────────
     // Préchargement des 16 sprites AVANT Godot (142MB) pour que le mode 2D
     // soit jouable immédiatement, pendant que Godot se télécharge en arrière-plan.
@@ -515,6 +535,8 @@
     // deux combattants en idle (VS) pendant que MetaMask est ouvert chez les
     // deux joueurs. Donne un contexte visuel au lieu d'une modale nue.
     window.showDepositPending2D = function (p1id, p2id) {
+        // Godot 3D déjà actif → ne JAMAIS réafficher le preloader 2D.
+        if (godotIsReady()) return;
         var layer = document.getElementById('anim2d-layer');
         if (!layer) return;
         layer.style.display = 'flex';
@@ -560,17 +582,15 @@
 
     window.toggleAnim2D = function (show) {
         var layer = document.getElementById('anim2d-layer'); if (!layer) return;
-        if (show === undefined) show = layer.classList.contains('hidden') || layer.style.display==='none';
+        // Godot 3D actif : le 2D ne revient plus à l'écran (l'arène est 3D).
+        if (!show) { layer.classList.add('hidden'); setTimeout(function(){layer.style.display='none';},850); isGodotReady=true; return; }
+        if (godotIsReady()) { window.ensure3DActive(); return; }
         if (show) {
             layer.style.display='flex';
             requestAnimationFrame(function(){layer.classList.remove('hidden');});
             isGodotReady=false; animRunning=false;
             p1Pose='idle'; p2Pose='idle'; combatPhase=null; showVs=true;
             if (spritesLoaded) startLoop();
-        } else {
-            layer.classList.add('hidden');
-            setTimeout(function(){layer.style.display='none';},850);
-            isGodotReady=true;
         }
     };
 

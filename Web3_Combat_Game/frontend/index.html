@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BATTLEPOOL — Spirit Fight</title>
-    <link rel="stylesheet" href="style.css?v=4.1">
+    <link rel="stylesheet" href="style.css?v=4.4">
 </head>
 <body>
 
@@ -222,7 +222,6 @@
                             <i data-lucide="search" width="20"></i>
                             <input type="text" placeholder="Pseudo ou adresse wallet..." id="search-input" oninput="filterLobby(this.value)">
                         </div>
-                        <button class="qr-btn" onclick="openQRScanner()"><i data-lucide="qr-code" width="24"></i></button>
                     </div>
                     <div class="section-label">JOUEURS EN LIGNE</div>
                     <div class="list-container" id="players-list"></div>
@@ -244,6 +243,7 @@
                     <div class="join-private-box">
                         <input type="text" id="invite-code-input" placeholder="Code d'invitation privé...">
                         <button class="btn-cyber btn-cyan" onclick="joinPoolByCode()">REJOINDRE</button>
+                        <button class="qr-btn" onclick="openQRScanner()" title="Scanner le QR code d'une battle"><i data-lucide="qr-code" width="24"></i></button>
                     </div>
                     <div class="section-label">SALONS OUVERTS</div>
                     <div class="list-container" id="br-list"></div>
@@ -466,7 +466,7 @@
 
     <!-- Moteur Godot (export web) -->
     <script src="godot/jeu.js?v=3"></script>
-    <script src="anim2d.js?v=10"></script>
+    <script src="anim2d.js?v=11"></script>
     <script>
         const GODOT_CONFIG = {
             "args":[],
@@ -523,6 +523,10 @@
                         }
                     }
                 }).then(() => {
+                    // Flag global : Godot 3D chargé et scène démarrée. Consumé
+                    // par anim2d.js (ensure3DActive / showDepositPending2D)
+                    // pour NE PAS réafficher le preloader 2D après coup.
+                    window.GODOT_READY = true;
                     if (window.transition2Dto3D) {
                         window.transition2Dto3D();
                     }
@@ -565,6 +569,6 @@
     <!-- QR code : scan (html5-qrcode) + génération (qrcodejs) — locales pour hors-ligne -->
     <script src="html5-qrcode.min.js?v=1"></script>
     <script src="qrcode.min.js?v=1"></script>
-    <script src="app.js?v=4.17" defer></script>
+    <script src="app.js?v=4.24" defer></script>
 </body>
 </html>

@@ -1231,6 +1231,49 @@ input:focus, select:focus { border-color: var(--cyan-spark) !important; box-shad
     max-height: 85vh;
     overflow-y: auto;
 }
+
+/* Scanner QR : le flux vidéo remplit la carte, sans débordement.
+   Analyse de la frame entière. Sur mobile, modale élargie pour maximiser la résolution de décodage. */
+#qr-modal .modal-card {
+    max-width: 460px;
+    padding: 16px;
+}
+@media (max-width: 768px) {
+    #qr-modal {
+        padding: 8px;
+    }
+    #qr-modal .modal-card {
+        width: 100%;
+        max-width: 100%;
+        padding: 12px;
+    }
+}
+#reader {
+    width: 100%;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #000;
+}
+
+#reader video {
+    width: 100% !important;
+    height: auto !important;
+    display: block;
+    object-fit: cover;
+}
+
+/* QR Code d'invitation au salon (pool-room) */
+#pool-invite-qr {
+    display: none;
+    margin-top: 14px;
+    text-align: center;
+}
+#pool-invite-qr canvas,
+#pool-invite-qr img {
+    display: block;
+    margin: 0 auto;
+    border-radius: 6px;
+}
 .modal-header {
     display: flex;
     justify-content: space-between;
