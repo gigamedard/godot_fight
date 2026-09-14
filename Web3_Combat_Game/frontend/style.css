@@ -61,6 +61,19 @@ html, body {
     background-color: var(--bg-night-violet);
     font-family: var(--font-body);
     color: var(--text-white);
+    /* iOS Safari : overflow:hidden seul est IGNORÉ au toucher — toute la page
+       rubber-bandait et un tirage vers le bas déclenchait le pull-to-refresh
+       (spinner + rechargement complet). overscroll-behavior:none bloque le
+       rebond et le pull-to-refresh (iOS 16+) ; body en position:fixed est le
+       verrou classique pour les iOS plus anciens. */
+    overscroll-behavior: none;
+    -webkit-overflow-scrolling: touch;
+}
+
+body {
+    position: fixed;
+    inset: 0;
+    touch-action: manipulation;
 }
 
 /* ==========================================================================
@@ -1265,6 +1278,17 @@ input:focus, select:focus { border-color: var(--cyan-spark) !important; box-shad
         max-width: 100%;
         padding: 12px;
     }
+}
+
+/* Zones internes scrollables : le scroll tactile reste CONFINÉ à l'élément
+   (pas de remontée vers body = pas de rubber-band ni pull-to-refresh).
+   touch-action:pan-y limite au geste vertical naturel. */
+.list-container,
+.screen-card,
+.modal-card {
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
 }
 #reader {
     width: 100%;
