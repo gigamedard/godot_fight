@@ -92,49 +92,53 @@ function copyInviteCode() {
     showToast("Code copié !", "success");
 }
 
-// Affiche / masque le QR code du lien d'invitation du salon (pool-room)
-window.openInviteQR = function() {
-    const qrBox = document.getElementById('pool-invite-qr');
-    if (!qrBox) return;
-    const linkInput = document.getElementById('pool-invite-link');
-    const link = linkInput ? linkInput.value : '';
-
-    if (qrBox.style.display !== 'none') {
-        qrBox.style.display = 'none';
-        qrBox.innerHTML = '';
-        return;
-    }
-    if (!link) {
-        showToast("Aucun lien d'invitation disponible.", "error");
-        return;
-    }
+// Génère ou rafraîchit le QR code dans le conteneur cible avec fond blanc et quiet zone
+function renderQRCodeInBox(qrBox, payload) {
+    if (!qrBox || !payload) return;
     if (typeof QRCode === 'undefined') {
         showToast("Générateur QR non chargé.", "error");
         return;
     }
     qrBox.innerHTML = '';
-    // Styling du conteneur : fond BLANC avec marge (Quiet Zone) généreuse
-    // et ombre pour détacher nettement le QR du fond sombre de la page.
-    // Essentiel pour que les caméras détectent les motifs de repérage (finder patterns).
     qrBox.style.background = '#ffffff';
     qrBox.style.padding = '14px';
     qrBox.style.borderRadius = '12px';
     qrBox.style.boxShadow = '0 6px 24px rgba(0, 0, 0, 0.6)';
     qrBox.style.display = 'inline-block';
 
-    // qrcodejs : taille portée à 256x256 px pour lisibilité optimale à distance de focus (~30 cm).
-    // Contenu = code d'invitation SEUL (ex: cUV9cQEK).
-    // Niveau de correction Q (25%) : résiste au moiré et reflets d'écran LCD.
-    const qrPayload = AppState.currentInviteQRPayload
-        || (linkInput && linkInput.value.includes('invite=') ? linkInput.value.split('invite=').pop() : link);
     new QRCode(qrBox, {
-        text: qrPayload,
+        text: payload,
         width: 256,
         height: 256,
         colorDark: "#000000",
         colorLight: "#ffffff",
         correctLevel: QRCode.CorrectLevel.Q
     });
+}
+
+// Affiche / masque le QR code du lien d'invitation du salon (pool-room)
+window.openInviteQR = function() {
+    const qrBox = document.getElementById('pool-invite-qr');
+    if (!qrBox) return;
+
+    if (qrBox.style.display !== 'none') {
+        qrBox.style.display = 'none';
+        qrBox.innerHTML = '';
+        return;
+    }
+
+    const linkInput = document.getElementById('pool-invite-link');
+    const codeInput = document.getElementById('pool-invite-code');
+    const qrPayload = AppState.currentInviteQRPayload
+        || (codeInput ? codeInput.value.trim() : '')
+        || (linkInput && linkInput.value.includes('invite=') ? linkInput.value.split('invite=').pop() : (linkInput ? linkInput.value.trim() : ''));
+
+    if (!qrPayload) {
+        showToast("Aucun code d'invitation disponible.", "error");
+        return;
+    }
+
+    renderQRCodeInBox(qrBox, qrPayload);
     showToast("QR code généré — faites-le scanner pour rejoindre le salon.", "success");
 };
 
@@ -2874,8 +2878,20 @@ async function renderPoolRoom() {
             // joueur extrait le code et l'injecte dans le champ battle →
             // rejoindre automatique, indépendant de l'origine hôte.
             AppState.currentInviteQRPayload = poolData.invite_code;
+
+            // Mise à jour automatique : si le QR code était déjà affiché
+            // (ex: recréation de poule), on le régénère immédiatement avec le nouveau code !
+            const qrBox = document.getElementById('pool-invite-qr');
+            if (qrBox && qrBox.style.display !== 'none') {
+                renderQRCodeInBox(qrBox, poolData.invite_code);
+            }
         } else {
             document.getElementById('pool-invite-container').style.display = 'none';
+            const qrBox = document.getElementById('pool-invite-qr');
+            if (qrBox) {
+                qrBox.style.display = 'none';
+                qrBox.innerHTML = '';
+            }
         }
         
         const pCount = poolData.players_count || 1;
@@ -2967,6 +2983,12 @@ async function quitPool(claim = true) {
     isQuitting = false;
     AppState.currentPoolId = null;
     AppState.currentInviteCode = null;
+    AppState.currentInviteQRPayload = null;
+    const qrBox = document.getElementById('pool-invite-qr');
+    if (qrBox) {
+        qrBox.style.display = 'none';
+        qrBox.innerHTML = '';
+    }
     if(window.poolChannel) {
         window.echoInstance.leave('pool.' + window.poolChannel);
         window.poolChannel = null;

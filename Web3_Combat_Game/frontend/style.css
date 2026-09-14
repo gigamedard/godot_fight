@@ -244,6 +244,14 @@ html, body {
     position: relative;
 }
 
+/* Salon battle : contenu variable (liste joueurs, QR 256px+padding) qui peut
+   dépasser le viewport → scroll interne à la carte au lieu de scrollbars
+   parasites sur toute la page (V+H constatées en mode Battle). */
+.screen-card {
+    max-height: calc(100vh - 60px);
+    overflow-y: auto;
+}
+
 .nav-header {
     display: flex;
     align-items: center;
@@ -987,6 +995,16 @@ html, body {
     clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
 }
 .join-private-box input { flex: 1; }
+/* Mobile : input + REJOINDRE + QR débordent sur petits écrans (le bouton QR
+   passait hors champ). Le wrap empile proprement au lieu de déborder. */
+@media (max-width: 480px) {
+    .join-private-box {
+        flex-wrap: wrap;
+    }
+    .join-private-box input {
+        flex: 1 1 100%;
+    }
+}
 input:focus, select:focus { border-color: var(--cyan-spark) !important; box-shadow: 0 0 10px rgba(0,229,255,0.2); }
 
 .btn-icon-qr, .qr-btn {
@@ -1268,11 +1286,18 @@ input:focus, select:focus { border-color: var(--cyan-spark) !important; box-shad
     margin-top: 14px;
     text-align: center;
 }
+/* Limite de taille : QR 256px + padding 28px = 284px, avec le reste du
+   contenu du salon ça dépassait le viewport (scrollbars parasites).
+   200px reste scannable à ~30cm. */
 #pool-invite-qr canvas,
 #pool-invite-qr img {
     display: block;
     margin: 0 auto;
     border-radius: 6px;
+    max-width: 200px;
+    max-height: 200px;
+    width: auto;
+    height: auto;
 }
 .modal-header {
     display: flex;
