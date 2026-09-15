@@ -3,10 +3,12 @@
    --------------------------------------------------------------------------
    Zéro fichier MP3/WAV : tous les sons (clic UI, notifications, musique de
    menu) sont SYNTHÉTISÉS par oscillateurs / bruit blanc à l'exécution.
+   Musique de menu : séquenceur rythmique (kick/snare/hats + basse + arpège,
+   progression Am-F-C-G à 112 BPM) — pas un simple drone statique.
 
    API exposée sur window.AUDIO_FX :
      AUDIO_FX.unlock()            → débloque l'audio (autoplay policy browser)
-     AUDIO_FX.startMenu()         → démarre la musique d'ambiance du menu (drone)
+     AUDIO_FX.startMenu()         → démarre la musique d'ambiance du menu
      AUDIO_FX.stopMenu()          → arrête la musique du menu
      AUDIO_FX.click()  hover()  success()  info()  error()   → SFX UI
      AUDIO_FX.setSfx(on)  setMusic(on)                        → mute/démute
@@ -97,40 +99,169 @@
     };
 
     /* --------------------------- MUSIQUE DE MENU --------------------------- */
-    // Drone néon : 4-5 oscillateurs accords (La mineur) continus + filtre LFO.
-    function buildMenu() {
-        if (!ctx || menuOscillators.length) return;
-        menuFilter = ctx.createBiquadFilter();
-        menuFilter.type = 'lowpass';
-        menuFilter.frequency.value = 900;
-        menuFilter.connect(musicGain);
+    // Séquenceur rythmique 100% procédural (remplace l'ancien drone statique
+    // perçu comme un bourdonnement monotone) :
+    //   - Batterie : kick / snare / hi-hats (bruit + oscillateurs)
+    //   - Basse : ligne rythmée sur progression Am - F - C - G (1 mesure chacune)
+    //   - Arpège : pluck aigu synchronisé qui donne le côté "néon arcade"
+    // Tempo 112 BPM, boucle de 4 mesures schedulée avec lookahead (précision
+    // d'horloge Web Audio, pas de setTimeout approximatif).
+    var BPM = 112;
+    var SEC_PER_BEAT = 60 / BPM;
+    var BAR_SEC = SEC_PER_BEAT * 4;          // 4 temps par mesure
+    var LOOP_BARS = 4;                        // Am F C G
+    var lookahead = 0.12;                     // fenêtre de schedul (s)
+    var scheduleInterval = 40;                // ms entre deux passes de schedul
+    var seqTimer = null;
+    var nextNoteTime = 0;                     // horloge audio du prochain 1/8 note
+    var step = 0;                             // index 1/8 note dans la boucle (64 steps)
+    var STEPS_PER_BAR = 8;                    // croches
 
-        var notes = [110.0, 130.81, 164.81, 220.0, 329.63];   // A2 C3 E3 A3 E4
-        notes.forEach(function (f) {
-            var o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f;
-            var og = ctx.createGain(); og.gain.value = 0.18 / Math.sqrt(f / 110);
-            o.connect(og); og.connect(menuFilter);
-            o.start();
-            menuOscillators.push(o);
-        });
+    // Progression : chaque mesure = accord (racine en Hz) + tierce + quinte
+    // A2=110, F2=87.31, C3=130.81, G2=98
+    var CHORDS = [
+        { root: 110.00, third: 130.81, fifth: 164.81 },  // Am : A2 C3 E3
+        { root:  87.31, third: 110.00, fifth: 130.81 },  // F  : F2 A2 C3
+        { root: 130.81, third: 164.81, fifth: 196.00 },  // C  : C3 E3 G3
+        { root:  98.00, third: 130.81, fifth: 146.83 }   // G  : G2 C3(? non: B2=123.47) D3
+    ];
+    // Correction G : G2=98, B2=123.47, D3=146.83
+    CHORDS[3] = { root: 98.00, third: 123.47, fifth: 146.83 };
+
+    // Motif basse par mesure (8 croches) : 1=note racine, 0=silence, 2=quinte,
+    // 3=octave. Style électro syncopé.
+    var BASS_PATTERN = [1, 0, 1, 1, 0, 1, 0, 2];
+    // Motif arpège : index de note dans [root, third, fifth, octave] par croche
+    var ARP_PATTERN  = [0, 2, 1, 3, 0, 2, 1, 2];
+
+    function freqFor(chord, idx) {
+        var base = idx === 0 ? chord.root : idx === 1 ? chord.third : idx === 2 ? chord.fifth : chord.root * 2;
+        return base;
+    }
+
+    function scheduleKick(t) {
+        var o = ctx.createOscillator(), g = ctx.createGain();
+        o.type = 'sine';
+        o.frequency.setValueAtTime(150, t);
+        o.frequency.exponentialRampToValueAtTime(45, t + 0.11);
+        g.gain.setValueAtTime(0.9, t);
+        g.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+        o.connect(g); g.connect(musicGain);
+        o.start(t); o.stop(t + 0.25);
+    }
+
+    function scheduleSnare(t) {
+        var n = Math.floor(ctx.sampleRate * 0.15);
+        var buf = ctx.createBuffer(1, n, ctx.sampleRate);
+        var d = buf.getChannelData(0);
+        for (var i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 2.2);
+        var src = ctx.createBufferSource(); src.buffer = buf;
+        var f = ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 1800;
+        var g = ctx.createGain(); g.gain.setValueAtTime(0.35, t);
+        g.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
+        src.connect(f); f.connect(g); g.connect(musicGain);
+        src.start(t);
+    }
+
+    function scheduleHat(t, open) {
+        var dur = open ? 0.18 : 0.05;
+        var n = Math.floor(ctx.sampleRate * dur);
+        var buf = ctx.createBuffer(1, n, ctx.sampleRate);
+        var d = buf.getChannelData(0);
+        for (var i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, open ? 1.5 : 3);
+        var src = ctx.createBufferSource(); src.buffer = buf;
+        var f = ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 7500;
+        var g = ctx.createGain(); g.gain.setValueAtTime(open ? 0.12 : 0.16, t);
+        g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+        src.connect(f); f.connect(g); g.connect(musicGain);
+        src.start(t);
+    }
+
+    function scheduleBass(t, freq, dur) {
+        var o = ctx.createOscillator(), g = ctx.createGain(), f = ctx.createBiquadFilter();
+        o.type = 'square';
+        o.frequency.value = freq;
+        f.type = 'lowpass'; f.frequency.setValueAtTime(700, t);
+        f.frequency.exponentialRampToValueAtTime(220, t + dur);
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.22, t + 0.01);
+        g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+        o.connect(f); f.connect(g); g.connect(musicGain);
+        o.start(t); o.stop(t + dur + 0.05);
+    }
+
+    function schedulePluck(t, freq, vol) {
+        var o = ctx.createOscillator(), g = ctx.createGain();
+        o.type = 'triangle';
+        o.frequency.value = freq;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(vol, t + 0.008);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+        o.connect(g); g.connect(musicGain);
+        o.start(t); o.stop(t + 0.2);
+    }
+
+    // Planifie la croche n° step à l'instant t (horloge Web Audio)
+    function scheduleStep(t) {
+        var bar = Math.floor(step / STEPS_PER_BAR) % LOOP_BARS;
+        var s = step % STEPS_PER_BAR;
+        var chord = CHORDS[bar];
+
+        // Batterie : kick temps 1 et 3 (steps 0/4), snare 2 et 4 (steps 2/6),
+        // hats sur toutes les croches (ouvert sur la dernière de la mesure).
+        if (s === 0 || s === 4) scheduleKick(t);
+        if (s === 2 || s === 6) scheduleSnare(t);
+        scheduleHat(t, s === 7);
+
+        // Basse : motif syncopé
+        var b = BASS_PATTERN[s];
+        if (b) scheduleBass(t, b === 1 ? chord.root : b === 2 ? chord.fifth : chord.root * 2, SEC_PER_BEAT * 0.45);
+
+        // Arpège : pluck sur les contretemps (donne le mouvement)
+        if (s % 2 === 1) {
+            var idx = ARP_PATTERN[s];
+            schedulePluck(t, freqFor(chord, idx) * 2, 0.07);
+        }
+    }
+
+    function schedulerTick() {
+        while (nextNoteTime < ctx.currentTime + lookahead) {
+            scheduleStep(nextNoteTime);
+            nextNoteTime += SEC_PER_BEAT / 2;   // croche
+            step = (step + 1) % (STEPS_PER_BAR * LOOP_BARS);
+        }
+    }
+
+    function buildMenu() {
+        // Plus d'oscillateurs continus : tout est schedulé par le séquenceur.
+        // Rien à construire ici, la fonction est conservée pour compat.
     }
 
     function startMenu() {
         if (!ensure() || !musicEnabled) return;
         unlock();
-        if (!menuOscillators.length) buildMenu();
+        if (seqTimer) return;   // déjà en cours
+        nextNoteTime = ctx.currentTime + 0.1;
+        step = 0;
+        schedulerTick();
+        seqTimer = setInterval(schedulerTick, scheduleInterval);
         var t = ctx.currentTime;
         musicGain.gain.cancelScheduledValues(t);
         musicGain.gain.setValueAtTime(musicGain.gain.value, t);
-        musicGain.gain.linearRampToValueAtTime(0.16, t + 1.2);   // fondu d'entrée
+        musicGain.gain.linearRampToValueAtTime(0.5, t + 1.2);   // fondu d'entrée
     }
 
     function stopMenu() {
-        if (!ctx || !menuOscillators.length) return;
         var t = ctx.currentTime;
         musicGain.gain.cancelScheduledValues(t);
         musicGain.gain.setValueAtTime(musicGain.gain.value, t);
         musicGain.gain.linearRampToValueAtTime(0.0, t + 0.4);   // fondu de sortie
+        if (seqTimer) { clearInterval(seqTimer); seqTimer = null; }
+        if (menuOscillators.length) {
+            menuOscillators.forEach(function (o) { try { o.stop(); } catch (e) {} });
+            menuOscillators = [];
+        }
+        if (menuFilter) { try { menuFilter.disconnect(); } catch (e) {} menuFilter = null; }
     }
 
     /* ------------------------------- API ------------------------------- */
