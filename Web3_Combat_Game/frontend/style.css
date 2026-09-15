@@ -73,7 +73,10 @@ html, body {
 body {
     position: fixed;
     inset: 0;
-    touch-action: manipulation;
+    /* manipulation autorise encore le pan → l'UI glissait dans tous les sens.
+       none = le toucher ne déclenche AUCUN geste natif de déplacement du body.
+       Les zones internes scrollables ré-autorisent le pan-y ci-dessous. */
+    touch-action: none;
 }
 
 /* ==========================================================================
@@ -217,6 +220,11 @@ body {
        pour que l'image de fond reste parfaitement NETTE. */
     background: linear-gradient(180deg, rgba(15,12,27,0.55) 0%, rgba(24,24,36,0.68) 100%);
     transition: opacity 0.4s ease, visibility 0.4s ease;
+    /* iOS : sans ça, Safari pan le conteneur fixe plein écran au doigt
+       (l'UI entière glissait gauche/droite/haut/bas). Les éléments
+       scrollables internes ré-autorisent le pan-y individuellement. */
+    touch-action: none;
+    overscroll-behavior: none;
 }
 
 .ui-overlay.hidden {
@@ -1282,14 +1290,23 @@ input:focus, select:focus { border-color: var(--cyan-spark) !important; box-shad
 
 /* Zones internes scrollables : le scroll tactile reste CONFINÉ à l'élément
    (pas de remontée vers body = pas de rubber-band ni pull-to-refresh).
-   touch-action:pan-y limite au geste vertical naturel. */
+   touch-action:pan-y ré-autorise le geste vertical UNIQUEMENT ici —
+   le reste de l'UI (body, overlay, couches fixes) reste immobile.
+   Étendu à tout ce qui peut scroller : inputs, textareas, listes, cartes. */
 .list-container,
 .screen-card,
-.modal-card {
+.modal-card,
+.anim2d-log,
+input[type="text"],
+input[type="number"],
+input[type="password"],
+textarea,
+select {
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
     touch-action: pan-y;
 }
+textarea { touch-action: pan-y; }
 #reader {
     width: 100%;
     border-radius: 8px;
