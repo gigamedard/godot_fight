@@ -1,12 +1,53 @@
 # MÉMOIRE DU PROJET — Web3 Combat Game
-**Version :** 1.0 — mise à jour après les itérations 1 à 8 (UX/UI 2D + Mode Lite + infra)
-**Dernière mise à jour :** 2026-09-03
+**Version :** 1.1 — mise à jour après les sessions mobile TLS/QR/UX (sept. 2026)
+**Dernière mise à jour :** 2026-09-15
 **Source de vérité :** le code sur disque prime sur ce document.
 
 Ce document centralise l'état réel du projet, les décisions prises, les bugs résolus
 et les pièges connus. À lire AVANT toute modification. Complète `UX_PRD.md` (couche
 UI) et `UX_PROMPT.md` (règles d'intervention) — en cas de conflit : code disque >
 ce fichier > PRD/prompt.
+
+---
+
+## ⚡0. Session 2026-09-14/15 — mobile HTTPS, scanner QR, UX tactile, audio (NOUVEAU)
+
+### 0.1 Accès mobile : Tailscale + Let's Encrypt (plus d'IP http)
+
+- Accès : `https://gwx1223153-8xqm.taile39c53.ts.net:8443` (front), proxy RPC/API sur
+  **:8444** (`/rpc-proxy` → Hardhat, `/api-proxy` → Laravel), WSS **:8445** → Reverb.
+- Cert Let's Encrypt via `tailscale cert` (monté `frontend/certs/` → `/srv/www/certs`,
+  ignoré git). MetaMask Mobile refuse les certificats auto-signés → Let's Encrypt OBLIGATOIRE.
+- `config.js` en https route TOUT via :8444 (bug 8443-vs-8444 corrigé, commit `60d713c`).
+- Piège relais WS : jamais de timeout résiduel sur le socket relais Reverb
+  (voir HANDOVER §0.1) → joueurs clignotants dans le lobby.
+- Après reboot machine : Docker Desktop + `docker compose up -d` + vérifier que
+  Tailscale tourne côté PC ET côté iPhone (l'app iPhone se déconnecte en veille).
+
+### 0.2 Scanner QR (pièges à ne PAS réintroduire)
+
+1. QR généré **noir sur blanc + quiet zone + CorrectLevel.Q** (256px) — jamais de couleurs inversées.
+2. QR encode le **code d'invitation seul** (ex. `cUV9cQEK`), pas l'URL (indépendant de l'hôte).
+3. Pas de `qrbox` (la lib crèpe l'analyse → QR tronqué jamais décodé) : analyse frame entière.
+4. Résolution HD via `videoConstraints` dans le **config** (2e param de `.start()`),
+   JAMAIS dans `cameraIdOrConfig` (1er param : 1 seule clé autorisée, sinon exception
+   → toast « Accès caméra refusé » trompeur).
+5. `formatsToSupport: [QR_CODE]` + fallback standard si le flux HD est refusé.
+
+### 0.3 Verrouillage tactile iOS (style.css v4.7)
+
+- `touch-action: none` sur body + `.ui-overlay` (l'UI ne glisse plus dans les 4 directions),
+  `overscroll-behavior: none` + `body{position:fixed}` (anti rubber-band/pull-to-refresh),
+  `touch-action: pan-y` + `overscroll-behavior: contain` UNIQUEMENT sur les zones
+  scrollables (`.screen-card`, `.list-container`, `.modal-card`, inputs, textarea).
+- `.screen-card { max-height: calc(100vh - 60px); overflow-y: auto }` (scroll interne,
+  plus de scrollbars page) ; bouton QR visible mobile (`flex-wrap` ≤480px).
+
+### 0.4 Audio : séquenceur rythmique menu (audio.js v3)
+
+Drone statique remplacé par un séquenceur 112 BPM (kick/snare/hats + basse + arpège,
+Am-F-C-G, lookahead Web Audio). API inchangée (`AUDIO_FX.start()/stopMenu()`).
+⚠️ La musique du COMBAT Godot (`scripts/sfx.gd`) reste inchangée (chantier ouvert).
 
 ---
 
@@ -29,14 +70,15 @@ ce fichier > PRD/prompt.
   (`docker-compose.yml` l.49).
 - Redeploy automatique au démarrage du conteneur blockchain (entrypoint.sh).
 
-## §2. Cache-busters actuels (vérifiés sur disque — re-vérifier avant tout bump)
+## §2. Cache-busters actuels (vérifiés sur disque 2026-09-15 — re-vérifier avant tout bump)
 
 | Fichier | Version |
 |---|---|
-| `style.css` | `?v=4.0` |
-| `app.js` | `?v=4.5` |
-| `anim2d.js` | `?v=9` |
-| `config.js` | `?v=6` (JAMAIS modifié) |
+| `style.css` | `?v=4.7` |
+| `app.js` | `?v=4.25` |
+| `anim2d.js` | `?v=11` |
+| `config.js` | `?v=7` (https : tout passe par :8444) |
+| `audio.js` | `?v=3` (séquenceur rythmique) |
 | `godot/jeu.js` | `?v=3` |
 
 ## §3. Mode Lite (chargement prioritaire 2D) — itération 6
@@ -244,25 +286,32 @@ selector `register` = `0xf207564e`.
 
 ## §9. Environnement MetaMask (config utilisateur)
 
-- **Réseau de CE projet : `Hardhat CombatGame (8845)`** — URL `http://localhost:8545`,
-  chainId `8845`. (L'ancien 31337 appartient à un autre projet.)
+- **Réseau de CE projet : `Hardhat CombatGame (8845)`** — RPC mobile :
+  `https://gwx1223153-8xqm.taile39c53.ts.net:8444/rpc-proxy` (nom Tailscale OBLIGATOIRE
+  sur mobile, l'IP ne passe pas avec le cert LE) ; desktop local : `http://localhost:8545`.
+  chainId `8845` (hex `0x228d`). (L'ancien 31337 appartient à un autre projet.)
 - Comptes Hardhat déterministes : #1 `0x70997970C51812dc3A010C7d01b50e0d17dc79C8`,
   #2 `0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC` — 10000 ETH à chaque redeploy.
 - Le front ne force PAS le switch de réseau (`wallet_switchEthereumChain` absent
   du code) : sélection manuelle du réseau avant connexion.
+- **Connexion mobile sans MetaMask** : clé privée de démo collée (flux dédié,
+  commit `afd8ed5`) — MetaMask Mobile coupe le VPN et refuse les RPC locaux.
 
 ## §10. Règles de vie du projet
 
-- **Jamais de commit** : les modifications restent sur disque.
+- **Commit uniquement sur demande explicite** de l'utilisateur, messages préfixés
+  courts (`fix(app2):`, `feat(app2):`), push sur la branche `feat/app2-gasless-ux2d-icdm`.
 - Front = vanilla (aucun framework/bundler). Fichiers front modifiables :
   `index.html`, `style.css`, `app.js` (avec prudence), `anim2d.js`,
-  `audio.js`, `config.js` (lecture seule).
+  `audio.js`, `config.js` (modifier avec précaution — routes proxy).
 - Backend modifié avec parcimonie et seulement sur ordre explicite de
   l'utilisateur (itérations infra validées). Après edit backend :
   `docker restart web3_combat_api` (OPcache).
 - Cache-busters : **re-vérifier sur disque avant tout bump**, incrémenter
   uniquement les fichiers réellement modifiés.
-- Test : `http://localhost:8080` UNIQUEMENT, Ctrl+F5, console F12 propre.
+- Test mobile : `https://gwx1223153-8xqm.taile39c53.ts.net:8443` (iPhone sur le
+  tailnet, Tailscale actif). Test desktop : `https://localhost:8443` ou
+  `http://localhost:8080`, Ctrl+F5, console F12 propre.
 
 ## §11. Historique des itérations (résumé)
 

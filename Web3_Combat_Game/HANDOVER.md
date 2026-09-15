@@ -1,12 +1,101 @@
 # HANDOVER — App 2 « Web3 Combat Game » (passation agent successeur)
 
-> Dernière mise à jour : **2026-08-30T12:26Z**. État écrit d'après le disque, pas de mémoire.
+> Dernière mise à jour : **2026-09-15**. État écrit d'après le disque, pas de mémoire.
 > ⚠️ **Lire [TEST_RUNBOOK.md](TEST_RUNBOOK.md) en premier** : procédure d'intervention
 > (P.R.O.T. Provision/Recreate/Operate/Teardown), POST-RESTART PROTOCOL, table symptômes→remèdes.
 
 ---
 
-## §1. État au moment de la passation (2026-08-30)
+## §0. État au moment de la passation (2026-09-15) — MISE À JOUR MAJEURE
+
+> La section §1 ci-dessous décrit l'état du 2026-08-30 (historique). Cette §0 fait le point
+> de la session 2026-09-14/15 (branche `feat/app2-gasless-ux2d-icdm`, dernier commit `8b39f47`).
+
+### 0.1 Accès mobile HTTPS/TLS (nouveau, opérationnel)
+
+L'accès mobile ne passe plus par `http://IP:8080` mais par **Tailscale + Let's Encrypt** :
+
+| Port | Rôle | Certificat |
+|---|---|---|
+| **:8443** | Front en HTTPS (serveur statique, `serve.py`) | Let's Encrypt Tailscale (`frontend/certs/` monté `/srv/www/certs`, ignoré par git) |
+| **:8444** | Proxy TLS : `/rpc-proxy` → Hardhat:8545, `/api-proxy` → API Laravel:8000/api | idem |
+| **:8445** | Relais WSS → Reverb:8081 | idem |
+| :8080 | Front HTTP (dev local) | — |
+
+- Nom d'accès : `https://gwx1223153-8xqm.taile39c53.ts.net:8443` (PC et iPhone sur le même tailnet).
+- **MetaMask Mobile exige https + vrai certificat** pour un RPC non-localhost → le proxy TLS
+  (`frontend/tls_proxy.py`) sert le cert Let's Encrypt obtenu via `tailscale cert`
+  (fonctionnalité « HTTPS Certificates » activée dans la console admin Tailscale).
+- `frontend/config.js?v=7` : en https, **tout** passe par le même origin : API
+  `https://<host>:8444/api-proxy/api`, RPC `https://<host>:8444/rpc-proxy`, Reverb `wss://<host>:8445`.
+- **Bug corrigé** (commit `60d713c`) : config.js pointait RPC/API https sur :8443 (port front
+  statique, refuse POST → 501) au lieu de :8444. CORS du proxy corrigé au passage
+  (echo Origin + tous les headers custom comme `x-player-name` transmis).
+- **Relais WS** (commit `f563545`) : `timeout=10` sur le socket vers Reverb fermait les
+  connexions saines en cas de silence >10s → cycle déconnexion/reconnexion → **joueurs qui
+  clignotaient dans le lobby** (leaving/joining en boucle). Fix : `upstream.settimeout(None)`
+  après établissement (le timeout ne doit s'appliquer qu'à la connexion initiale).
+
+### 0.2 Scanner QR battle (fonctionnel sur iPhone)
+
+Flux : menu BATTLE → bouton QR → caméra in-app (`Html5Qrcode` API directe) → scan du QR
+affiché sur l'écran d'un autre joueur → fetch `/pools/invite/{code}` → `joinPool()` auto.
+
+Pièges résolus (à ne PAS réintroduire) :
+1. **QR inversé** (modules cyan sur fond sombre) → illisible pour les décodeurs. Générer
+   **noir sur blanc** avec quiet zone (fond blanc + padding), correction `QRCode.CorrectLevel.Q`.
+2. **QR encode le code d'invitation SEUL** (ex. `cUV9cQEK`), pas l'URL (indépendant de l'origine hôte).
+3. **`qrbox` de la librairie CRÈPE l'analyse** : un QR plus grand que la zone qrbox est tronqué
+   et jamais décodé → analyser la **frame entière** (pas de qrbox).
+4. **`cameraIdOrConfig` (1er param de `.start()`) n'accepte qu'UNE clé** (`facingMode` OU
+   `deviceId`) — y ajouter width/height lève une exception. Pour la HD, passer
+   `videoConstraints: {facingMode, width, height}` dans le **config (2e param)** — la librairie
+   le préfère et sa validation n'interdit que les clés audio.
+5. `formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE]` + fallback standard si le flux HD échoue.
+
+### 0.3 UX mobile iOS (commits `586cdf3`, `902f8b9`, `6bb8936`)
+
+- **Pull-to-refresh + rubber-band** : `overscroll-behavior: none` sur html/body +
+  `body { position: fixed; inset: 0 }` + `touch-action: none` sur body et `.ui-overlay`.
+  Le pan n'est ré-autorisé QUE dans les zones scrollables (`pan-y` sur `.screen-card`,
+  `.list-container`, `.modal-card`, inputs, textareas).
+- **Bouton QR hors écran mobile** : `flex-wrap` sur `.join-private-box` ≤480px.
+- **Scrollbars parasites salon battle** : `.screen-card { max-height: calc(100vh - 60px);
+  overflow-y: auto }` + QR limité à 200px dans le salon.
+- **QR non rafraîchi** à la recréation de poule : helper `renderQRCodeInBox()` +
+  régénération auto dans `renderPoolRoom()` si le QR est visible + cleanup dans `quitPool()`.
+
+### 0.4 Musique de menu rythmée (commit `8b39f47`, audio.js v3)
+
+L'ancien drone statique (5 sawtooth continus = bourdonement monotone) est remplacé par un
+**séquenceur procédural 112 BPM** : kick/snare/hats + basse square syncopée + arpège pluck
+triangle sur progression **Am-F-C-G** (4 mesures en boucle), schedulé avec lookahead Web Audio.
+API `AUDIO_FX.start()/stopMenu()` inchangée. Paramètres en tête de fichier : `BPM`,
+`CHORDS`, `BASS_PATTERN`, `ARP_PATTERN`.
+
+### 0.5 Cache-busters actuels (vérifiés sur disque 2026-09-15)
+
+| Fichier | Version |
+|---|---|
+| `style.css` | `?v=4.7` |
+| `app.js` | `?v=4.25` |
+| `anim2d.js` | `?v=11` |
+| `config.js` | `?v=7` |
+| `audio.js` | `?v=3` |
+| `godot/jeu.js` | `?v=3` |
+
+### 0.6 Reste à faire (chantiers ouverts)
+
+- **Sons/musique du combat Godot** (`scripts/sfx.gd`) : non traités dans la session —
+  la musique rythmée couvre le menu front uniquement.
+- **Prod L1 Avalanche** : ajouter la chaîne depuis la DApp via `wallet_addEthereumChain`
+  (ne PAS créer un wallet maison — discussion en session du 2026-09-14).
+- Le QR généré reste à valider en conditions réelles (moiré/reflets d'écran) après le passage
+  256px + quiet zone + CorrectLevel.Q.
+
+---
+
+## §1. État au moment de la passation (2026-08-30) [HISTORIQUE]
 
 - Repo git : `G:\DEV\GODOT_GAME` — branche courante, dernier commit **`c7d35cd`
   « feat(indexer): robust idempotent blockchain indexer (polling + reorg safety) »**

@@ -1,8 +1,30 @@
 # TEST_RUNBOOK — App 2 « Web3 Combat Game » (procédure d'intervention opérationnelle)
 
 > Adapté du P.R.O.T. de l'App 1 au contexte de la stack Docker App 2.
-> État vérifié sur disque le **2026-08-30** (itération 1 de documentation).
+> État vérifié sur disque le **2026-09-15** (mise à jour session mobile TLS).
 > Carte de passation : voir [HANDOVER.md](HANDOVER.md) — **à lire en premier**.
+
+---
+
+## §0bis. Ports & accès (mis à jour 2026-09-15 — TLS mobile)
+
+| Port | Rôle | Test |
+|---|---|---|
+| **:8443** | Front HTTPS (Let's Encrypt Tailscale) | `curl -sk -o NUL -w "%{http_code}" https://localhost:8443/` → 200 |
+| **:8444** | Proxy TLS RPC + API (`/rpc-proxy`, `/api-proxy`) | `curl -sk https://localhost:8444/rpc-proxy -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}'` → `0x228d` |
+| **:8445** | Relais WSS → Reverb | test wss depuis le front |
+| :8080 | Front HTTP (dev) | idem 8443 |
+| :8000 / :8081 | API / Reverb (internes au réseau docker + LAN) | — |
+| :8545 / :3306 | Hardhat / MySQL | — |
+
+- **Accès mobile** : `https://gwx1223153-8xqm.taile39c53.ts.net:8443` — Tailscale doit
+  être ACTIF sur le PC **et** l'iPhone (l'app mobile se déconnecte en veille →
+  « serveur introuvable » dans Safari = vérifier le toggle VPN Tailscale d'abord).
+- Certificats dans `frontend/certs/` (monté `/srv/www/certs`, **ignoré git** — jamais committer key.pem).
+- Régénérer le cert : `tailscale cert gwx1223153-8xqm.taile39c53.ts.net` (nécessite la
+  fonctionnalité « HTTPS Certificates » activée dans la console admin Tailscale).
+- Après reboot machine : démarrer Docker Desktop, `docker compose up -d`, vérifier
+  `docker ps` (6 conteneurs Up) puis le POST-RESTART PROTOCOL (§5).
 
 ---
 
