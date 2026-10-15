@@ -2424,6 +2424,13 @@ window.animationFinished = function() {
 
     const { godotResult, ethPayout } = AppState.pendingResult;
     
+    // Jingle de fin de combat (victoire / égalité / défaite)
+    if (typeof window.AUDIO_FX !== 'undefined') {
+        if (godotResult === 1 && window.AUDIO_FX.victory) window.AUDIO_FX.victory();
+        else if (godotResult === 0 && window.AUDIO_FX.draw) window.AUDIO_FX.draw();
+        else if (window.AUDIO_FX.defeat) window.AUDIO_FX.defeat();
+    }
+
     if (godotResult === 1) {
         showToast(tr('victoryGains', { amount: ethPayout }), 'success');
     } else if (godotResult === 0) {

@@ -90,12 +90,66 @@
         src.start(t0);
     }
 
+    // Variantes planifiées (t0 explicite) pour jouer des JINGLES (séquences).
+    function toneAt(freq, t0, dur, vol, type, glideTo) {
+        if (!ctx || !sfxEnabled) return;
+        var osc = ctx.createOscillator(), g = ctx.createGain();
+        osc.type = type || 'sine';
+        osc.frequency.setValueAtTime(freq, t0);
+        if (glideTo) osc.frequency.exponentialRampToValueAtTime(glideTo, t0 + dur);
+        g.gain.setValueAtTime(0.0001, t0);
+        g.gain.exponentialRampToValueAtTime(vol, t0 + 0.008);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+        osc.connect(g); g.connect(sfxGain);
+        osc.start(t0); osc.stop(t0 + dur + 0.03);
+    }
+    function noiseAt(t0, dur, vol, hp) {
+        if (!ctx || !sfxEnabled) return;
+        var n = Math.floor(ctx.sampleRate * dur);
+        var buf = ctx.createBuffer(1, n, ctx.sampleRate);
+        var d = buf.getChannelData(0);
+        for (var i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+        var src = ctx.createBufferSource(); src.buffer = buf;
+        var g = ctx.createGain(); g.gain.value = vol;
+        var f = ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = hp || 600;
+        src.connect(f); f.connect(g); g.connect(sfxGain);
+        src.start(t0);
+    }
+
     var sfx = {
         click:   function () { tone(1500, 0.05, 0.04, 'square'); },
         hover:   function () { tone(1900, 0.03, 0.025, 'sine'); },
         success: function () { tone(660, 0.15, 0.14, 'sine', 990); },
         info:    function () { tone(880, 0.12, 0.10, 'sine'); },
-        error:   function () { tone(200, 0.25, 0.14, 'sawtooth'); noise(0.12, 0.08, 900); }
+        error:   function () { tone(200, 0.25, 0.14, 'sawtooth'); noise(0.12, 0.08, 900); },
+
+        // --- Jingles de fin de combat ---
+        // VICTOIRE : arpège ascendant lumineux (C5-E5-G5-C6) + scintillement.
+        victory: function () {
+            if (!ctx || !sfxEnabled) return;
+            var t0 = ctx.currentTime + 0.001;
+            [[523.25, 0], [659.25, 0.10], [783.99, 0.20], [1046.50, 0.32]].forEach(function (n) {
+                toneAt(n[0], t0 + n[1], 0.24, 0.17, 'triangle');
+            });
+            toneAt(1567.98, t0 + 0.34, 0.20, 0.09, 'sine');
+            noiseAt(t0 + 0.04, 0.22, 0.05, 5200);
+        },
+        // DÉFAITE : descente grave (G4-E4-C4-G2) avec léger glissando descendant.
+        defeat: function () {
+            if (!ctx || !sfxEnabled) return;
+            var t0 = ctx.currentTime + 0.001;
+            [[392.00, 0], [311.13, 0.14], [233.08, 0.30], [155.56, 0.48]].forEach(function (n) {
+                toneAt(n[0], t0 + n[1], 0.34, 0.15, 'sawtooth', n[0] * 0.97);
+            });
+            noiseAt(t0 + 0.30, 0.30, 0.05, 500);
+        },
+        // ÉGALITÉ : deux notes neutres identiques.
+        draw: function () {
+            if (!ctx || !sfxEnabled) return;
+            var t0 = ctx.currentTime + 0.001;
+            toneAt(440.00, t0, 0.18, 0.12, 'sine');
+            toneAt(440.00, t0 + 0.22, 0.18, 0.12, 'sine');
+        }
     };
 
     /* --------------------------- MUSIQUE DE MENU --------------------------- */
@@ -274,6 +328,9 @@
         success:  function () { if (unlocked) sfx.success(); },
         info:     function () { if (unlocked) sfx.info(); },
         error:    function () { if (unlocked) sfx.error(); },
+        victory:  function () { if (unlocked) sfx.victory(); },
+        defeat:   function () { if (unlocked) sfx.defeat(); },
+        draw:     function () { if (unlocked) sfx.draw(); },
         setSfxEnabled: function (on) { sfxEnabled = !!on; },
         setMusicEnabled: function (on) {
             musicEnabled = !!on;
