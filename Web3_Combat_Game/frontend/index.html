@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="GIGA FIGHT — duels 1v1 et battle royale on-chain sur Pingala Chain (TST).">
+    <meta name="description" content="POLY COMBAT — duels 1v1 et battle royale on-chain sur Pingala Chain (TST).">
     <meta name="theme-color" content="#0F0C1B">
-    <link rel="icon" href="pwa_icon_192.png" type="image/png">
-    <link rel="apple-touch-icon" href="pwa_icon_192.png">
+    <link rel="icon" href="favicon.png" type="image/png">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
-    <title>GIGA FIGHT</title>
+    <title>POLY COMBAT</title>
     <link rel="stylesheet" href="style.css?v=4.7">
 </head>
 <body>
@@ -91,7 +91,7 @@
             <div id="screen-splash" class="screen active">
                 <div class="splash-container">
                     <div class="logo-wrapper">
-                        <h1 class="game-logo">GIGA FIGHT</h1>
+                        <h1 class="game-logo">POLY COMBAT</h1>
                         <span class="logo-sub">SPIRIT FIGHT</span>
                         <div class="katana-slash"></div>
                     </div>
@@ -577,14 +577,14 @@
     <script src="i18n.js?v=4"></script>
     <!-- Journal client (bouton 🐞 + modal + copie) — chargé AVANT app.js pour
          capturer ses logs console. Voir window.openDebugLog(). -->
-    <script src="debug-log.js?v=6" defer></script>
+    <script src="debug-log.js?v=7" defer></script>
     <script src="ui-loader.js?v=2" defer></script>
     <script src="app.js?v=4.43" defer></script>
     <!-- PWA : service worker (met en cache les gros fichiers /godot/*) -->
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', function () {
-                navigator.serviceWorker.register('sw.js?v=3').catch(function (e) {
+                navigator.serviceWorker.register('sw.js?v=4').catch(function (e) {
                     console.warn('[PWA] service worker non enregistré:', e);
                 });
             });
