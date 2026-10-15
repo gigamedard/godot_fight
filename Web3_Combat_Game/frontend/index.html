@@ -426,6 +426,22 @@
                     <option value="1" data-i18n="suddenDeathOption">Mort Subite (1 défaite = élimination)</option>
                 </select>
             </div>
+            <div class="form-group">
+                <label data-i18n="endConditionLabel">Condition de fin :</label>
+                <select id="pool-end-condition" onchange="onPoolEndConditionChange()">
+                    <option value="last_man" data-i18n="endLastManOption">Dernier survivant</option>
+                    <option value="remaining" data-i18n="endRemainingOption">N survivants</option>
+                    <option value="time" data-i18n="endTimeOption">Durée limitée</option>
+                </select>
+            </div>
+            <div class="form-group" id="pool-end-count-group" style="display:none;">
+                <label data-i18n="endCountLabel">Nombre de survivants cible :</label>
+                <input type="number" id="pool-end-count" min="1" max="63" value="2">
+            </div>
+            <div class="form-group" id="pool-end-seconds-group" style="display:none;">
+                <label data-i18n="endSecondsLabel">Durée (secondes) :</label>
+                <input type="number" id="pool-end-seconds" min="30" step="30" value="600">
+            </div>
             <div class="form-group checkbox-group" style="flex-direction: row; align-items: center; gap: 10px;">
                 <label for="pool-is-private" style="flex:1;" data-i18n="privatePoolLabel">Poule privée sur code :</label>
                 <input type="checkbox" id="pool-is-private" style="width: 20px; height: 20px; accent-color: var(--cyan-spark);">
@@ -578,17 +594,17 @@
     <script src="audio.js?v=4"></script>
     <!-- QR code : libs chargées À LA DEMANDE (scanner / génération) par app.js -->
     <!-- Internationalisation multilingue (FR, EN, ES, PT) -->
-    <script src="i18n.js?v=4"></script>
+    <script src="i18n.js?v=5"></script>
     <!-- Journal client (bouton 🐞 + modal + copie) — chargé AVANT app.js pour
          capturer ses logs console. Voir window.openDebugLog(). -->
     <script src="debug-log.js?v=7" defer></script>
     <script src="ui-loader.js?v=2" defer></script>
-    <script src="app.js?v=4.44" defer></script>
+    <script src="app.js?v=4.45" defer></script>
     <!-- PWA : service worker (met en cache les gros fichiers /godot/*) -->
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', function () {
-                navigator.serviceWorker.register('sw.js?v=5').catch(function (e) {
+                navigator.serviceWorker.register('sw.js?v=6').catch(function (e) {
                     console.warn('[PWA] service worker non enregistré:', e);
                 });
             });

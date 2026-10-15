@@ -9,6 +9,7 @@ use App\Models\PoolPlayer;
 use App\Models\Fight;
 use App\Events\PoolRoundStarted;
 use App\Support\ProcessHelper;
+use App\Support\Wei;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
@@ -83,10 +84,14 @@ class PoolController extends Controller
             'max_players' => 'required|integer',
             'penalty_mode' => 'required|integer',
             'is_private' => 'boolean',
-            'character_id' => 'nullable|integer'
+            'character_id' => 'nullable|integer',
+            'end_condition' => 'nullable|string|in:last_man,remaining,time',
+            'end_count' => 'nullable|integer|min:1',
+            'end_seconds' => 'nullable|integer|min:30'
         ]);
 
         $inviteCode = $request->is_private ? Str::random(8) : null;
+        $endCondition = $request->end_condition ?? 'last_man';
 
         $pool = Pool::create([
             'entry_fee' => $request->entry_fee,
@@ -94,7 +99,10 @@ class PoolController extends Controller
             'penalty_mode' => $request->penalty_mode,
             'is_private' => $request->is_private ?? false,
             'invite_code' => $inviteCode,
-            'status' => 'open'
+            'status' => 'open',
+            'end_condition' => $endCondition,
+            'end_count' => $endCondition === 'remaining' ? ($request->end_count ?? 2) : null,
+            'end_seconds' => $endCondition === 'time' ? ($request->end_seconds ?? 600) : null,
         ]);
 
         // Note: Le store n'ajoute pas le créateur automatiquement dans pool_players
@@ -119,13 +127,13 @@ class PoolController extends Controller
 
         PoolPlayer::firstOrCreate(
             ['pool_id' => $id, 'wallet_address' => strtolower($request->player_wallet)],
-            ['character_id' => $request->character_id ?? 2]
+            ['character_id' => $request->character_id ?? 2, 'loot' => Wei::toWei($pool->entry_fee), 'losses' => 0]
         );
 
         $currentCount = $pool->players()->count();
         \Illuminate\Support\Facades\Log::info("Pool #{$id} JOIN wallet=" . strtolower($request->player_wallet) . " count_after={$currentCount} max={$pool->max_players}");
         if ($currentCount >= $pool->max_players && $pool->status == 'open') {
-            $pool->update(['status' => 'active']);
+            $pool->update(['status' => 'active', 'started_at' => now()]);
             $this->triggerMatchmaking($id);
         }
 
@@ -135,22 +143,45 @@ class PoolController extends Controller
     public function triggerMatchmaking($poolId)
     {
         $pool = Pool::findOrFail($poolId);
-        
-        // Get all alive players
-        $players = $pool->players()->where('status', 'alive')->get()->shuffle();
 
-        if ($players->count() <= 1) {
-            // Pool is finished — broadcast winner
-            $pool->update(['status' => 'finished', 'round_pending_matches' => 0]);
-            $winner = $players->first();
+        // Poule terminée : ne rien relancer.
+        if ($pool->status === 'finished') {
+            return response()->json(['status' => 'finished']);
+        }
+
+        // Horodatage de démarrage (pour la fin « par temps »).
+        if (!$pool->started_at) {
+            $pool->started_at = now();
+            $pool->save();
+        }
+
+        $alivePlayers = $pool->players()->where('status', 'alive')->get();
+        $aliveCount = $alivePlayers->count();
+
+        // Condition de fin atteinte ? (last_man : <=1 ; remaining : <=end_count ; time : dépassé)
+        $shouldEnd = false;
+        if ($pool->end_condition === 'remaining' && $pool->end_count) {
+            $shouldEnd = $aliveCount <= (int) $pool->end_count;
+        } elseif ($pool->end_condition === 'time' && $pool->end_seconds) {
+            $shouldEnd = time() >= (strtotime((string) $pool->started_at) + (int) $pool->end_seconds);
+        } else {
+            $shouldEnd = $aliveCount <= 1;
+        }
+
+        if ($aliveCount <= 1 || $shouldEnd) {
+            // Fin de poule. MVP : le « champion » on-chain = plus gros butin
+            // (sinon dernier survivant). Le butin reste un score d'affichage.
+            $winner = $alivePlayers->sort(function ($a, $b) {
+                return gmp_cmp(gmp_init((string) ($b->loot ?: '0'), 10), gmp_init((string) ($a->loot ?: '0'), 10));
+            })->first();
+
+            $pool->update(['status' => 'finished', 'finished_at' => now(), 'round_pending_matches' => 0]);
             broadcast(new PoolRoundStarted($poolId, [], null, $winner?->wallet_address));
-
-            // Pool terminée, un champion reste. L'escrow de la poule (winner-take-all)
-            // est réclamé par le champion lui-même via claimPool (une seule signature).
-            // Le serveur broadcast juste le vainqueur ; l'argent ne bouge qu'au claim.
 
             return response()->json(['status' => 'finished', 'winner' => $winner]);
         }
+
+        $players = $alivePlayers->shuffle();
 
         $pairs = [];
         $waitingPlayer = null;

@@ -2455,6 +2455,11 @@ window.animationFinished = function() {
     
     if (AppState.currentPoolId) {
         checkPoolElimination(godotResult, AppState.currentMatchId);
+        // Rafraîchit le widget « survivants » + le butin (léger délai : le
+        // backend résout le combat et applique le transfert de butin).
+        setTimeout(() => {
+            if (AppState.currentScreen === 'screen-pool-room' && AppState.currentPoolId) renderPoolRoom();
+        }, 1500);
     }
 
     // Le règlement on-chain (settleLoser) peut prendre quelques secondes :
@@ -2975,12 +2980,24 @@ function closeCreatePoolModal() {
     document.getElementById('create-pool-modal').style.display = 'none';
 }
 
+function onPoolEndConditionChange() {
+    const v = document.getElementById('pool-end-condition').value;
+    const countGroup = document.getElementById('pool-end-count-group');
+    const secondsGroup = document.getElementById('pool-end-seconds-group');
+    if (countGroup) countGroup.style.display = (v === 'remaining') ? 'block' : 'none';
+    if (secondsGroup) secondsGroup.style.display = (v === 'time') ? 'block' : 'none';
+}
+
 async function confirmCreatePool() {
     const fee = document.getElementById('pool-entry-fee').value;
     const max = document.getElementById('pool-max-players').value;
     const mode = document.getElementById('pool-penalty-mode').value;
     const isPrivate = document.getElementById('pool-is-private').checked;
-    
+    const endCondition = document.getElementById('pool-end-condition').value;
+    let endCount = null, endSeconds = null;
+    if (endCondition === 'remaining') endCount = Number(document.getElementById('pool-end-count').value) || 2;
+    if (endCondition === 'time') endSeconds = Number(document.getElementById('pool-end-seconds').value) || 600;
+
     if(!fee || isNaN(fee) || Number(fee) <= 0) return showToast("Mise invalide", "error");
     
     try {
@@ -2996,7 +3013,10 @@ async function confirmCreatePool() {
                 max_players: Number(max),
                 penalty_mode: Number(mode),
                 is_private: isPrivate,
-                owner_wallet: AppState.walletAddress
+                owner_wallet: AppState.walletAddress,
+                end_condition: endCondition,
+                end_count: endCount,
+                end_seconds: endSeconds
             })
         });
         
@@ -3214,12 +3234,14 @@ async function renderPoolRoom() {
         const mPlayers = poolData.max_players;
 
         document.getElementById('pool-room-count').innerText = pCount + " / " + mPlayers;
+
+        renderPoolPlayers(poolData.players || []);
         
         const btnQuit = document.getElementById('btn-quit-pool');
         const quitText = document.getElementById('quit-pool-text');
         if (btnQuit && quitText) {
             if (poolData.status === 'finished') {
-                const winnerPlayer = poolData.players ? poolData.players.find(p => p.status === 'alive') : null;
+                const winnerPlayer = pickPoolWinner(poolData.players);
                 const winnerWallet = winnerPlayer ? winnerPlayer.wallet_address.toLowerCase() : null;
                 const isWinner = winnerWallet === AppState.walletAddress.toLowerCase();
                 
@@ -3255,12 +3277,79 @@ async function renderPoolRoom() {
     }
 }
 
+// --- Économie de butin : helpers d'affichage ---
+
+// wei (string) → TST lisible
+function formatLootTST(weiStr) {
+    try {
+        const wei = BigInt(weiStr || '0');
+        const whole = wei / 1000000000000000000n;
+        const frac = wei % 1000000000000000000n;
+        const fracStr = frac.toString().padStart(18, '0').slice(0, 4).replace(/0+$/, '');
+        return fracStr ? `${whole}.${fracStr}` : `${whole}`;
+    } catch (e) {
+        return '0';
+    }
+}
+
+// MVP : champion = plus gros butin (parmi les survivants si possible)
+function pickPoolWinner(players) {
+    if (!players || players.length === 0) return null;
+    const alive = players.filter(p => p.status === 'alive');
+    const pool = alive.length > 0 ? alive : players;
+    return pool.slice().sort((a, b) => {
+        try {
+            const la = BigInt(a.loot || '0');
+            const lb = BigInt(b.loot || '0');
+            return lb > la ? 1 : (lb < la ? -1 : 0);
+        } catch (e) { return 0; }
+    })[0] || null;
+}
+
+// Widget « survivants » temps réel : liste + butin + état
+function renderPoolPlayers(players) {
+    const box = document.getElementById('pool-players-list');
+    if (!box) return;
+
+    if (!players || players.length === 0) {
+        box.innerHTML = `<div class="list-item" style="opacity:.5;">${tr('poolWaiting')}</div>`;
+        return;
+    }
+
+    const sorted = players.slice().sort((a, b) => {
+        try {
+            const la = BigInt(a.loot || '0');
+            const lb = BigInt(b.loot || '0');
+            return lb > la ? 1 : (lb < la ? -1 : 0);
+        } catch (e) { return 0; }
+    });
+
+    box.innerHTML = '';
+    sorted.forEach(p => {
+        const isMe = AppState.walletAddress && p.wallet_address.toLowerCase() === AppState.walletAddress.toLowerCase();
+        const eliminated = p.status === 'eliminated';
+        const row = document.createElement('div');
+        row.className = 'list-item';
+        row.style.opacity = eliminated ? '0.45' : '1';
+        const short = p.wallet_address.slice(0, 6) + '…' + p.wallet_address.slice(-4);
+        row.innerHTML = `
+            <span class="br-tag" style="${eliminated ? 'filter:grayscale(1);' : ''}">${isMe ? '★ ' : ''}${p.character_id ? 'P' + p.character_id : '?'}</span>
+            <span style="flex:1; font-family:monospace;">${short}</span>
+            <span style="color:gold; font-weight:700;">${formatLootTST(p.loot)} TST</span>
+            <span style="color:${eliminated ? 'var(--color-red)' : 'var(--cyan-spark)'}; font-size:11px; margin-left:8px;">
+                ${eliminated ? tr('lootOut') : tr('lootAlive')}
+            </span>
+        `;
+        box.appendChild(row);
+    });
+}
+
 async function checkPoolElimination(godotResult, matchId) {
     try {
         if (godotResult === 2) { // Loser
             const res = await fetch(`${APP_CONFIG.API_BASE_URL}/pools/${AppState.currentPoolId}`);
             const data = await res.json();
-            
+
             const me = data.players.find(p => p.wallet_address.toLowerCase() === AppState.walletAddress.toLowerCase());
             if (!me || me.status === 'eliminated') {
                 showToast(tr('poolEliminated'), "error");

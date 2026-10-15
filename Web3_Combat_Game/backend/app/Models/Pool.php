@@ -20,7 +20,12 @@ class Pool extends Model
         'is_private',
         'invite_code',
         'status',
-        'round_pending_matches'
+        'round_pending_matches',
+        'end_condition',
+        'end_count',
+        'end_seconds',
+        'started_at',
+        'finished_at'
     ];
 
     public function players()

@@ -13,7 +13,9 @@ class PoolPlayer extends Model
         'pool_id',
         'wallet_address',
         'character_id',
-        'status'
+        'status',
+        'loot',
+        'losses'
     ];
 
     public function pool()
