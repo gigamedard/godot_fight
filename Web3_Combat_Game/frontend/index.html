@@ -579,12 +579,12 @@
          capturer ses logs console. Voir window.openDebugLog(). -->
     <script src="debug-log.js?v=5" defer></script>
     <script src="ui-loader.js?v=2" defer></script>
-    <script src="app.js?v=4.42" defer></script>
+    <script src="app.js?v=4.43" defer></script>
     <!-- PWA : service worker (met en cache les gros fichiers /godot/*) -->
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', function () {
-                navigator.serviceWorker.register('sw.js').catch(function (e) {
+                navigator.serviceWorker.register('sw.js?v=3').catch(function (e) {
                     console.warn('[PWA] service worker non enregistré:', e);
                 });
             });

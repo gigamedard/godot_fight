@@ -383,7 +383,7 @@ function setupParentProvider() {
                 catch (e) { delete _pending[id]; reject({ code: -32603, message: 'postMessage failed' }); return; }
                 setTimeout(function () {
                     if (_pending[id]) { delete _pending[id]; reject({ code: -32603, message: 'bridge timeout' }); }
-                }, 15000);
+                }, 20000);
             });
         },
         on: function () {}, removeListener: function () {}, removeAllListeners: function () {}
@@ -557,15 +557,13 @@ window.connectWallet = async function() {
 
     // ── 3ter. App2 embarqué (iframe App1) : provider PONT vers le parent.
     //    App1 détient le wallet ; App2 lui délègue les requêtes EIP-1193.
-    //    Si le parent n'implémente pas le pont, on échoue VITE (pas de spin).
+    //    À la 2ᵉ ouverture PWA, App1 restaure la session mais doit RE-CRÉER son
+    //    provider WalletConnect depuis le storage → on laisse un délai généreux
+    //    (pont : 20 s) au lieu d'un abandon prématuré.
     if (typeof window.ethereum === 'undefined' && window.parent !== window) {
         const bp = setupParentProvider();
         if (bp) {
             try {
-                await Promise.race([
-                    bp.request({ method: 'eth_chainId' }),
-                    new Promise((_, rej) => setTimeout(() => rej(new Error('bridge timeout')), 3000))
-                ]);
                 const accounts = (await bp.request({ method: 'eth_requestAccounts' })) || [];
                 if (accounts.length) {
                     AppState.walletAddress = accounts[0];
@@ -576,7 +574,7 @@ window.connectWallet = async function() {
                     return;
                 }
             } catch (e) {
-                console.warn('[App2] pont App1 indisponible :', e && e.message);
+                console.warn('[App2] pont App1 indisponible :', (e && (e.message || e)));
             }
         }
         showToast("Connexion wallet : connectez-vous dans App1 (le jeu hérite de la connexion).", "error", 0);
