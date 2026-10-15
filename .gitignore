@@ -20,5 +20,12 @@ rock-paper-scissors-ref/
 # Originaux PNG du fond d'Ã©cran (backup local, servis ni rÃ©fÃ©rencÃ©s par le frontend)
 Web3_Combat_Game/frontend/bg/original/
 
-# Certificats TLS locaux (clé privée — jamais commités; tailscale cert régénère)
+# Certificats TLS locaux (clï¿½ privï¿½e ï¿½ jamais commitï¿½s; tailscale cert rï¿½gï¿½nï¿½re)
 Web3_Combat_Game/frontend/certs/
+
+# Backups locaux des modÃ¨les 3D optimisÃ©s (non destinÃ©s au dÃ©pÃ´t â€” ~190 Mo)
+*.glb.orig
+
+# Dossiers hors-projet (assets tiers non utilisÃ©s par le jeu)
+NVIDIA MODEL CLOUD/
+Actorcore-Unity-0714-405970/

@@ -1860,3 +1860,45 @@ body::-webkit-scrollbar { width: 0; }
     .hud-player-name { font-size: 0.75rem; }
     .hud-player-wallet { font-size: 0.6rem; }
 }
+
+/* ==========================================================================
+   19. SÉLECTEUR DE LANGUE MULTILINGUE (i18n)
+   ========================================================================== */
+.quick-lang-selector {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    z-index: 99;
+    display: flex;
+    gap: 6px;
+    background: rgba(14, 18, 36, 0.88);
+    border: 1px solid rgba(0, 229, 255, 0.4);
+    border-radius: 20px;
+    padding: 3px 8px;
+    backdrop-filter: blur(8px);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+}
+.quick-lang-btn {
+    background: transparent;
+    border: none;
+    font-size: 1.15rem;
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 4px;
+    transition: transform 0.15s ease, opacity 0.15s ease;
+    opacity: 0.7;
+}
+.quick-lang-btn:hover {
+    transform: scale(1.25);
+    opacity: 1;
+}
+.quick-lang-btn.active {
+    opacity: 1;
+    filter: drop-shadow(0 0 5px var(--cyan-spark));
+}
+.lang-card.active-lang {
+    border-color: var(--cyan-spark) !important;
+    box-shadow: 0 0 16px rgba(0, 229, 255, 0.6) !important;
+    background: rgba(0, 229, 255, 0.08) !important;
+}
+

@@ -1,7 +1,7 @@
 """
 Démarrage HTTPS unifié — génération du certificat auto-signé partagé puis :
   1. front https://0.0.0.0:8443 (serve.py : pages du jeu)
-  2. RPC https://0.0.0.0:8444 (tls_proxy.py : relay vers blockchain:8545)
+  2. RPC https://0.0.0.0:8444 (tls_proxy.py : relay vers le RPC Pingala Chain)
 
 Le SAN inclut les IP de test connues ; régénérer le conteneur (down/up) met
 à jour le SAN si les IP changent.
@@ -19,7 +19,7 @@ import subprocess
 CERT_DIR = "/srv/www/certs"
 CERT_FILE = os.path.join(CERT_DIR, "cert.pem")
 KEY_FILE = os.path.join(CERT_DIR, "key.pem")
-UPSTREAM_RPC = "http://blockchain:8545"
+UPSTREAM_RPC = "https://31.187.72.98.sslip.io/ext/bc/2bU2988XvYbG4z85k39QxhDNomHWREnTKzYWLViU1RMCeSwEea/rpc"
 UPSTREAM_API = "http://api:8000"  # l'API Laravel interne du réseau docker
 UPSTREAM_REVERB = ("web3_combat_api", 8081)  # WebSocket Reverb (wss → ws) — container_name
 RPC_TLS_PORT = 8444
@@ -74,13 +74,13 @@ class RpcProxyHandler(http.server.BaseHTTPRequestHandler):
         import urllib.error
         length = int(self.headers.get("Content-Length", 0) or 0)
         body = self.rfile.read(length) if length else None
-        # Routage : /rpc-proxy/* → nœud Hardhat ; /api-proxy/* → API Laravel.
+        # Routage : /rpc-proxy/* → RPC Pingala Chain ; /api-proxy/* → API Laravel.
         # Le front https appelle tout par le même origin (pas de mixed content).
         path = self.path
         if path.startswith("/api-proxy"):
             upstream_url = UPSTREAM_API + path[len("/api-proxy"):]
         else:
-            # /rpc-proxy/* ou / : nœud RPC
+            # /rpc-proxy/* ou / : RPC Pingala
             path = path[len("/rpc-proxy"):] if path.startswith("/rpc-proxy") else path
             upstream_url = UPSTREAM_RPC + (path or "/")
         req = urllib.request.Request(upstream_url, data=body, method=self.command)

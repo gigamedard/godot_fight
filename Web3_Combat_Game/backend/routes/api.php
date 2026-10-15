@@ -94,6 +94,7 @@ Route::post('/battle/commit', [BattleController::class, 'commitMove']);
 Route::post('/battle/reveal', [BattleController::class, 'revealMove']);
 Route::post('/battle/timeout', [BattleController::class, 'claimTimeout']);
 Route::post('/battle/deposited', [BattleController::class, 'depositConfirmed']);
+Route::post('/battle/deposit-failed', [BattleController::class, 'depositFailed']);
 Route::get('/battle/status/{match_id}', [BattleController::class, 'getMatchStatus']);
 Route::get('/battle/last-result', [BattleController::class, 'lastResult']);
 
@@ -102,6 +103,35 @@ Route::get('/game-config', function () {
     return response()->json([
         'fight_timeout_ms' => (int) config('game.fight_timeout_ms', 60000),
     ]);
+});
+
+// Santé (monitoring) : DB + RPC Pingala (chainId attendu 0x1869f = 99999).
+Route::get('/health', function () {
+    $out = ['status' => 'ok', 'ts' => now()->toIso8601String()];
+    try {
+        \Illuminate\Support\Facades\DB::select('SELECT 1');
+        $out['db'] = 'ok';
+    } catch (\Throwable $e) {
+        $out['db'] = 'error';
+        $out['status'] = 'degraded';
+    }
+    try {
+        $rpc = (string) config('services.web3.rpc_url');
+        $ctx = stream_context_create(['http' => [
+            'method' => 'POST',
+            'header' => "Content-Type: application/json\r\n",
+            'content' => '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}',
+            'timeout' => 5,
+        ]]);
+        $res = @file_get_contents($rpc, false, $ctx);
+        $chainId = $res ? (json_decode($res, true)['result'] ?? null) : null;
+        $out['rpc_chainId'] = $chainId;
+        if ($chainId !== '0x1869f') { $out['status'] = 'degraded'; }
+    } catch (\Throwable $e) {
+        $out['rpc'] = 'error';
+        $out['status'] = 'degraded';
+    }
+    return response()->json($out, $out['status'] === 'ok' ? 200 : 503);
 });
 
 // Retrait de fonds (voucher signé par le backend)

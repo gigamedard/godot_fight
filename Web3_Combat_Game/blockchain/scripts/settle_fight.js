@@ -15,7 +15,7 @@
  */
 import { ethers } from "ethers";
 
-const RPC = process.env.WEB3_RPC_URL || "http://127.0.0.1:8545";
+const RPC = process.env.WEB3_RPC_URL || "https://31.187.72.98.sslip.io/ext/bc/2bU2988XvYbG4z85k39QxhDNomHWREnTKzYWLViU1RMCeSwEea/rpc";
 const BACKEND = process.env.WEB3_BACKEND_URL || "http://127.0.0.1:8000/api";
 // Compte #1 Hardhat = backend signer (signe les vouchers ET paie le gaz)
 const SIGNER_KEY = process.env.WEB3_BACKEND_SIGNER_KEY || "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d";

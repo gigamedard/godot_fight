@@ -1,0 +1,112 @@
+# =====================================================================
+# Web3 Combat Game (App 2) — Déploiement VPS (co-existence avec App 1)
+# =====================================================================
+# Cible : L1 Pingala Chain (chainId 99999). Le nœud Hardhat local n'existe
+# plus (le RPC Pingala est public, terminé par Caddy sur le VPS).
+#
+# Ce fichier est une variante "VPS" de docker-compose.yml : mêmes services,
+# mais des ports hôtes dédiés, tous bindés sur 127.0.0.1 (invisibles
+# publiquement). L'exposition publique se fait via Caddy (site
+# app2.31.187.72.98.sslip.io) — AUCUN nouveau port firewall.
+#
+#   frontend : 127.0.0.1:8002 -> 8080   (Godot + UI statique)
+#   api      : 127.0.0.1:8000 -> 8000   (Laravel)  / 127.0.0.1:8009 -> 8081 (Reverb)
+#   db       : 127.0.0.1:3308 -> 3306   (MySQL)
+#   indexer  : aucun port exposé
+#
+# NE PAS réutiliser les ports d'App 1 : 8001, 8008, 8546, 3307.
+# NE PAS toucher aux conteneurs "battlepool-*" ni à /opt/battlepool.
+#
+# Lancement : docker compose -f docker-compose.vps.yml up -d --build
+
+services:
+  db:
+    image: mysql:8.0
+    container_name: web3_combat_db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: web3_combat
+      MYSQL_USER: user
+      MYSQL_PASSWORD: password
+    ports:
+      - "127.0.0.1:3308:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  indexer:
+    build:
+      context: ./indexer
+    container_name: web3_combat_indexer
+    restart: unless-stopped
+    environment:
+      RPC_HTTP_URL: https://31.187.72.98.sslip.io/ext/bc/2bU2988XvYbG4z85k39QxhDNomHWREnTKzYWLViU1RMCeSwEea/rpc
+      API_URL: http://api:8000/api/internal
+      INDEXER_SECRET: super_secret_indexer_token
+      CONTRACT_ADDRESS: 0xA2722921B753C1E76e1d9a4294204DF983746C3D
+      ARTIFACT_PATH: /srv/blockchain/artifacts/contracts/CombatGame.sol/CombatGame.json
+      DEPLOYMENT_BLOCK: 171
+      # Cette L1 ne produit de blocs QUE sur transaction (pas de blocs vides) :
+      # >0 confirmations ferait stagner l'indexation. Finalité Avalanche = 0 OK.
+      CONFIRMATIONS_REQUIRED: 0
+      POLL_INTERVAL_MS: 2000
+      MAX_BLOCK_RANGE: 1000
+      BACKOFF_BASE_MS: 2000
+      BACKOFF_MAX_MS: 30000
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_USERNAME: user
+      DB_PASSWORD: password
+      DB_DATABASE: web3_combat
+    volumes:
+      - ./blockchain:/srv/blockchain:ro
+    depends_on:
+      - api
+      - db
+
+  api:
+    build:
+      context: ./backend
+    container_name: web3_combat_api
+    restart: unless-stopped
+    working_dir: /var/www/html
+    environment:
+      WEB3_RPC_URL: https://31.187.72.98.sslip.io/ext/bc/2bU2988XvYbG4z85k39QxhDNomHWREnTKzYWLViU1RMCeSwEea/rpc
+      WEB3_BACKEND_URL: http://127.0.0.1:8000/api
+      # Clé du backendSigner : lue depuis backend/.env (monté). Jamais ici.
+      CONTRACT_ADDRESS: 0xA2722921B753C1E76e1d9a4294204DF983746C3D
+      WEB3_SETTLE_SCRIPT: /srv/blockchain/scripts/settle_fight.js
+      WEB3_CONSOLIDATE_SCRIPT: /srv/blockchain/scripts/consolidate_pool.js
+      WEB3_WITHDRAW_PUSH_SCRIPT: /srv/blockchain/scripts/withdraw_push.js
+      DB_CONNECTION: mysql
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_DATABASE: web3_combat
+      DB_USERNAME: user
+      DB_PASSWORD: password
+    volumes:
+      - ./backend:/var/www/html
+      - ./blockchain:/srv/blockchain:ro
+    ports:
+      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:8009:8081"
+    depends_on:
+      - db
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: web3_combat_frontend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8002:8080"
+    volumes:
+      - ./frontend:/srv/www:ro
+
+volumes:
+  db_data:

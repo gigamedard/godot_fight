@@ -3,6 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Web3 Combat Game — duels 1v1 et battle royale on-chain sur Pingala Chain (TST).">
+    <meta name="theme-color" content="#0F0C1B">
+    <link rel="icon" href="pwa_icon_192.png" type="image/png">
+    <link rel="apple-touch-icon" href="pwa_icon_192.png">
+    <link rel="manifest" href="manifest.json">
     <title>BATTLEPOOL — Spirit Fight</title>
     <link rel="stylesheet" href="style.css?v=4.7">
 </head>
@@ -20,7 +25,7 @@
             <div id="anim2d-hud">
                 <div class="anim2d-badge">
                     <div class="anim2d-spinner"></div>
-                    <span id="anim2d-status-text">INITIALISATION DU MOTEUR 3D...</span>
+                    <span id="anim2d-status-text" data-i18n="loadingEngine">INITIALISATION DU MOTEUR 3D...</span>
                 </div>
                 <div class="anim2d-progress-bar">
                     <div id="anim2d-progress-fill" style="width: 0%;"></div>
@@ -30,11 +35,11 @@
             <!-- Barre de choix de coup (mode 2D) : visible uniquement quand le layer 2D est actif
                  et qu'un match est en cours (masquée par défaut, affichée par app.js). -->
             <div id="anim2d-move-bar" class="anim2d-move-bar hidden">
-                <span class="move-bar-instruction">À toi de jouer ! Choisis ton coup :</span>
+                <span class="move-bar-instruction" data-i18n="moveBarInstruction">À toi de jouer ! Choisis ton coup :</span>
                 <div class="anim2d-move-buttons">
-                    <button id="btn-move-1" class="anim2d-move-btn move-rock" onclick="window.submitMove2D(1)"><i data-lucide="hand-metal"></i> Pierre</button>
-                    <button id="btn-move-2" class="anim2d-move-btn move-paper" onclick="window.submitMove2D(2)"><i data-lucide="hand"></i> Feuille</button>
-                    <button id="btn-move-3" class="anim2d-move-btn move-scissors" onclick="window.submitMove2D(3)"><i data-lucide="scissors"></i> Ciseaux</button>
+                    <button id="btn-move-1" class="anim2d-move-btn move-rock" onclick="window.submitMove2D(1)"><i data-lucide="hand-metal"></i> <span data-i18n="moveRock">Pierre</span></button>
+                    <button id="btn-move-2" class="anim2d-move-btn move-paper" onclick="window.submitMove2D(2)"><i data-lucide="hand"></i> <span data-i18n="movePaper">Feuille</span></button>
+                    <button id="btn-move-3" class="anim2d-move-btn move-scissors" onclick="window.submitMove2D(3)"><i data-lucide="scissors"></i> <span data-i18n="moveScissors">Ciseaux</span></button>
                 </div>
             </div>
         </div>
@@ -51,14 +56,14 @@
     <div id="portal-overlay" class="portal-overlay hidden">
         <div class="portal-bar">
             <button id="portal-back-btn" class="btn-back" onclick="closeBattlePool()">
-                <i data-lucide="arrow-left"></i> RETOUR AU JEU
+                <i data-lucide="arrow-left"></i> <span data-i18n="portalBackBtn">RETOUR AU JEU</span>
             </button>
             <span class="portal-title">BATTLEPOOL — APP 1</span>
             <span class="portal-spacer"></span>
         </div>
         <div id="portal-loading" class="portal-loading">
             <div class="portal-loader-spinner"></div>
-            <p>Chargement du portail BATTLEPOOL...</p>
+            <p data-i18n="portalLoading">Chargement du portail BATTLEPOOL...</p>
         </div>
         <iframe id="portal-iframe" src="about:blank" title="BATTLEPOOL App 1" allow="ethereum"></iframe>
     </div>
@@ -99,8 +104,8 @@
             <!-- ═══════════════ ÉCRAN 1 : LANGUE ═══════════════ -->
             <div id="screen-language" class="screen">
                 <div class="screen-card">
-                    <h2 class="screen-title"><i data-lucide="globe"></i> LANGUE / LANGUAGE</h2>
-                    <p class="screen-subtitle">Sélectionnez votre langue d'interface</p>
+                    <h2 class="screen-title"><i data-lucide="globe"></i> <span data-i18n="langTitle">LANGUE / LANGUAGE</span></h2>
+                    <p class="screen-subtitle" data-i18n="langSubtitle">Sélectionnez votre langue d'interface</p>
                     <div class="language-grid">
                         <button class="lang-card" onclick="selectLanguage('fr')"><span class="flag">🇫🇷</span><span class="lang-name">Français</span></button>
                         <button class="lang-card" onclick="selectLanguage('en')"><span class="flag">🇬🇧</span><span class="lang-name">English</span></button>
@@ -110,45 +115,33 @@
                 </div>
             </div>
 
+
             <!-- ═══════════════ ÉCRAN 2 : CONNEXION ═══════════════ -->
             <div id="screen-connect" class="screen">
                 <div class="screen-card connect-card">
                     <div class="nav-header">
                         <button class="btn-back" onclick="navGoBack()" aria-label="Retour"><i data-lucide="arrow-left"></i></button>
-                        <h2 class="screen-title">CONNEXION WEB3</h2>
+                        <h2 class="screen-title" data-i18n="connectTitle">CONNEXION WEB3</h2>
                     </div>
                     <div class="cyber-shield-icon">
                         <i data-lucide="wallet"></i>
                         <span class="shield-pulse" aria-hidden="true"></span>
                     </div>
-                    <p class="screen-subtitle connect-subtitle">Connectez votre wallet pour accéder aux combats et à vos tokens.</p>
+                    <p class="screen-subtitle connect-subtitle" data-i18n="connectSubtitle">Connectez votre wallet pour accéder aux combats et à vos tokens.</p>
                     <ul class="connect-perks" aria-label="Avantages de la connexion wallet">
-                        <li><i data-lucide="swords"></i> Duels 1v1 &amp; Battle Royale</li>
-                        <li><i data-lucide="shield-check"></i> Aucune clé privée stockée</li>
-                        <li><i data-lucide="flame"></i> Tokens &amp; récompenses on-chain</li>
+                        <li><i data-lucide="swords"></i> <span data-i18n="perk1">Duels 1v1 &amp; Battle Royale</span></li>
+                        <li><i data-lucide="shield-check"></i> <span data-i18n="perk2">Aucune clé privée stockée</span></li>
+                        <li><i data-lucide="flame"></i> <span data-i18n="perk3">Tokens &amp; récompenses on-chain</span></li>
                     </ul>
                     <button class="btn-cyber btn-primary-gold connect-cta" onclick="connectWallet()">
-                        <i data-lucide="zap"></i> CONNECTER LE WALLET
+                        <i data-lucide="zap"></i> <span data-i18n="connectWalletBtn">CONNECTER LE WALLET</span>
                     </button>
-                    <p class="connect-hint">Signature gratuite — aucune transaction n'est envoyée.</p>
+                    <p class="connect-hint" data-i18n="connectHint">Signature gratuite — aucune transaction n'est envoyée.</p>
 
-                    <!-- Connexion sans MetaMask (mobile/démo) : clé privée de démo -->
-                    <div class="connect-divider"><span>OU</span></div>
-                    <button class="btn-cyber btn-cyan connect-demo" onclick="toggleDemoKeyBox()">
-                        <i data-lucide="key-round"></i> CONNEXION PAR CLÉ DE DÉMO
-                    </button>
-                    <div id="demo-key-box" class="demo-key-box" style="display:none;">
-                        <p class="demo-key-note">Mode démo/dev : collez une clé privée de test (comptes Hardhat). Ne JAMAIS utiliser une clé réelle.</p>
-                        <div class="demo-quick-row" id="demo-quick-accounts"></div>
-                        <input type="password" id="demo-private-key" class="demo-key-input" placeholder="0x..." autocomplete="off" spellcheck="false">
-                        <button class="btn-cyber btn-success demo-key-go" onclick="connectWithDemoKey()">
-                            <i data-lucide="log-in"></i> SE CONNECTER AVEC CETTE CLÉ
-                        </button>
-                    </div>
-                    <p class="connect-hint" id="walletconnect-hint" style="display:none;">WalletConnect : projectId non configuré (config.js).</p>
+                    <p class="connect-hint">Sur mobile, le bouton ouvre Core (ou MetaMask) via WalletConnect.</p>
 
                     <div class="wallet-status-box" id="wallet-status-box" style="display:none;">
-                        <span class="wallet-status-label"><i data-lucide="check-circle"></i> Wallet connecté</span>
+                        <span class="wallet-status-label"><i data-lucide="check-circle"></i> <span data-i18n="walletConnected">Wallet connecté</span></span>
                         <div class="wallet-addr-display" id="wallet-addr-display"></div>
                     </div>
                 </div>
@@ -159,28 +152,28 @@
                 <div class="screen-card">
                     <div class="nav-header">
                         <button class="btn-back" onclick="navGoBack()"><i data-lucide="arrow-left"></i></button>
-                        <h2 class="screen-title">MODE DE JEU</h2>
+                        <h2 class="screen-title" data-i18n="modeTitle">MODE DE JEU</h2>
                     </div>
                     <div class="mode-grid">
                         <div class="mode-card" onclick="selectGameMode('DUEL')">
                             <div class="mode-icon"><i data-lucide="swords"></i></div>
                             <div class="mode-details">
-                                <h3>1 VS 1 DUEL</h3>
-                                <p>Affrontez un adversaire en direct avec mise en jeu.</p>
+                                <h3 data-i18n="modeDuelTitle">1 VS 1 DUEL</h3>
+                                <p data-i18n="modeDuelDesc">Affrontez un adversaire en direct avec mise en jeu.</p>
                             </div>
                         </div>
                         <div class="mode-card" onclick="selectGameMode('BATTLE')">
                             <div class="mode-icon"><i data-lucide="trophy"></i></div>
                             <div class="mode-details">
-                                <h3>BATTLE ROYALE</h3>
-                                <p>Rejoignez un salon de poule à élimination directe.</p>
+                                <h3 data-i18n="modeBattleTitle">BATTLE ROYALE</h3>
+                                <p data-i18n="modeBattleDesc">Rejoignez un salon de poule à élimination directe.</p>
                             </div>
                         </div>
                         <div class="mode-card spirit-card" onclick="selectGameMode('SPIRIT')">
                             <div class="mode-icon"><i data-lucide="flame"></i></div>
                             <div class="mode-details">
-                                <h3>SPIRIT FIGHT</h3>
-                                <p>Accédez au portail global & Marketplace NFT.</p>
+                                <h3 data-i18n="modeSpiritTitle">SPIRIT FIGHT</h3>
+                                <p data-i18n="modeSpiritDesc">Accédez au portail global & Marketplace NFT.</p>
                             </div>
                         </div>
                     </div>
@@ -192,20 +185,20 @@
                 <div class="screen-card">
                     <div class="nav-header">
                         <button class="btn-back" id="btn-back-character" onclick="navGoBack()"><i data-lucide="arrow-left"></i></button>
-                        <h2 class="screen-title">SÉLECTION DU GUERRIER</h2>
+                        <h2 class="screen-title" data-i18n="charTitle">SÉLECTION DU GUERRIER</h2>
                     </div>
                     <div class="pseudo-field">
-                        <label for="player-pseudo-input">VOTRE PSEUDONYME</label>
-                        <input type="text" id="player-pseudo-input" maxlength="24" placeholder="Ex: ShadowBlade" autocomplete="nickname">
+                        <label for="player-pseudo-input" data-i18n="pseudoLabel">VOTRE PSEUDONYME</label>
+                        <input type="text" id="player-pseudo-input" maxlength="24" placeholder="Ex: ShadowBlade" data-i18n-placeholder="pseudoPlaceholder" autocomplete="nickname">
                     </div>
                     <div id="character-grid" class="character-grid"></div>
                     <div class="volume-field">
-                        <label for="volume-slider"><i data-lucide="volume-2" width="16"></i> VOLUME</label>
+                        <label for="volume-slider"><i data-lucide="volume-2" width="16"></i> <span data-i18n="volumeLabel">VOLUME</span></label>
                         <input type="range" id="volume-slider" min="0" max="100" value="85">
                         <span id="volume-value">85%</span>
                     </div>
                     <button id="btn-confirm-char" class="btn-cyber btn-primary-gold disabled" disabled>
-                        <i data-lucide="check-circle"></i> CONFIRMER LE COMBATTANT
+                        <i data-lucide="check-circle"></i> <span data-i18n="confirmCharBtn">CONFIRMER LE COMBATTANT</span>
                     </button>
                 </div>
             </div>
@@ -215,15 +208,15 @@
                 <div class="screen-card">
                     <div class="nav-header">
                         <button class="btn-back" onclick="navGoBack()"><i data-lucide="arrow-left"></i></button>
-                        <h2 class="screen-title">LOBBY 1VS1 DUEL</h2>
+                        <h2 class="screen-title" data-i18n="duelLobbyTitle">LOBBY 1VS1 DUEL</h2>
                     </div>
                     <div class="search-bar">
                         <div class="search-input-wrapper">
                             <i data-lucide="search" width="20"></i>
-                            <input type="text" placeholder="Pseudo ou adresse wallet..." id="search-input" oninput="filterLobby(this.value)">
+                            <input type="text" placeholder="Pseudo ou adresse wallet..." data-i18n-placeholder="searchPlaceholder" id="search-input" oninput="filterLobby(this.value)">
                         </div>
                     </div>
-                    <div class="section-label">JOUEURS EN LIGNE</div>
+                    <div class="section-label" data-i18n="onlinePlayers">JOUEURS EN LIGNE</div>
                     <div class="list-container" id="players-list"></div>
                 </div>
             </div>
@@ -233,19 +226,19 @@
                 <div class="screen-card">
                     <div class="nav-header">
                         <button class="btn-back" onclick="navGoBack()"><i data-lucide="arrow-left"></i></button>
-                        <h2 class="screen-title">SALONS BATTLE ROYALE</h2>
+                        <h2 class="screen-title" data-i18n="brLobbyTitle">SALONS BATTLE ROYALE</h2>
                     </div>
                     <div class="action-row">
                         <button class="btn-cyber btn-primary-gold" onclick="openCreatePoolModal()">
-                            <i data-lucide="plus-circle"></i> CRÉER UNE BATTLE
+                            <i data-lucide="plus-circle"></i> <span data-i18n="createBattleBtn">CRÉER UNE BATTLE</span>
                         </button>
                     </div>
                     <div class="join-private-box">
-                        <input type="text" id="invite-code-input" placeholder="Code d'invitation privé...">
-                        <button class="btn-cyber btn-cyan" onclick="joinPoolByCode()">REJOINDRE</button>
+                        <input type="text" id="invite-code-input" placeholder="Code d'invitation privé..." data-i18n-placeholder="inviteCodePlaceholder">
+                        <button class="btn-cyber btn-cyan" onclick="joinPoolByCode()" data-i18n="joinBtn">REJOINDRE</button>
                         <button class="qr-btn" onclick="openQRScanner()" title="Scanner le QR code d'une battle"><i data-lucide="qr-code" width="24"></i></button>
                     </div>
-                    <div class="section-label">SALONS OUVERTS</div>
+                    <div class="section-label" data-i18n="openRooms">SALONS OUVERTS</div>
                     <div class="list-container" id="br-list"></div>
                 </div>
             </div>
@@ -255,13 +248,13 @@
                 <div class="screen-card">
                     <div class="nav-header">
                         <button class="btn-back" onclick="navGoBack()"><i data-lucide="arrow-left"></i></button>
-                        <h2 class="screen-title">SPIRIT FIGHT</h2>
+                        <h2 class="screen-title" data-i18n="spiritTitle">SPIRIT FIGHT</h2>
                     </div>
                     <div class="spirit-hero">
                         <div class="spirit-logo">BATTLE<span>POOL</span></div>
-                        <p class="screen-subtitle">L'univers complet : arène, marketplace NFT, références et récompenses influencer.</p>
+                        <p class="screen-subtitle" data-i18n="spiritDesc">L'univers complet : arène, marketplace NFT, références et récompenses influencer.</p>
                         <button class="btn-cyber btn-primary-gold" onclick="launchBattlePool()">
-                            <i data-lucide="flame"></i> LANCER BATTLEPOOL (APP 1)
+                            <i data-lucide="flame"></i> <span data-i18n="launchSpiritBtn">LANCER BATTLEPOOL (APP 1)</span>
                         </button>
                     </div>
                 </div>
@@ -272,29 +265,29 @@
                 <div class="screen-card">
                     <div class="nav-header">
                         <button id="btn-quit-pool" class="btn-back danger" onclick="quitPool()">
-                            <i data-lucide="log-out"></i> <span id="quit-pool-text">QUITTER</span>
+                            <i data-lucide="log-out"></i> <span id="quit-pool-text" data-i18n="quitBtn">QUITTER</span>
                         </button>
                         <h2 id="pool-room-title" class="screen-title">SALON #000</h2>
                     </div>
                     <div class="pool-status-banner">
-                        <span id="pool-room-status" class="status-badge">EN ATTENTE</span>
+                        <span id="pool-room-status" class="status-badge" data-i18n="waitingStatus">EN ATTENTE</span>
                         <span class="count-badge"><i data-lucide="users" width="18"></i> <span id="pool-room-count">1/4</span></span>
                     </div>
                     <div id="pool-invite-container" class="invite-share-box" style="display:none;">
-                        <p>Partagez l'invitation au salon :</p>
+                        <p data-i18n="shareInvite">Partagez l'invitation au salon :</p>
                         <div style="display:flex; gap:8px; margin-bottom:10px;">
                             <input type="text" id="pool-invite-link" readonly onclick="this.select()" style="flex:1;">
-                            <button class="btn-cyber btn-cyan" style="padding:0 16px; width:auto; font-size:0.8rem;" onclick="copyInviteLink()">COPIER LIEN</button>
+                            <button class="btn-cyber btn-cyan" style="padding:0 16px; width:auto; font-size:0.8rem;" onclick="copyInviteLink()" data-i18n="copyLinkBtn">COPIER LIEN</button>
                             <button class="btn-cyber btn-cyan" style="padding:0 16px; width:auto; font-size:0.8rem;" onclick="openInviteQR()"><i data-lucide="qr-code" width="16"></i> QR</button>
                         </div>
                         <div style="display:flex; gap:8px; align-items:center;">
-                            <label style="font-size:0.8rem; color:var(--text-muted);">CODE :</label>
+                            <label style="font-size:0.8rem; color:var(--text-muted);" data-i18n="codeLabel">CODE :</label>
                             <input type="text" id="pool-invite-code" readonly onclick="this.select()" style="flex:1; font-family:monospace; font-weight:700; letter-spacing:2px; text-align:center;">
-                            <button class="btn-cyber btn-cyan" style="padding:0 16px; width:auto; font-size:0.8rem;" onclick="copyInviteCode()">COPIER CODE</button>
+                            <button class="btn-cyber btn-cyan" style="padding:0 16px; width:auto; font-size:0.8rem;" onclick="copyInviteCode()" data-i18n="copyCodeBtn">COPIER CODE</button>
                         </div>
                         <div id="pool-invite-qr" style="display:none; margin-top:12px; text-align:center;"></div>
                     </div>
-                    <div class="section-label">COMBATTANTS DANS LA POULE</div>
+                    <div class="section-label" data-i18n="fightersInPool">COMBATTANTS DANS LA POULE</div>
                     <div class="list-container" id="pool-players-list"></div>
                 </div>
             </div>
@@ -302,7 +295,9 @@
             <!-- ═══════════════ ÉCRAN 6 : CHARGEMENT COMBAT ═══════════════ -->
             <div id="screen-combat" class="screen">
                 <!-- HUD COMBAT (Itération 3) : superposé au canvas 2D/3D.
-                     Les IDs hud-p1-name / hud-p2-name sont synchronisés par anim2d.js ;
+                     Les IDs hud-p1-name / hud-p2-name sont synchronisés par anim2d.js
+                     (noms des personnages) — PAS de data-i18n ici : la traduction
+                     JOUEUR 1/2 ne sert qu'avant attribution, anim2d écrase ensuite.
                      barres de vie mises à jour par app.js via hud-set-health(). -->
                 <div id="combat-hud-layer" aria-hidden="true">
                     <!-- JOUEUR 1 (gauche) -->
@@ -331,11 +326,11 @@
                     </div>
                 </div>
                 <div class="combat-loader-card">
-                    <h2 class="screen-title pulse">CHARGEMENT DE L'ARÈNE...</h2>
+                    <h2 class="screen-title pulse" data-i18n="loadingArena">CHARGEMENT DE L'ARÈNE...</h2>
                     <div class="cyber-progress-container">
                         <div id="loading-bar" class="cyber-progress-bar" style="width: 0%;"></div>
                     </div>
-                    <p id="loading-text" class="loading-subtext">Préparation du moteur 3D...</p>
+                    <p id="loading-text" class="loading-subtext" data-i18n="loadingEngine">Préparation du moteur 3D...</p>
                 </div>
             </div>
 
@@ -360,7 +355,7 @@
     <div id="qr-modal" class="overlay-modal">
         <div class="modal-card">
             <div class="modal-header">
-                <h3>SCANNER QR CODE</h3>
+                <h3 data-i18n="qrModalTitle">SCANNER QR CODE</h3>
                 <button class="btn-close" onclick="closeQRScanner()"><i data-lucide="x"></i></button>
             </div>
             <div id="reader"></div>
@@ -371,22 +366,22 @@
     <div id="bet-modal" class="overlay-modal">
         <div class="modal-card">
             <div class="modal-header">
-                <h3>DÉFIER <span id="bet-target-name">JOUEUR</span></h3>
+                <h3><span data-i18n="challengeBtn">DÉFIER</span> <span id="bet-target-name">JOUEUR</span></h3>
                 <button class="btn-close" onclick="closeBetModal()"><i data-lucide="x"></i></button>
             </div>
             <div id="bet-stats" class="bet-stats-box" style="color: var(--text-muted); font-size: 0.8rem; font-weight: 600; margin-bottom: 12px;"></div>
             <div class="bet-input-wrapper">
                 <input type="number" id="bet-amount" step="0.001" value="10" min="0">
-                <span class="bet-currency">TKN</span>
+                <span class="bet-currency">TST</span>
             </div>
             <div class="bet-presets">
                 <button class="btn-preset" onclick="setBetAmount(10)">10</button>
                 <button class="btn-preset" onclick="setBetAmount(50)">50</button>
                 <button class="btn-preset" onclick="setBetAmount(100)">100</button>
-                <button class="btn-preset" onclick="setBetAmount(500)">MAX</button>
+                <button class="btn-preset" onclick="setBetAmount(500)" data-i18n="max">MAX</button>
             </div>
             <button class="btn btn-bet-confirm" onclick="confirmBetAndChallenge()">
-                <i data-lucide="swords"></i> ENVOYER LE DÉFI
+                <i data-lucide="swords"></i> <span data-i18n="sendChallengeBtn">ENVOYER LE DÉFI</span>
             </button>
         </div>
     </div>
@@ -395,13 +390,13 @@
     <div id="challenge-modal" class="overlay-modal">
         <div class="modal-card challenge-received">
             <div class="modal-header">
-                <h3 class="glow-title">DÉFI REÇU !</h3>
+                <h3 class="glow-title" data-i18n="challengeReceivedTitle">DÉFI REÇU !</h3>
             </div>
-            <p id="challenge-text" class="modal-body-text">Un joueur vous défie en duel.</p>
+            <p id="challenge-text" class="modal-body-text" data-i18n="challengeDefaultText">Un joueur vous défie en duel.</p>
             <div id="challenge-modal-actions" class="modal-actions-row">
-                <button id="btn-accept-challenge" class="btn-cyber btn-success">ACCEPTER</button>
-                <button id="btn-modify-challenge" class="btn-cyber btn-cyan">CONTRE-PROPOSER</button>
-                <button id="btn-decline-challenge" class="btn-cyber btn-danger">REFUSER</button>
+                <button id="btn-accept-challenge" class="btn-cyber btn-success" data-i18n="acceptBtn">ACCEPTER</button>
+                <button id="btn-modify-challenge" class="btn-cyber btn-cyan" data-i18n="counterBtn">CONTRE-PROPOSER</button>
+                <button id="btn-decline-challenge" class="btn-cyber btn-danger" data-i18n="declineBtn">REFUSER</button>
             </div>
         </div>
     </div>
@@ -410,29 +405,29 @@
     <div id="create-pool-modal" class="overlay-modal">
         <div class="modal-card">
             <div class="modal-header">
-                <h3>CRÉER UNE BATTLE ROYALE</h3>
+                <h3 data-i18n="createPoolTitle">CRÉER UNE BATTLE ROYALE</h3>
                 <button class="btn-close" onclick="closeCreatePoolModal()"><i data-lucide="x"></i></button>
             </div>
             <div class="form-group">
-                <label>Frais d'entrée (ETH) :</label>
+                <label data-i18n="entryFeeLabel">Frais d'entrée (TST) :</label>
                 <input type="number" id="pool-entry-fee" step="0.001" value="10" min="0">
             </div>
             <div class="form-group">
-                <label>Joueurs max (2 à 64) :</label>
+                <label data-i18n="maxPlayersLabel">Joueurs max (2 à 64) :</label>
                 <input type="number" id="pool-max-players" min="2" max="64" value="8">
             </div>
             <div class="form-group">
-                <label>Règle d'élimination :</label>
+                <label data-i18n="eliminationRuleLabel">Règle d'élimination :</label>
                 <select id="pool-penalty-mode">
-                    <option value="1">Mort Subite (1 défaite = élimination)</option>
+                    <option value="1" data-i18n="suddenDeathOption">Mort Subite (1 défaite = élimination)</option>
                 </select>
             </div>
             <div class="form-group checkbox-group" style="flex-direction: row; align-items: center; gap: 10px;">
-                <label for="pool-is-private" style="flex:1;">Poule privée sur code :</label>
+                <label for="pool-is-private" style="flex:1;" data-i18n="privatePoolLabel">Poule privée sur code :</label>
                 <input type="checkbox" id="pool-is-private" style="width: 20px; height: 20px; accent-color: var(--cyan-spark);">
             </div>
             <button class="btn-cyber btn-primary-gold" onclick="confirmCreatePool()">
-                <i data-lucide="plus-circle"></i> CRÉER LE SALON
+                <i data-lucide="plus-circle"></i> <span data-i18n="createPoolSubmit">CRÉER LE SALON</span>
             </button>
         </div>
     </div>
@@ -441,14 +436,13 @@
     <div id="invite-modal" class="overlay-modal">
         <div class="modal-card">
             <div class="modal-header">
-                <h3>INVITATION SALON</h3>
+                <h3 data-i18n="inviteModalTitle">INVITATION SALON</h3>
             </div>
-            <p id="invite-message" class="modal-body-text">Vous êtes invité à rejoindre un salon.</p>
+            <p id="invite-message" class="modal-body-text" data-i18n="inviteModalText">Vous êtes invité à rejoindre un salon.</p>
             <div style="margin-top: 15px;">
-                <button id="btn-accept-invite" class="btn-cyber btn-success">REJOINDRE LE SALON</button>
+                <button id="btn-accept-invite" class="btn-cyber btn-success" data-i18n="joinRoomBtn">REJOINDRE LE SALON</button>
             </div>
         </div>
-    </div>
 
     <!-- Toasts -->
     <div id="toast-container" class="toast-container"></div>
@@ -457,16 +451,12 @@
          SCRIPTS (ordre préservé — ne pas modifier)
          ============================================================ -->
     <script src="lucide.min.js?v=1"></script>
-    <script src="pusher.min.js?v=1"></script>
-    <script src="echo.iife.js?v=1"></script>
-
-    <script src="ethers.min.js?v=1"></script>
-    <script src="hardhat_keys.js?v=1"></script>
+    <!-- pusher + echo + ethers : chargés à la CONNEXION par app.js (lazy-loading) -->
     <script src="contract_abi.js?v=4"></script>
 
     <!-- Moteur Godot (export web) -->
-    <script src="godot/jeu.js?v=3"></script>
-    <script src="anim2d.js?v=11"></script>
+    <script src="godot/jeu.js?v=4"></script>
+    <script src="anim2d.js?v=13"></script>
     <script>
         const GODOT_CONFIG = {
             "args":[],
@@ -474,7 +464,8 @@
             "executable":"godot/jeu",
             "experimentalVK":false,
             "focusCanvas":false,
-            "gdextensionLibs":[]
+            "gdextensionLibs":[],
+            "fileSizes": { "godot/jeu.pck": 67622900, "godot/jeu.wasm": 37896978 }
         };
         const engine = new Engine(GODOT_CONFIG);
 
@@ -516,6 +507,15 @@
                         if (window.updateAnim2DProgress) {
                             window.updateAnim2DProgress(current, total);
                         }
+                        if (window.setEngine3DProgress) {
+                            if (total > 0) {
+                                window.setEngine3DProgress((current / total) * 100, 'Téléchargement du moteur 3D');
+                            } else {
+                                // Taille inconnue (fileSizes absent) : progression
+                                // indéterminée + Mo déjà téléchargés.
+                                window.setEngine3DProgress(null, 'Téléchargement du moteur 3D (' + (current / 1048576).toFixed(1) + ' Mo)');
+                            }
+                        }
                         if (total > 0) {
                             if(statusProgress) { statusProgress.value = current; statusProgress.max = total; }
                         } else {
@@ -527,6 +527,7 @@
                     // par anim2d.js (ensure3DActive / showDepositPending2D)
                     // pour NE PAS réafficher le preloader 2D après coup.
                     window.GODOT_READY = true;
+                    if (window.hideEngine3D) window.hideEngine3D();
                     if (window.transition2Dto3D) {
                         window.transition2Dto3D();
                     }
@@ -549,6 +550,7 @@
                 document.removeEventListener('anim2d:ready', go);
                 if (deviceLooksWeak()) {
                     console.log("[Lite] Appareil limité détecté (RAM ≤2GB ou ≤2 cores) : Godot NON démarré automatiquement — le mode 2D reste l'arène active.");
+                    if (window.hideEngine3D) window.hideEngine3D();
                     if (window.updateAnim2DProgress) window.updateAnim2DProgress(1, 1); // barre complétée côté 2D
                 } else {
                     console.log("[Lite] Assets 2D prêts → démarrage du téléchargement Godot en arrière-plan.");
@@ -564,11 +566,29 @@
         });
     </script>
 
-    <script src="config.js?v=7"></script>
+    <script src="config.js?v=9"></script>
+    <!-- Couche wallet (MetaMask/Core injecté + WalletConnect/Core Mobile deeplink) :
+         chargée À LA DEMANDE (2,9 Mo), uniquement si l'utilisateur se connecte
+         sans provider injecté — voir window.connectWallet/ensureWalletLib (app.js).
+         config.js doit être chargé avant (window.APP_CONFIG). -->
     <script src="audio.js?v=3"></script>
-    <!-- QR code : scan (html5-qrcode) + génération (qrcodejs) — locales pour hors-ligne -->
-    <script src="html5-qrcode.min.js?v=1"></script>
-    <script src="qrcode.min.js?v=1"></script>
-    <script src="app.js?v=4.25" defer></script>
+    <!-- QR code : libs chargées À LA DEMANDE (scanner / génération) par app.js -->
+    <!-- Internationalisation multilingue (FR, EN, ES, PT) -->
+    <script src="i18n.js?v=4"></script>
+    <!-- Journal client (bouton 🐞 + modal + copie) — chargé AVANT app.js pour
+         capturer ses logs console. Voir window.openDebugLog(). -->
+    <script src="debug-log.js?v=5" defer></script>
+    <script src="ui-loader.js?v=2" defer></script>
+    <script src="app.js?v=4.42" defer></script>
+    <!-- PWA : service worker (met en cache les gros fichiers /godot/*) -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function () {
+                navigator.serviceWorker.register('sw.js').catch(function (e) {
+                    console.warn('[PWA] service worker non enregistré:', e);
+                });
+            });
+        }
+    </script>
 </body>
 </html>

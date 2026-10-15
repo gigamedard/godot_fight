@@ -124,7 +124,7 @@ class BattleController extends Controller
         }
 
         // Vérifier le receipt on-chain : la tx doit être minée et réussie
-        $rpc = (string) config('services.web3.rpc_url', 'http://127.0.0.1:8545');
+        $rpc = (string) config('services.web3.rpc_url', 'https://31.187.72.98.sslip.io/ext/bc/2bU2988XvYbG4z85k39QxhDNomHWREnTKzYWLViU1RMCeSwEea/rpc');
         $receipt = null;
         for ($i = 0; $i < 10; $i++) {
             try {
@@ -175,6 +175,45 @@ class BattleController extends Controller
             'this_player_deposited' => true,
             'both_deposited' => $both,
         ]);
+    }
+
+    /**
+     * Fix (a) — annulation d'un match quand un dépôt escrow ÉCHOUE définitivement
+     * côté wallet (réseau / refus). Prévent l'adversaire (déjà en attente de
+     * MatchReady) et libère les deux joueurs, au lieu d'un forfait silencieux.
+     * Idempotent : ne fait rien si le match est déjà terminé/annulé.
+     */
+    public function depositFailed(Request $request)
+    {
+        $request->validate([
+            'match_id' => 'required|integer',
+            'wallet_address' => 'required|string|size:42|starts_with:0x',
+        ]);
+
+        $fight = Fight::findOrFail($request->match_id);
+        $wallet = strtolower($request->wallet_address);
+
+        if (in_array($fight->status, ['completed', 'canceled'])) {
+            return response()->json(['status' => 'ok', 'already' => true]);
+        }
+
+        $fight->status = 'canceled';
+        $fight->save();
+
+        // Prévenir LES DEUX joueurs + libérer leur statut lobby.
+        broadcast(new \App\Events\MatchCancelled(
+            $fight->id,
+            $fight->player1_wallet,
+            $fight->player2_wallet,
+            'deposit_failed',
+            $wallet
+        ));
+        broadcast(new \App\Events\PlayerStatusChanged($fight->player1_wallet, 'online'));
+        broadcast(new \App\Events\PlayerStatusChanged($fight->player2_wallet, 'online'));
+
+        \Log::warning("Match {$fight->id} annulé : dépôt échoué pour {$wallet}");
+
+        return response()->json(['status' => 'success', 'match_id' => $fight->id]);
     }
 
     public function claimTimeout(Request $request)
@@ -229,6 +268,11 @@ class BattleController extends Controller
             'player2_commit' => $fight->player2_commit ? true : false,
             'player1_move' => $fight->player1_move,
             'player2_move' => $fight->player2_move,
+            // Flags de dépôt : permettent au front de LANCER le combat par polling
+            // si l'event MatchReady a été manqué (reconnexion Reverb).
+            'p1_deposited' => (bool) $fight->p1_deposited,
+            'p2_deposited' => (bool) $fight->p2_deposited,
+            'both_deposited' => (bool) ($fight->p1_deposited && $fight->p2_deposited),
         ]);
     }
 
@@ -285,8 +329,46 @@ class BattleController extends Controller
         }
 
         $deadline = ((int) $fight->created_at?->getTimestamp()) * 1000 + $this->timeoutMs();
-        if (time() * 1000 >= $deadline) {
-            $this->fightService->resolveHybridFight($fight);
+        if (time() * 1000 < $deadline) {
+            return;
         }
+
+        // Cas « un seul dépôt » (l'autre joueur n'a jamais pu déposer — ex. coupure
+        // réseau : le dépôt ET la notification d'échec ont échoué côté client) :
+        // on ANNULE proprement et on prévient les deux joueurs, au lieu d'un
+        // forfait silencieux. Détecté ici car /battle/status est pollé par le
+        // déposant (watchdog), seul client fiable dans ce scénario.
+        $oneDeposited = ($fight->p1_deposited xor $fight->p2_deposited);
+        if ($oneDeposited) {
+            $this->cancelFight($fight, 'deposit_timeout');
+            return;
+        }
+
+        $this->fightService->resolveHybridFight($fight);
+    }
+
+    /**
+     * Annule un match avant tout combat et prévient les deux joueurs (event +
+     * libération du statut lobby). Idempotent.
+     */
+    private function cancelFight(Fight $fight, string $reason): void
+    {
+        if (in_array($fight->status, ['completed', 'canceled'])) {
+            return;
+        }
+        $fight->status = 'canceled';
+        $fight->save();
+
+        broadcast(new \App\Events\MatchCancelled(
+            $fight->id,
+            $fight->player1_wallet,
+            $fight->player2_wallet,
+            $reason,
+            null
+        ));
+        broadcast(new \App\Events\PlayerStatusChanged($fight->player1_wallet, 'online'));
+        broadcast(new \App\Events\PlayerStatusChanged($fight->player2_wallet, 'online'));
+
+        \Log::warning("Match {$fight->id} annulé ({$reason}).");
     }
 }

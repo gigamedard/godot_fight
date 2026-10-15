@@ -17,3 +17,9 @@ These rules were established after significant debugging and must be strictly fo
 
 ## 4. Code Modification Safety
 *   When using replace operations on code blocks, meticulously verify that closing braces `}` and parentheses `)` of surrounding functions/callbacks are not accidentally deleted, which would cause silent syntax errors and application failure.
+
+## 5. Multi-Agent Governance & Impact Analysis Architecture
+*   All major modifications and production readiness tasks must follow the hierarchical multi-agent protocol defined in [`.agents/ORCHESTRATOR.md`](file:///g:/DEV/GODOT_GAME/.agents/ORCHESTRATOR.md).
+*   Any agent modifying code must produce an Impact Analysis Matrix (**Ajouts**, **Modifications**, **Suppressions**, **Risques & Régressions**) before editing code.
+*   Specialized sub-agents are organized by domain in `.agents/godot/`, `.agents/backend/`, `.agents/blockchain/`, `.agents/frontend/`, `.agents/devops/`, and `.agents/qa/`.
+

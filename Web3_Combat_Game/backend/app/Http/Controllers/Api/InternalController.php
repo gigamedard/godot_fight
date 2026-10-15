@@ -118,7 +118,7 @@ class InternalController extends Controller
 
         // Attente active : le perdant doit avoir un solde on-chain (les deux
         // dépôts minés). MetaMask peut prendre 12-30s pour confirmer.
-        $rpc = (string) config('services.web3.rpc_url', 'http://127.0.0.1:8545');
+        $rpc = (string) config('services.web3.rpc_url', 'https://31.187.72.98.sslip.io/ext/bc/2bU2988XvYbG4z85k39QxhDNomHWREnTKzYWLViU1RMCeSwEea/rpc');
         $loserLower = strtolower($loser);
         // calldata complet : selector userBalances(address) + address paddée
         $calldata = '0x' . $this->selectorUserBalances()

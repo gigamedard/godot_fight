@@ -2,148 +2,96 @@ import { expect } from "chai";
 import hre from "hardhat";
 const { ethers } = hre;
 
-describe("CombatGame - Battle Royale Pools", function () {
-    let CombatGame;
+// Suite conforme à CombatGame EN LIGNE (0xA2722921B753C1E76e1d9a4294204DF983746C3D).
+// Remplace l'ancienne suite obsolète (createPool/joinPool/challengePool) qui
+// testait une API supprimée et échouait déjà avant.
+describe("CombatGame (Pingala) — register, escrow de poule, règlements", function () {
     let game;
-    let owner, p1, p2, p3;
+    let owner, backendSigner, p1, p2;
+    const ONE = ethers.parseEther("1");
+    const FEE_BPS = 250n; // 2,5 %
 
     beforeEach(async function () {
-        [owner, p1, p2, p3] = await ethers.getSigners();
-        const CombatGameFactory = await ethers.getContractFactory("CombatGame");
-        game = await CombatGameFactory.deploy();
+        [owner, backendSigner, p1, p2] = await ethers.getSigners();
+        const F = await ethers.getContractFactory("CombatGame");
+        game = await F.deploy(backendSigner.address);
         await game.waitForDeployment();
     });
 
-    describe("Pool Creation and Joining", function () {
-        it("should create a pool with valid parameters", async function () {
-            const entryFee = ethers.parseEther("1.0");
-            
-            // Create a pool with PenaltyMode.OneBaseBet (0)
-            await expect(game.createPool(entryFee, 8, 0))
-                .to.emit(game, "PoolCreated")
-                .withArgs(1, entryFee, 8, 0, owner.address);
+    it("déploie owner = déployeur, backendSigner correct, feeBps = 250", async function () {
+        expect(await game.owner()).to.equal(owner.address);
+        expect(await game.backendSigner()).to.equal(backendSigner.address);
+        expect(await game.feeBps()).to.equal(250n);
+    });
 
-            const pool = await game.pools(1);
-            expect(pool.entryFee).to.equal(entryFee);
-            expect(pool.maxPlayers).to.equal(8n);
-            expect(pool.penaltyMode).to.equal(0);
-            expect(pool.isActive).to.be.true;
+    describe("register (duel, payable)", function () {
+        it("crédite userBalances et la trésorerie", async function () {
+            const stake = ONE;
+            const fee = (stake * FEE_BPS) / 10000n;
+            await game.connect(p1).register(stake, { value: stake + fee });
+            expect(await game.userBalances(p1.address)).to.equal(stake);
+            expect(await game.treasuryBalances(owner.address)).to.equal(fee);
         });
 
-        it("should allow a player to join a pool by paying entry fee + tx fee", async function () {
-            const entryFee = ethers.parseEther("10.0");
-            await game.createPool(entryFee, 4, 1); // Mode: AllBalance
-            
-            const feePercent = await game.feePercent(); // usually 50 (5%)
-            const txFee = (entryFee * feePercent) / 1000n;
-            const totalRequired = entryFee + txFee;
-
-            await expect(game.connect(p1).joinPool(1, { value: totalRequired }))
-                .to.emit(game, "PoolJoined")
-                .withArgs(1, p1.address);
-                
-            const balance = await game.poolBalances(1, p1.address);
-            expect(balance).to.equal(entryFee);
-        });
-
-        it("should revert if pool does not exist or not enough ETH sent", async function () {
-            const entryFee = ethers.parseEther("10.0");
-            await game.createPool(entryFee, 4, 1);
-            
-            await expect(game.connect(p1).joinPool(99, { value: entryFee }))
-                .to.be.revertedWith("Pool not active");
-
-            await expect(game.connect(p1).joinPool(1, { value: entryFee }))
-                .to.be.revertedWith("Incorrect value sent (must include fee)"); // Needs the 5% fee
+        it("revert si le montant n'est pas exactement stake + fee", async function () {
+            await expect(game.connect(p1).register(ONE, { value: ONE }))
+                .to.be.revertedWith("Send exact stake + fee");
         });
     });
 
-    describe("Pool Matchmaking (Challenge & Accept)", function () {
-        let entryFee;
-        let totalRequired;
-
-        beforeEach(async function () {
-            entryFee = ethers.parseEther("10.0");
-            await game.createPool(entryFee, 4, 0); // OneBaseBet
-            const feePercent = await game.feePercent();
-            totalRequired = entryFee + (entryFee * feePercent) / 1000n;
-            
-            await game.connect(p1).joinPool(1, { value: totalRequired });
-            await game.connect(p2).joinPool(1, { value: totalRequired });
-        });
-
-        it("should allow a player in the pool to challenge another player in the pool", async function () {
-            // p1 challenges p2
-            await expect(game.connect(p1).challengePool(p2.address, 1, 1))
-                .to.emit(game, "ChallengeCreated")
-                .withArgs(1, p1.address, p2.address, entryFee, 1);
-            
-            const match = await game.matches(1);
-            expect(match.challenger).to.equal(p1.address);
-            expect(match.target).to.equal(p2.address);
-            expect(match.betAmount).to.equal(entryFee); // Set to pool's entry fee
-            expect(match.poolId).to.equal(1n);
-        });
-
-        it("should revert if non-pool member challenges", async function () {
-            await expect(game.connect(p3).challengePool(p1.address, 1, 1))
-                .to.be.revertedWith("Insufficient pool balance");
-        });
-
-        it("should revert if challenging non-pool member", async function () {
-            await expect(game.connect(p1).challengePool(p3.address, 1, 1))
-                .to.be.revertedWith("Target not in pool");
-        });
-
-        it("should allow target to accept a pool challenge", async function () {
-            await game.connect(p1).challengePool(p2.address, 1, 1);
-            
-            await expect(game.connect(p2).acceptPoolChallenge(1, 2))
-                .to.emit(game, "ChallengeAccepted")
-                .withArgs(1, 2);
-                
-            const match = await game.matches(1);
-            expect(match.state).to.equal(1); // Accepted
+    describe("registerForPool (escrow de poule)", function () {
+        it("verrouille le stake dans l'escrow + prélève la fee", async function () {
+            const stake = ONE;
+            const fee = (stake * FEE_BPS) / 10000n;
+            await game.connect(p1).registerForPool(1, stake, { value: stake + fee });
+            expect(await game.poolEscrow(1, p1.address)).to.equal(stake);
+            expect(await game.poolTotal(1)).to.equal(stake);
+            expect(await game.treasuryBalances(owner.address)).to.equal(fee);
         });
     });
 
-    describe("Pool Penalty Rules", function () {
-        let entryFee;
-        
-        async function setupMatch(poolId, penaltyMode) {
-            entryFee = ethers.parseEther("10.0");
-            await game.createPool(entryFee, 4, penaltyMode);
-            const feePercent = await game.feePercent();
-            const totalRequired = entryFee + (entryFee * feePercent) / 1000n;
-            
-            await game.connect(p1).joinPool(poolId, { value: totalRequired });
-            await game.connect(p2).joinPool(poolId, { value: totalRequired });
-            
-            await game.connect(p1).challengePool(p2.address, 1, poolId);
-            await game.connect(p2).acceptPoolChallenge(1, 2);
-        }
+    describe("settleLoser (voucher backend, gain du duel)", function () {
+        it("déplace la balance du perdant vers le gagnant", async function () {
+            const stake = ONE;
+            const fee = (stake * FEE_BPS) / 10000n;
+            await game.connect(p1).register(stake, { value: stake + fee });
+            await game.connect(p2).register(stake, { value: stake + fee });
 
-        it("OneBaseBet: Loser loses 1 entryFee, Winner gains 1 entryFee", async function () {
-            await setupMatch(1, 0); // OneBaseBet
-            
-            // p1 plays 1, p2 plays 3 => p1 wins (Rock vs Scissors)
-            const secret = "0x1234567890123456789012345678901234567890123456789012345678901234";
-            const hash1 = ethers.solidityPackedKeccak256(["uint8", "string"], [1, secret]);
-            const hash2 = ethers.solidityPackedKeccak256(["uint8", "string"], [3, secret]);
-            
-            await game.connect(p1).commitMove(1, hash1);
-            await game.connect(p2).commitMove(1, hash2);
-            
-            await game.connect(p1).revealMove(1, 1, secret);
-            await expect(game.connect(p2).revealMove(1, 3, secret))
-                .to.emit(game, "MatchFinished")
-                .withArgs(1, p1.address, ethers.parseEther("20.0"));
-                
-            const bal1 = await game.poolBalances(1, p1.address);
-            const bal2 = await game.poolBalances(1, p2.address);
-            
-            expect(bal1).to.equal(ethers.parseEther("20.0")); // 10 + 10
-            expect(bal2).to.equal(0n); // 10 - 10
+            const messageHash = ethers.solidityPackedKeccak256(
+                ["address", "address", "address"],
+                [p1.address, p2.address, await game.getAddress()]
+            );
+            const sig = await backendSigner.signMessage(ethers.getBytes(messageHash));
+
+            await expect(game.connect(p1).settleLoser(p1.address, p2.address, sig))
+                .to.emit(game, "MatchSettled").withArgs(p1.address, p2.address, stake);
+            expect(await game.userBalances(p1.address)).to.equal(stake * 2n);
+            expect(await game.userBalances(p2.address)).to.equal(0n);
+        });
+    });
+
+    describe("claimPool (voucher backend)", function () {
+        it("le champion récupère le pot avec une signature valide", async function () {
+            const stake = ONE;
+            const fee = (stake * FEE_BPS) / 10000n;
+            await game.connect(p1).registerForPool(1, stake, { value: stake + fee });
+            await game.connect(p2).registerForPool(1, stake, { value: stake + fee });
+
+            const pot = await game.poolTotal(1); // 2 * stake
+            const messageHash = ethers.solidityPackedKeccak256(
+                ["uint256", "address", "uint256", "uint256", "address"],
+                [1, p1.address, pot, 1, await game.getAddress()]
+            );
+            const sig = await backendSigner.signMessage(ethers.getBytes(messageHash));
+
+            await expect(game.connect(p1).claimPool(1, pot, 1, sig)).to.emit(game, "PoolClaimed");
+            expect(await game.poolTotal(1)).to.equal(0n);
+        });
+    });
+
+    describe("setFeeBps (owner)", function () {
+        it("revert si non-owner", async function () {
+            await expect(game.connect(p1).setFeeBps(500)).to.be.revertedWith("Not owner");
         });
     });
 });

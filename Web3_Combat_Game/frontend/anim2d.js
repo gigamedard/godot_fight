@@ -455,7 +455,18 @@
     // Mapping coup → icône Lucide. NB : "fist" n'existe pas dans le bundle
     // local, on utilise "hand-metal" (poing) pour la Pierre.
     var MOVE_ICONS = { 1: 'hand-metal', 2: 'hand', 3: 'scissors' };
-    var MOVE_LABELS = { 1: 'Pierre', 2: 'Feuille', 3: 'Ciseaux' };
+    // Labels traduits via i18n.js si présent (fallback FR sinon).
+    function i2d(key, params) {
+        if (window.I18N && typeof window.I18N.t === 'function') {
+            var val = window.I18N.t(key, params);
+            if (val && val !== key) return val;
+        }
+        return null;
+    }
+    function moveLabel(n) {
+        var fallback = { 1: 'Pierre', 2: 'Feuille', 3: 'Ciseaux' };
+        return i2d('move' + (n === 1 ? 'Rock' : n === 2 ? 'Paper' : 'Scissors')) || fallback[n];
+    }
     // Couleurs néon par coup (identité visuelle §6 du PRD)
     var MOVE_COLORS = { 1: '#00E5FF', 2: '#7B2CBF', 3: '#FFC700' };
     // Émojis de secours si le SVG n'est pas encore régénéré
@@ -482,7 +493,7 @@
             var newIcon = document.createElement('i');
             newIcon.id = 'selected-move-icon';
             newIcon.setAttribute('data-lucide', MOVE_ICONS[n]);
-            newIcon.setAttribute('title', MOVE_LABELS[n]);
+            newIcon.setAttribute('title', moveLabel(n));
             icon.parentNode.replaceChild(newIcon, icon);
             if (window.lucide && typeof lucide.createIcons === 'function') {
                 lucide.createIcons();
@@ -548,7 +559,7 @@
         // Texte du HUD adapté à la phase (si pas en force2D, le badge HUD est
         // visible : indiquer l'attente de dépôt plutôt que la progression).
         var text = document.getElementById('anim2d-status-text');
-        if (text && !force2D) text.innerText = 'EN ATTENTE DES DÉPÔTS DES DEUX JOUEURS...';
+        if (text && !force2D) text.innerText = i2d('depositPending') || 'EN ATTENTE DES DÉPÔTS DES DEUX JOUEURS...';
         if (typeof window.clearSelectedMove2D === 'function') window.clearSelectedMove2D();
         if (spritesLoaded) startLoop();
     };
@@ -558,7 +569,7 @@
         var hud = document.getElementById('anim2d-hud');
         if (hud) hud.style.display = '';
         var text = document.getElementById('anim2d-status-text');
-        if (text && !force2D) text.innerText = 'INITIALISATION DU MOTEUR 3D...';
+        if (text && !force2D) text.innerText = i2d('loadingEngine') || 'INITIALISATION DU MOTEUR 3D...';
     };
 
     window.transition2Dto3D = function () {
@@ -575,6 +586,7 @@
         setTimeout(function () {
             if (isGodotReady) return;
             isGodotReady = true;
+            if (window.hideEngine3D) window.hideEngine3D();
             var layer = document.getElementById('anim2d-layer');
             if (layer) { layer.classList.add('hidden'); setTimeout(function(){layer.style.display='none';},850); }
         }, delay);
@@ -620,7 +632,7 @@
             // Phase 1 : progression des sprites 2D uniquement
             if (fill) fill.style.width = getSprites2DProgress() + '%';
             if (text && !force2D) {
-                text.innerText = 'PRÉPARATION DU COMBAT 2D (' + getSprites2DProgress() + '%)...';
+                text.innerText = i2d('engine2DPrep', { pct: getSprites2DProgress() }) || ('PRÉPARATION DU COMBAT 2D (' + getSprites2DProgress() + '%)...');
             }
             return;
         }
@@ -628,7 +640,7 @@
         if (total > 0 && fill) {
             var pct = Math.min(100, Math.round((current/total)*100));
             fill.style.width = pct + '%';
-            if (text && !force2D) text.innerText = 'MOTEUR 3D EN ARRIÈRE-PLAN (' + pct + '%)...';
+            if (text && !force2D) text.innerText = i2d('engine3DBackground', { pct: pct }) || ('MOTEUR 3D EN ARRIÈRE-PLAN (' + pct + '%)...');
         }
     };
 
@@ -642,5 +654,25 @@
     } else {
         initAll();
     }
+
+    // Changement de langue : re-traduire les statuts visibles du layer 2D.
+    window.addEventListener('languageChanged', function () {
+        try {
+            var text = document.getElementById('anim2d-status-text');
+            var layer = document.getElementById('anim2d-layer');
+            var hudVisible = layer && layer.style.display !== 'none' && !layer.classList.contains('hidden');
+            if (text && hudVisible && !force2D) {
+                // Le statut courant dépend de la phase : on ré-affiche le plus
+                // pertinent (chargement standard, le combat re-traduit à la volée).
+                if (isGodotReady) return;
+                text.innerText = i2d('loadingEngine') || 'INITIALISATION DU MOTEUR 3D...';
+            }
+            var instruct = document.querySelector('.move-bar-instruction');
+            if (instruct) {
+                instruct.setAttribute('data-i18n', 'moveBarInstruction');
+                if (window.I18N) instruct.textContent = window.I18N.t('moveBarInstruction');
+            }
+        } catch (e) { /* silencieux */ }
+    });
 
 })();

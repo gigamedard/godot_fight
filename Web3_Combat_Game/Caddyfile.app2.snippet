@@ -1,0 +1,66 @@
+# =====================================================================
+# Caddyfile.app2.snippet — App 2 « Web3 Combat Game » (Godot) front
+# =====================================================================
+# Site FRÈRE de battlepool.* (même modèle). App 2 tourne sur le même VPS,
+# upstreams en loopback (docker-compose d'App 2 bindé 127.0.0.1) :
+#   /app/*  -> 127.0.0.1:8081  = Reverb (WebSocket Laravel)
+#   /api/*  -> 127.0.0.1:8000  = API Laravel (artisan serve)
+#   /*      -> 127.0.0.1:8080  = frontend statique (export Godot Web)
+#
+# TLS auto-issu par Caddy pour le sous-domaine app2.<ip>.sslip.io.
+# ⚠️ Le bloc L1 (31.187.72.98.sslip.io) n'est PAS modifié (isolé, sibling).
+#
+# Principe : MÊME ORIGINE (comme App 1) -> plus de proxy TLS interne :8443/8444
+# /8445 côté App 2, plus de mixed content. Le front lit alors :
+#   API   : /api            (relatif)
+#   Reverb: wss://<host>/app
+#   RPC   : RPC Pingala public (HTTPS)
+# =====================================================================
+
+# >>> APP2 AUTOINSERT MARKER v1 <<<
+
+app2.31.187.72.98.sslip.io {
+	encode zstd gzip
+
+	header {
+		-Server
+		Strict-Transport-Security "max-age=31536000;"
+		X-Content-Type-Options "nosniff"
+	}
+
+	# --- WebSockets (Laravel Reverb / Echo) ---
+	@websockets path /app/*
+	handle @websockets {
+		reverse_proxy 127.0.0.1:8081 {
+			header_up Host {host}
+			header_up X-Real-IP {remote_host}
+			flush_interval -1
+		}
+	}
+
+	# --- API Laravel ---
+	handle /api/* {
+		reverse_proxy 127.0.0.1:8000 {
+			header_up Host {host}
+			header_up X-Real-IP {remote_host}
+		}
+	}
+
+	# --- Frontend statique (Godot Web) ---
+	handle {
+		reverse_proxy 127.0.0.1:8080 {
+			header_up Host {host}
+			header_up X-Real-IP {remote_host}
+			flush_interval -1
+		}
+	}
+
+	log {
+		output file /var/log/caddy/app2.log {
+			roll_size 20mb
+			roll_keep 5
+		}
+	}
+}
+
+# <<< APP2 AUTOINSERT MARKER v1 <<<

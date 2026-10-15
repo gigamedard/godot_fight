@@ -1,0 +1,19 @@
+{
+  "name": "app2-wallet-bundle",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Bundle IIFE de la couche wallet (clone de la stack App 1) pour le front statique App 2.",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "@reown/appkit": "1.8.19",
+    "@walletconnect/ethereum-provider": "2.23.10",
+    "@walletconnect/universal-provider": "2.23.10",
+    "ethers": "6.13.5"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0"
+  }
+}

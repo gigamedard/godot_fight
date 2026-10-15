@@ -27,19 +27,22 @@ export const config = {
   // Le polling (getLogs/getBlockNumber) nécessite un endpoint HTTP RPC.
   // RPC_HTTP_URL est prioritaire ; sinon on dérive de RPC_URL en convertissant
   // ws:// -> http:// (le WebSocket n'est plus utilisé : on fait du polling).
-  rpcUrl: process.env.RPC_HTTP_URL || (process.env.RPC_URL || 'ws://blockchain:8545').replace(/^ws:/, 'http:'),
+  // Par défaut : L1 Pingala Chain (chainId 99999). Plus jamais blockchain:8545.
+  rpcUrl: process.env.RPC_HTTP_URL || (process.env.RPC_URL || 'https://31.187.72.98.sslip.io/ext/bc/2bU2988XvYbG4z85k39QxhDNomHWREnTKzYWLViU1RMCeSwEea/rpc').replace(/^ws:/, 'http:'),
 
   // --- Contrat ---
-  contractAddress: (process.env.CONTRACT_ADDRESS || '0x5FbDB2315678afecb367f032d93F642f64180aa3').toLowerCase(),
+  contractAddress: (process.env.CONTRACT_ADDRESS || '0xA2722921B753C1E76e1d9a4294204DF983746C3D').toLowerCase(),
   artifactPath: process.env.ARTIFACT_PATH || '/srv/blockchain/artifacts/contracts/CombatGame.sol/CombatGame.json',
 
   // --- Bloc de déploiement (point de départ si aucun état persisté) ---
+  // Sur Pingala (vraie chaîne), renseigner le bloc RÉEL de déploiement du
+  // contrat (deployments.pingala.json → blockNumber). 0 = scan depuis genesis
+  // (très lent sur une L1).
   deploymentBlock: intEnv('DEPLOYMENT_BLOCK', 0),
 
   // --- Sécurité reorg ---
   // Nombre de blocs de confirmation requis avant de considérer un bloc final.
-  // 5-12 selon la chaîne. Hardhat local = 0 (pas de reorg), mais on garde
-  // une valeur par défaut prudente.
+  // 1-5 recommandé sur Pingala. (0 réservé au nœud Hardhat local sans reorg.)
   confirmationsRequired: intEnv('CONFIRMATIONS_REQUIRED', 5),
 
   // --- Polling ---

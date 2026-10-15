@@ -63,7 +63,7 @@ const { APP_URL, HARDHAT_WALLET, HARDHAT_PK, launchBrowser, blockGodotResources,
         return titleEl ? titleEl.innerText : "";
     });
 
-    if (roomTitle.includes('Poule #')) {
+    if (roomTitle.includes('Poule #') || roomTitle.includes('Pool #')) {
         console.log(`SUCCESS: Entered pool room! Title: ${roomTitle}`);
     } else {
         console.log("ERROR: Pool was not created or not visible.");

@@ -33,11 +33,12 @@ const AppState = {
 let onlinePlayers = []; // Mis à jour via Reverb
 
 const characters = [
-    { id: 1, name: 'Guerrier Ninja', style: 'Arts Martiaux', color: 'var(--color-orange)', photo: 'characters/p1-ninja.png?v=2' },
-    { id: 2, name: 'Mutant Cyborg', style: 'Vitesse', color: 'var(--color-blue)', photo: 'characters/p2-cyborg.png?v=2' },
-    { id: 3, name: 'Tom Frazer', style: 'Force Brute', color: 'var(--color-red)', photo: 'characters/p3-tom.png?v=2' },
-    { id: 4, name: 'Big Choco', style: 'Force Titan', color: 'var(--color-purple)', photo: 'characters/p4-mage.png?v=2' }
+    { id: 1, name: 'Guerrier Ninja', styleKey: 'charStyleMartial', style: 'Arts Martiaux', color: 'var(--color-orange)', photo: 'characters/p1-ninja.png?v=2' },
+    { id: 2, name: 'Mutant Cyborg', styleKey: 'charStyleSpeed', style: 'Vitesse', color: 'var(--color-blue)', photo: 'characters/p2-cyborg.png?v=2' },
+    { id: 3, name: 'Tom Frazer', styleKey: 'charStyleStrength', style: 'Force Brute', color: 'var(--color-red)', photo: 'characters/p3-tom.png?v=2' },
+    { id: 4, name: 'Big Choco', styleKey: 'charStyleTitan', style: 'Force Titan', color: 'var(--color-purple)', photo: 'characters/p4-mage.png?v=2' }
 ];
+
 
 const brLobbies = [
     { id: 1, name: 'Tournoi Alpha', players: 14, max: 16, entry: 'Gratuit' },
@@ -61,7 +62,7 @@ function checkURLParameters() {
                 return res.json();
             })
             .then(pool => {
-                document.getElementById('invite-message').innerText = `Vous êtes invité à la poule #${pool.id} (Mise: ${pool.entry_fee} TKN). Voulez-vous rejoindre ?`;
+                document.getElementById('invite-message').innerText = `Vous êtes invité à la poule #${pool.id} (Mise: ${pool.entry_fee} TST). Voulez-vous rejoindre ?`;
                 document.getElementById('btn-accept-invite').onclick = () => {
                     stopInviteModalGuard();
                     document.getElementById('invite-modal').style.display = 'none';
@@ -95,24 +96,26 @@ function copyInviteCode() {
 // Génère ou rafraîchit le QR code dans le conteneur cible avec fond blanc et quiet zone
 function renderQRCodeInBox(qrBox, payload) {
     if (!qrBox || !payload) return;
-    if (typeof QRCode === 'undefined') {
-        showToast("Générateur QR non chargé.", "error");
-        return;
-    }
-    qrBox.innerHTML = '';
-    qrBox.style.background = '#ffffff';
-    qrBox.style.padding = '14px';
-    qrBox.style.borderRadius = '12px';
-    qrBox.style.boxShadow = '0 6px 24px rgba(0, 0, 0, 0.6)';
-    qrBox.style.display = 'inline-block';
+    // Lazy-loading : la lib de génération QR n'est chargée qu'à l'usage.
+    ensureQrLibs().then(() => {
+        qrBox.innerHTML = '';
+        qrBox.style.background = '#ffffff';
+        qrBox.style.padding = '14px';
+        qrBox.style.borderRadius = '12px';
+        qrBox.style.boxShadow = '0 6px 24px rgba(0, 0, 0, 0.6)';
+        qrBox.style.display = 'inline-block';
 
-    new QRCode(qrBox, {
-        text: payload,
-        width: 256,
-        height: 256,
-        colorDark: "#000000",
-        colorLight: "#ffffff",
-        correctLevel: QRCode.CorrectLevel.Q
+        new QRCode(qrBox, {
+            text: payload,
+            width: 256,
+            height: 256,
+            colorDark: "#000000",
+            colorLight: "#ffffff",
+            correctLevel: QRCode.CorrectLevel.Q
+        });
+    }).catch(e => {
+        console.error("[App2] générateur QR indisponible:", e);
+        showToast("Générateur QR indisponible.", "error");
     });
 }
 
@@ -152,7 +155,7 @@ window.joinPoolByCode = function() {
                 return res.json();
             })
             .then(pool => {
-                document.getElementById('invite-message').innerText = `Vous êtes invité à la poule #${pool.id} (Mise: ${pool.entry_fee} TKN). Voulez-vous rejoindre ?`;
+                document.getElementById('invite-message').innerText = `Vous êtes invité à la poule #${pool.id} (Mise: ${pool.entry_fee} TST). Voulez-vous rejoindre ?`;
                 document.getElementById('btn-accept-invite').onclick = () => {
                     stopInviteModalGuard();
                     document.getElementById('invite-modal').style.display = 'none';
@@ -244,21 +247,236 @@ function navigateTo(screenId) {
 // NOUVEAU FLOW D'ENTRÉE : SPLASH → LANGUE → CONNEXION → MODE → PERSONNAGE
 // ============================================================
 
+// Helper i18n central : traduit via I18N si disponible, sinon renvoie la clé
+// (les dictionnaires français servent de fallback natif dans i18n.js).
+function tr(key, params) {
+    if (window.I18N && typeof window.I18N.t === 'function') {
+        const val = window.I18N.t(key, params);
+        if (val && val !== key) return val;
+    }
+    return key;
+}
+
+// Réaction à un changement de langue : re-render de toutes les vues
+// dynamiques actuellement visibles (les vues statiques sont couvertes par
+// I18N.applyLanguage via [data-i18n]).
+window.addEventListener('languageChanged', () => {
+    try {
+        if (AppState.currentScreen === 'screen-main') renderDuelLobby();
+        if (AppState.currentScreen === 'screen-br') renderBRLobby();
+        if (AppState.currentScreen === 'screen-pool-room' && AppState.currentPoolId) renderPoolRoom();
+        if (AppState.currentScreen === 'screen-character') {
+            const grid = document.getElementById('character-grid');
+            if (grid) renderCharacterSelect();
+            const sel = AppState.selectedCharacter;
+            if (sel) {
+                document.querySelectorAll('.char-card').forEach(el => el.classList.remove('selected'));
+                const card = document.getElementById(`char-${sel.id}`);
+                if (card) card.classList.add('selected');
+            }
+        }
+        const poolTitle = document.getElementById('pool-room-title');
+        if (poolTitle && AppState.currentPoolId) poolTitle.innerText = tr('poolTitle', { id: AppState.currentPoolId });
+    } catch (e) {
+        console.warn("[i18n] Re-render après changement de langue :", e);
+    }
+});
+
 // Étape 1 : Sélection de la langue
 window.selectLanguage = function(lang) {
     AppState.language = lang;
-    localStorage.setItem('web3combat_lang', lang);
-    navigateTo('screen-connect');
+    if (window.I18N) {
+        window.I18N.applyLanguage(lang);
+    } else {
+        localStorage.setItem('web3combat_lang', lang);
+    }
+    // Si l'utilisateur est sur l'écran de sélection de langue, avancer vers la connexion
+    const activeScreen = document.querySelector('.screen.active');
+    if (activeScreen && activeScreen.id === 'screen-language') {
+        navigateTo('screen-connect');
+    }
 };
 
-// Étape 2 : Connexion du wallet — MetaMask obligatoire, sinon restauration localStorage.
-// Le fallback "compte Hardhat aléatoire" est ABANDONNÉ. HARDHAT_ACCOUNTS n'est utilisé
-// que pour : (a) l'entrée portail dev (DOMContentLoaded, l.2029-2038), (b) le mode e2e
-// explicite ?player=N (comptes déterministes, jamais aléatoires).
-window.connectWallet = async function() {
-    const urlParams = new URLSearchParams(window.location.search);
-    const playerParam = urlParams.get('player');
+// Étape 2 : Connexion du wallet — provider injecté (MetaMask/Core) ou WalletConnect
+// (Core Mobile via deeplink), sinon restauration localStorage. Aucun mock de dev.
+// Chargement paresseux du bundle wallet (web3.iife.js ~2,9 Mo) : uniquement
+// quand une connexion WalletConnect / Core Mobile est nécessaire (aucun provider
+// injecté). Évite de charger 2,9 Mo pour tous les utilisateurs d'extension.
+let _walletLibPromise = null;
+function ensureWalletLib() {
+    if (window.App2Wallet) return Promise.resolve(window.App2Wallet);
+    if (_walletLibPromise) return _walletLibPromise;
+    _walletLibPromise = new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'web3.iife.js?v=1';
+        s.async = true;
+        s.onload = () => window.App2Wallet ? resolve(window.App2Wallet) : reject(new Error('App2Wallet absent après chargement'));
+        s.onerror = () => { _walletLibPromise = null; reject(new Error('Échec de chargement du bundle wallet')); };
+        document.head.appendChild(s);
+    });
+    return _walletLibPromise;
+}
 
+// ── Lazy-loading : injection des libs à la demande (économie au démarrage) ──
+const _libPromises = {};
+// Anti-doublon : l'annulation d'un match peut arriver par 2 voies (event
+// MatchCancelled ET watchdog) → n'afficher le message qu'UNE fois par match.
+const _cancelledNotified = new Set();
+function notifyMatchCancelledOnce(matchId, message) {
+    if (_cancelledNotified.has(String(matchId))) return;
+    _cancelledNotified.add(String(matchId));
+    showToast(message, "error", 0);
+}
+function loadScript(src) {
+    if (_libPromises[src]) return _libPromises[src];
+    _libPromises[src] = new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = src;
+        s.async = true;
+        s.onload = () => resolve();
+        s.onerror = () => { delete _libPromises[src]; reject(new Error('Échec chargement ' + src)); };
+        document.head.appendChild(s);
+    });
+    return _libPromises[src];
+}
+function ensureEthers() {
+    return (typeof ethers !== 'undefined') ? Promise.resolve() : loadScript('ethers.min.js?v=1');
+}
+function ensureEchoLibs() {
+    return Promise.all([
+        (typeof Echo !== 'undefined') ? Promise.resolve() : loadScript('echo.iife.js?v=1'),
+        (typeof Pusher !== 'undefined') ? Promise.resolve() : loadScript('pusher.min.js?v=1'),
+    ]);
+}
+function ensureQrLibs() {
+    return Promise.all([
+        (typeof Html5Qrcode !== 'undefined') ? Promise.resolve() : loadScript('html5-qrcode.min.js?v=1'),
+        (typeof QRCode !== 'undefined') ? Promise.resolve() : loadScript('qrcode.min.js?v=1'),
+    ]);
+}
+
+// ── Pont provider EIP-1193 vers le parent (App1) quand App2 est embarqué ─────
+// App2 dans l'iframe App1 n'a pas de provider injecté exploitable (cross-origin)
+// et le deeplink WalletConnect est inopérant dans une iframe. On délègue donc les
+// requêtes RPC au parent, qui détient le wallet. Contrat (côté App1) :
+//   reçu   : { app2Bridge:true, type:'WALLET_RPC', id, request:{method,params} }
+//   renvoi : { app2Bridge:true, type:'WALLET_RPC_RESULT', id, result?/error? }
+function setupParentProvider() {
+    if (window.parent === window) return null;
+    if (window.__bridgeProvider) return window.__bridgeProvider;
+    let _id = 0; const _pending = {};
+    window.addEventListener('message', function (e) {
+        const d = e.data;
+        if (!d || d.app2Bridge !== true || d.type !== 'WALLET_RPC_RESULT') return;
+        const cb = _pending[d.id];
+        if (!cb) return;
+        delete _pending[d.id];
+        if (d.error) cb.reject(d.error); else cb.resolve(d.result);
+    });
+    window.__bridgeProvider = {
+        isMetaMask: false,
+        request: function (args) {
+            return new Promise(function (resolve, reject) {
+                const id = ++_id;
+                _pending[id] = { resolve: resolve, reject: reject };
+                try { window.parent.postMessage({ app2Bridge: true, type: 'WALLET_RPC', id: id, request: args }, '*'); }
+                catch (e) { delete _pending[id]; reject({ code: -32603, message: 'postMessage failed' }); return; }
+                setTimeout(function () {
+                    if (_pending[id]) { delete _pending[id]; reject({ code: -32603, message: 'bridge timeout' }); }
+                }, 15000);
+            });
+        },
+        on: function () {}, removeListener: function () {}, removeAllListeners: function () {}
+    };
+    return window.__bridgeProvider;
+}
+
+// ── Mobile / WalletConnect : préparer le wallet avant une signature/tx. ──────
+// iOS gèle le socket WalletConnect quand la dApp passe en arrière-plan (Core
+// ouvert) : la demande de signature/tx n'atteint jamais le wallet. Pattern WC
+// mobile officiel : (1) restaurer la session si nettoyée, (2) ré-ouvrir le wallet
+// via son deeplink AVANT d'émettre la requête. No-op sur le chemin injecté.
+async function prepareWalletForTx() {
+    if (typeof window.ethereum !== 'undefined') return; // wallet injecté : popup native
+    if (!window.App2Wallet) return;
+    try {
+        await window.App2Wallet.ensurePingalaNetwork();
+    } catch (e) { /* non bloquant */ }
+    try {
+        if (typeof window.App2Wallet.ensureWalletVisibleForTx === 'function') {
+            window.App2Wallet.ensureWalletVisibleForTx('core');
+        }
+    } catch (e) { /* non bloquant */ }
+}
+
+// Recrée le provider/signer depuis une session WalletConnect vivante (retour de
+// Core, ou provider jamais instancié) SANS ouvrir de modal ni re-pairer.
+async function restoreWcProviderIfAny() {
+    if (typeof window.ethereum !== 'undefined') return false;
+    let hasWc = false;
+    try { hasWc = Object.keys(localStorage || {}).some(k => String(k).startsWith('wc@2')); } catch (e) { /* noop */ }
+    if (!window.App2Wallet && !hasWc) return false;
+    try {
+        await ensureWalletLib();
+        // ensurePingalaNetwork() reconstruit le provider WC depuis le storage si
+        // nécessaire (sinon getWcSessionAddress() est null après un reload iOS).
+        await window.App2Wallet.ensurePingalaNetwork();
+        if (!window.App2Wallet.getWcSessionAddress || !window.App2Wallet.getWcSessionAddress()) return false;
+        provider = await window.App2Wallet.getProvider('walletconnect');
+        signer = await provider.getSigner();
+        if (signer && typeof CONTRACT_ABI !== 'undefined') {
+            contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
+        }
+        console.log('[App2] Session WalletConnect restaurée (provider/signer prêts).');
+        return true;
+    } catch (e) {
+        console.log('[App2] restoreWcProviderIfAny :', e);
+        return false;
+    }
+}
+
+// Au retour sur la page (ex. après approbation dans Core), restaurer la session
+// WC et rafraîchir le solde — corrige le badge resté sur « -- » en mobile.
+// Message d'erreur lisible pour une signature/tx wallet (refus, solde, timeout).
+function describeTxError(err) {
+    const code = err && (err.code || (err.info && err.info.error && err.info.error.code));
+    const msg = (err && (err.shortMessage || err.message)) || '';
+    if (code === 4001 || /user rejected|User denied|rejected|refus/i.test(msg)) return "Transaction refusée dans le wallet.";
+    if (/insufficient funds|exceeds balance|insufficient/i.test(msg)) return "Solde TST insuffisant pour cette transaction.";
+    if (/timeout|timed out/i.test(msg)) return "Délai dépassé (wallet). Réessayez.";
+    return msg || "Erreur inconnue.";
+}
+
+// Pré-contrôle du solde natif : évite d'ouvrir le wallet si le solde est
+// insuffisant (message clair au lieu d'un échec de tx).
+async function hasEnoughNative(totalWei) {
+    try {
+        if (!provider) { await restoreWcProviderIfAny(); }
+        if (!provider || !AppState.walletAddress) return true; // laisser la tx tenter
+        const bal = await provider.getBalance(AppState.walletAddress);
+        if (bal < totalWei) {
+            showToast(`Solde TST insuffisant : ${parseFloat(ethers.formatEther(bal)).toFixed(4)} dispo, ${parseFloat(ethers.formatEther(totalWei)).toFixed(4)} requis.`, "error");
+            return false;
+        }
+        return true;
+    } catch (e) {
+        return true; // en cas de doute, on laisse la tx tenter
+    }
+}
+
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+        restoreWcProviderIfAny().then(ok => { if (ok) updateBalance(); });
+    }
+});
+
+window.connectWallet = async function() {
+    // Lazy-loading : ethers + echo/pusher sont téléchargés ICI (à la connexion),
+    // pas au chargement de la page. Présents avant tout usage (initWeb3, Echo).
+    try { await ensureEthers(); } catch (e) { console.error('[App2] ethers non chargé:', e); }
+    try { await ensureEchoLibs(); } catch (e) { console.warn('[App2] echo/pusher non chargés:', e); }
+    const urlParams = new URLSearchParams(window.location.search);
+    void urlParams;
     // Si le wallet a déjà été injecté par l'auto-entrée portail (DOMContentLoaded),
     // on le préserve et on saute toute la détection. Le portail est la source de vérité.
     const portalWallet = AppState.walletAddress;
@@ -266,7 +484,6 @@ window.connectWallet = async function() {
     const isPortalEntry = portalWallet && (portalMode === 'DUEL' || portalMode === 'BATTLE');
 
     const savedWallet = localStorage.getItem('web3combat_wallet'); // adresse (jamais de clé privée)
-    const savedPk = localStorage.getItem('web3combat_pk');         // session dev explicite uniquement
 
     // Fonction interne commune : affichage + initWeb3 + navigation.
     const finishConnection = function() {
@@ -281,11 +498,8 @@ window.connectWallet = async function() {
         // Initialiser le provider Web3 (signataire déjà détecté).
         // Sans clé privée et sans MetaMask (ex. restauration localStorage['user']),
         // aucun signer n'est disponible : initWeb3 est sauté (mode dégradé).
-        if (!AppState.privateKey && typeof window.ethereum === 'undefined') {
-            console.log("[App2] Pas de clé privée ni MetaMask : initWeb3 sauté (mode dégradé).");
-        } else {
-            initWeb3();
-        }
+        // initWeb3 choisit le provider (injecté / WalletConnect) ou reste en mode dégradé.
+        initWeb3();
 
         // Si le mode a déjà été défini par le portail hôte (paramètre URL ?mode=),
         // sauter l'écran de choix de mode et aller directement à la sélection de personnage.
@@ -303,21 +517,9 @@ window.connectWallet = async function() {
         return;
     }
 
-    // ── 2. Mode e2e explicite ?player=N : compte Hardhat DÉTERMINISTE (jamais aléatoire).
-    if (playerParam !== null && typeof HARDHAT_ACCOUNTS !== 'undefined' && HARDHAT_ACCOUNTS.length > 0) {
-        let accIndex = parseInt(playerParam, 10);
-        if (isNaN(accIndex) || accIndex < 0 || accIndex >= HARDHAT_ACCOUNTS.length) accIndex = 1;
-        const account = HARDHAT_ACCOUNTS[accIndex];
-        AppState.walletAddress = account.address;
-        AppState.privateKey = account.privateKey;
-        localStorage.setItem('web3combat_wallet', account.address);
-        localStorage.setItem('web3combat_pk', account.privateKey);
-        console.log("[App2] Mode e2e ?player=" + playerParam + " → compte Hardhat #" + accIndex);
-        finishConnection();
-        return;
-    }
+    // ── 2. Mode e2e ?player=N : SUPPRIMÉ (mock de dev). Production = wallet réel.
 
-    // ── 3. MetaMask présent : connexion demandée à l'utilisateur.
+    // ── 3. MetaMask / Core extension présent : connexion demandée à l'utilisateur.
     if (typeof window.ethereum !== 'undefined') {
         try {
             let accounts = [];
@@ -341,9 +543,7 @@ window.connectWallet = async function() {
                 return;
             }
             AppState.walletAddress = accounts[0];
-            AppState.privateKey = null;
-            // Persistance : l'ADRESSE uniquement. La restauration passera par eth_accounts
-            // (silencieux) — jamais de clé privée stockée côté frontend.
+            // Persistance : l'ADRESSE uniquement (jamais de clé privée côté frontend).
             localStorage.setItem('web3combat_wallet', AppState.walletAddress);
             console.log("[App2] Wallet MetaMask connecté :", AppState.walletAddress);
             finishConnection();
@@ -353,6 +553,55 @@ window.connectWallet = async function() {
             showToast("Connexion MetaMask refusée par l'utilisateur.", "error");
             return; // rester sur screen-connect, l'utilisateur peut réessayer
         }
+    }
+
+    // ── 3ter. App2 embarqué (iframe App1) : provider PONT vers le parent.
+    //    App1 détient le wallet ; App2 lui délègue les requêtes EIP-1193.
+    //    Si le parent n'implémente pas le pont, on échoue VITE (pas de spin).
+    if (typeof window.ethereum === 'undefined' && window.parent !== window) {
+        const bp = setupParentProvider();
+        if (bp) {
+            try {
+                await Promise.race([
+                    bp.request({ method: 'eth_chainId' }),
+                    new Promise((_, rej) => setTimeout(() => rej(new Error('bridge timeout')), 3000))
+                ]);
+                const accounts = (await bp.request({ method: 'eth_requestAccounts' })) || [];
+                if (accounts.length) {
+                    AppState.walletAddress = accounts[0];
+                    localStorage.setItem('web3combat_wallet', AppState.walletAddress);
+                    window.__useParentProvider = true;
+                    console.log('[App2] Wallet via pont App1 :', AppState.walletAddress);
+                    finishConnection();
+                    return;
+                }
+            } catch (e) {
+                console.warn('[App2] pont App1 indisponible :', e && e.message);
+            }
+        }
+        showToast("Connexion wallet : connectez-vous dans App1 (le jeu hérite de la connexion).", "error", 0);
+        return;
+    }
+
+    // ── 3bis. Aucun provider injecté : WalletConnect (Core Mobile via deeplink).
+    //    Déclenché par un clic utilisateur (deeplink/modal l'exige). Le bundle
+    //    wallet (~2,9 Mo) est chargé paresseusement ici seulement.
+    try {
+        await ensureWalletLib();
+        showToast("Ouverture de WalletConnect…", "info");
+        if (window.showLoader) window.showLoader("Connexion au wallet…");
+        const wcProvider = await window.App2Wallet.getProvider('walletconnect');
+        const wcSigner = await wcProvider.getSigner();
+        AppState.walletAddress = await wcSigner.getAddress();
+        localStorage.setItem('web3combat_wallet', AppState.walletAddress);
+        console.log("[App2] Wallet connecté (WalletConnect) :", AppState.walletAddress);
+        finishConnection();
+        return;
+    } catch (e) {
+        console.warn("[App2] WalletConnect indisponible ou annulé :", e);
+        // Non bloquant : on tente les restaurations locales ci-dessous.
+    } finally {
+        if (window.hideLoader) window.hideLoader();
     }
 
     // ── 4. Pas de MetaMask : user localStorage (ancien login direct sur 8080,
@@ -366,96 +615,21 @@ window.connectWallet = async function() {
     const app1Wallet = app1User && app1User.wallet_address ? app1User.wallet_address : null;
     if (app1Wallet) {
         AppState.walletAddress = app1Wallet;
-        AppState.privateKey = null;
         console.log("[App2] Wallet restauré depuis localStorage['user'] :", app1Wallet);
         finishConnection();
         return;
     }
 
-    // ── 5. Session dev explicite déjà persistée (paire adresse + clé privée stockée
-    //       par ?player=N ou par un e2e). Ce n'est PAS un fallback de connexion.
-    if (savedWallet && savedPk) {
-        AppState.walletAddress = savedWallet;
-        AppState.privateKey = savedPk;
-        console.log("[App2] Session dev restaurée depuis localStorage :", savedWallet);
-        finishConnection();
-        return;
-    }
-
-    // ── 6. Rien du tout : erreur bloquante (aucun compte généré, aucune clé stockée).
-    showToast("Aucun wallet détecté. Installez MetaMask, utilisez une clé de démo ou connectez-vous via le portail.", "error");
+    // ── 5. Rien du tout : erreur bloquante (aucune clé générée/stockée).
+    showToast("Aucun wallet détecté. Installez MetaMask/Core ou connectez-vous via le portail.", "error");
     return;
 };
 
-// ── Connexion sans MetaMask (mobile/démo) : clé privée collée ────────────────
-// FIX mobile : MetaMask Mobile refuse fréquemment les RPC http:// en clair
-// (chaîne locale) et le navigateur intégré coupe le VPN. Pour tester sur
-// téléphone avec les comptes Hardhat, on permet de coller une clé privée de
-// DÉMO directement. Le flux reprend ensuite exactement celui de ?player=N
-// (adresse + clé en localStorage → finishConnection).
-window.toggleDemoKeyBox = function() {
-    const box = document.getElementById('demo-key-box');
-    if (!box) return;
-    const show = box.style.display === 'none';
-    box.style.display = show ? 'block' : 'none';
-    if (show) {
-        // Raccourcis : les 3 premiers comptes Hardhat (clés publiques de test)
-        const quick = document.getElementById('demo-quick-accounts');
-        if (quick && typeof HARDHAT_ACCOUNTS !== 'undefined') {
-            quick.innerHTML = '';
-            HARDHAT_ACCOUNTS.slice(0, 3).forEach((acc, i) => {
-                const btn = document.createElement('button');
-                btn.className = 'demo-quick-btn';
-                btn.type = 'button';
-                btn.innerHTML = '<span class="demo-quick-addr">' + acc.address.substring(0, 8) + '…' + acc.address.substring(36, 42) + '</span><span class="demo-quick-label">Cpte #' + i + '</span>';
-                btn.onclick = () => {
-                    const input = document.getElementById('demo-private-key');
-                    if (input) input.value = acc.privateKey;
-                };
-                quick.appendChild(btn);
-            });
-        }
-    }
-};
+// ── Saisie de clé privée de démo : SUPPRIMÉE (production). ───────────────────
+// L'authentification passe uniquement par un wallet réel : provider injecté
+// (MetaMask/Core extension) ou WalletConnect (Core Mobile via deeplink).
+// Voir window.connectWallet et la couche window.App2Wallet (bundle web3.iife.js).
 
-window.connectWithDemoKey = async function() {
-    const input = document.getElementById('demo-private-key');
-    if (!input) return;
-    let pk = (input.value || '').trim();
-    if (!pk) {
-        showToast("Collez une clé privée de démo (ou cliquez un raccourci Hardhat).", "error");
-        return;
-    }
-    if (!pk.startsWith('0x')) pk = '0x' + pk;
-    // Validation : 32 bytes
-    if (!/^0x[0-9a-fA-F]{64}$/.test(pk)) {
-        showToast("Clé privée invalide (attendu : 64 caractères hexadécimaux).", "error");
-        return;
-    }
-    try {
-        const wallet = new ethers.Wallet(pk);
-        const address = wallet.address;
-        console.log("[Demo] Connexion par clé privée de démo :", address);
-        // Persistance : même mécanique que ?player=N (session dev explicite)
-        AppState.walletAddress = address;
-        AppState.privateKey = pk;
-        localStorage.setItem('web3combat_wallet', address);
-        localStorage.setItem('web3combat_pk', pk);
-        showToast("Connecté en mode démo : " + address.substring(0, 8) + "...", "success");
-        // Réutilise la fin du flux connectWallet (initWeb3 + navigation).
-        // NB : initWeb3 utilise AppState.privateKey → provider JsonRpc direct,
-        // aucune interaction MetaMask nécessaire.
-        initWeb3();
-        const statusBox = document.getElementById('wallet-status-box');
-        const addrDisplay = document.getElementById('wallet-addr-display');
-        if (statusBox) statusBox.style.display = 'block';
-        if (addrDisplay) addrDisplay.textContent = address;
-        setTimeout(() => navigateTo('screen-mode'), 400);
-    } catch (e) {
-        console.error("[Demo] Connexion clé démo échouée :", e);
-        showToast("Clé privée invalide ou non signable.", "error");
-    }
-};
 
 // Étape 3 : Choix du mode de jeu
 window.selectGameMode = function(mode) {
@@ -475,12 +649,9 @@ window.selectGameMode = function(mode) {
 // personnage ou de mode ferme l'iframe au lieu de naviguer (évite le cycle
 // retour → screen-mode → re-choix → re-boucle).
 window.navGoBack = function() {
-    if (window.parent !== window) {
-        if (AppState.currentScreen === 'screen-character' || AppState.currentScreen === 'screen-mode') {
-            window.parent.postMessage({ type: 'BATTLEPOOL_CLOSE' }, '*');
-            return;
-        }
-    }
+    // Retour normal dans le flow — y compris dans l'iframe App1 : l'utilisateur
+    // peut revenir de la sélection de personnage vers le choix de mode
+    // (le sélecteur de mode en haut n'est alors plus nécessaire).
     const backMap = {
         'screen-language': 'screen-splash',
         'screen-connect': 'screen-language',
@@ -586,6 +757,34 @@ window.addEventListener('message', function (e) {
                 localStorage.removeItem('auth_token');
             } catch (err) { /* ignore */ }
             break;
+
+        // Le portail hôte impose un changement de langue (sélecteur App 1) :
+        // on applique la même langue sur App 2 (UI + localStorage + re-render).
+        case 'BATTLEPOOL_LANG': {
+            const lang = typeof e.data.lang === 'string'
+                ? e.data.lang.trim().toLowerCase().split(/[-_]/)[0]
+                : null;
+            if (lang && window.I18N && window.I18N.SUPPORTED_LANGUAGES.includes(lang)) {
+                window.selectLanguage(lang);
+                // En mode portail, la navigation vers screen-connect est
+                // indésirable : l'utilisateur est déjà dans le flow de jeu.
+                if (AppState.currentScreen !== 'screen-language') {
+                    AppState.language = lang;
+                }
+            }
+            break;
+        }
+
+        // Sélecteur de mode de l'hôte App 1 (iframe) : bascule le mode SANS
+        // recharger l'application (conserve l'état, le provider pont et le solde).
+        case 'BATTLEPOOL_SET_MODE': {
+            const m = (typeof e.data.mode === 'string') ? e.data.mode.toUpperCase() : null;
+            if ((m === 'DUEL' || m === 'BATTLE' || m === 'SPIRIT') && typeof window.selectGameMode === 'function') {
+                console.log('[App2] Mode imposé par App1 :', m);
+                window.selectGameMode(m);
+            }
+            break;
+        }
     }
 });
 
@@ -601,7 +800,7 @@ let provider;
 let signer;
 let contract;
 
-window.showToast = function(message, type = 'info') {
+window.showToast = function(message, type = 'info', ms = 3500) {
     const container = document.getElementById('toast-container');
     if (!container) return;
     
@@ -614,6 +813,8 @@ window.showToast = function(message, type = 'info') {
     
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
+    const sticky = (ms <= 0); // persistant : ne disparaît qu'au clic (annulations…)
+    if (sticky) toast.style.cursor = 'pointer';
     
     let icon = 'info';
     if (type === 'success') icon = 'check-circle-2';
@@ -623,10 +824,16 @@ window.showToast = function(message, type = 'info') {
     container.appendChild(toast);
     lucide.createIcons();
     
-    setTimeout(() => {
+    const dismiss = () => {
         toast.style.animation = "fadeOut 0.5s ease forwards";
         setTimeout(() => toast.remove(), 500);
-    }, 3000);
+    };
+    if (sticky) {
+        toast.addEventListener('click', dismiss);          // clic pour fermer
+    } else {
+        setTimeout(dismiss, ms);
+    }
+    return toast;
 };
 
 window.changeCharacter = function() {
@@ -685,26 +892,47 @@ window.changeCharacter = function() {
 async function initWeb3() {
     const abi = typeof CONTRACT_ABI !== 'undefined' ? CONTRACT_ABI : (typeof COMBAT_GAME_ABI !== 'undefined' ? COMBAT_GAME_ABI : null);
     if (typeof ethers !== 'undefined' && abi) {
-        // AUTH UNIFIÉE : si une clé privée locale existe (mode dev Hardhat), on l'utilise.
-        // Sinon, on passe par le provider injecté (MetaMask déjà connecté par App 1).
-        if (AppState.privateKey) {
-            // FIX mobile : l'RPC doit pointer vers LE PC (l'hôte qui sert la page),
-            // jamais 127.0.0.1 (qui désignerait le téléphone lui-même en mobile).
-            // Priorité : config.js RPC_URL (dynamique sur hostname) ; HTTPS si la
-            // page est servie en https (mixed content interdit).
-            const pageIsHttps = window.location.protocol === 'https:';
-            const rpcUrl = (APP_CONFIG && APP_CONFIG.RPC_URL)
-                ? APP_CONFIG.RPC_URL.replace('http://', pageIsHttps ? 'https://' : 'http://')
-                : "http://127.0.0.1:8545";
-            console.log("[App2] provider RPC :", rpcUrl);
-            provider = new ethers.JsonRpcProvider(rpcUrl);
-            signer = new ethers.Wallet(AppState.privateKey, provider);
-        } else if (window.ethereum) {
+        // Fournisseur Web3 : wallet injecté (MetaMask / Core extension) sinon
+        // session WalletConnect déjà active (Core Mobile). AUCUN mock : si aucun
+        // signer n'est disponible, on reste en mode dégradé (lecture seule).
+        if (window.ethereum) {
+            if (typeof window.ensurePingalaNetwork === 'function') {
+                try { await window.ensurePingalaNetwork(window.ethereum); } catch (e) { /* non bloquant */ }
+            }
             provider = new ethers.BrowserProvider(window.ethereum);
             signer = await provider.getSigner();
+        } else if (window.parent !== window && (window.__bridgeProvider || setupParentProvider())) {
+            // App2 embarqué dans l'iframe App1 (cross-origin) : provider PONT vers
+            // App1 qui détient le wallet. REQUIS AUSSI sur le chemin d'auto-entrée
+            // portail (?mode=…), sinon provider=null → initWeb3 en « mode dégradé »
+            // et SOLDE on-chain absent (régression constatée 2026-10-15).
+            window.__useParentProvider = true;
+            provider = new ethers.BrowserProvider(window.__bridgeProvider);
+            signer = await provider.getSigner();
         } else {
-            showToast("Aucun wallet détecté. Connectez-vous via App 1 (wallet Web3) puis réessayez.", "error");
-            return;
+            // Pas de wallet injecté : tenter une session WalletConnect existante
+            // (reconnexion silencieuse). Le bundle wallet est chargé à la demande.
+            let hasWcStorage = false;
+            try { hasWcStorage = Object.keys(localStorage || {}).some(k => String(k).startsWith('wc@2')); } catch (e) { /* noop */ }
+            if (!window.App2Wallet && !hasWcStorage) {
+                console.log("[App2] initWeb3 : aucun provider disponible (mode dégradé, lecture seule).");
+                return;
+            }
+            try {
+                await ensureWalletLib();
+                if (!window.App2Wallet.getWcSessionAddress || !window.App2Wallet.getWcSessionAddress()) {
+                    console.log("[App2] initWeb3 : pas de session WalletConnect active (mode dégradé).");
+                    return;
+                }
+                provider = await window.App2Wallet.getProvider('walletconnect');
+                signer = await provider.getSigner();
+            } catch (e) {
+                console.log("[App2] initWeb3 : WalletConnect indisponible (mode dégradé).", e);
+                return;
+            }
+        }
+        if (!AppState.walletAddress) {
+            try { AppState.walletAddress = await signer.getAddress(); } catch (e) { /* garde l'adresse portail */ }
         }
         contract = new ethers.Contract(CONTRACT_ADDRESS, abi, signer);
         
@@ -766,8 +994,17 @@ async function initSessionKey() {
     let savedSignature = localStorage.getItem('web3combat_session_sig_' + AppState.walletAddress);
     
     if (!savedSignature) {
-        showToast("Signature de la clé de session requise (MetaMask va s'ouvrir une seule fois)...", "info");
-        savedSignature = await signer.signMessage(authMessage);
+        showToast("Signature de la clé de session requise (le wallet va s'ouvrir une seule fois)...", "info");
+        await prepareWalletForTx();
+        if (window.showLoader) window.showLoader("Signature de la clé de session…");
+        try {
+            savedSignature = await signer.signMessage(authMessage);
+        } catch (e) {
+            showToast(describeTxError(e), "error");
+            return;
+        } finally {
+            if (window.hideLoader) window.hideLoader();
+        }
         localStorage.setItem('web3combat_session_sig_' + AppState.walletAddress, savedSignature);
         
         await fetch(`${APP_CONFIG.API_BASE_URL}/auth/session-key`, {
@@ -840,12 +1077,12 @@ async function refreshClaimable() {
         // encore consolidé (après settle le gagnant a stake*2 - frais →
         // toujours > stake du match). On masque : le bouton apparaîtra après
         // la consolidation avec le bon montant.
-        // NB : base_bet_amount est stocké en DB en UNITÉS ETH (ex. "100" = 100
-        // ETH) tandis que pending est en WEI (100e18) — conversion obligatoire,
+        // NB : base_bet_amount est stocké en DB en UNITÉS TST (ex. "100" = 100
+        // TST) tandis que pending est en WEI (100e18) — conversion obligatoire,
         // sinon la comparaison échoue toujours et le filtre est inopérant.
         let lastStake = null;
         if (lastResult && lastResult.base_bet_amount && Number(lastResult.base_bet_amount) > 0) {
-            lastStake = ethers.parseEther(String(lastResult.base_bet_amount)); // ETH → wei
+            lastStake = ethers.parseEther(String(lastResult.base_bet_amount)); // TST → wei
         }
         if (lastResult && lastResult.result && lastResult.result !== 'draw'
             && lastResult.loser !== null && lastResult.loser !== 'both'
@@ -871,9 +1108,12 @@ async function refreshClaimable() {
 
 function updateBalance() {
     if (!provider) {
-        // Mode dégradé (aucun signer : portail MetaMask non-Hardhat sans extension,
-        // ou restauration localStorage['user']) : pas de provider on-chain.
-        console.log("[App2] updateBalance ignoré : pas de provider (mode dégradé).");
+        // Pas de provider : tenter une restauration WalletConnect silencieuse
+        // (retour de Core) puis relire ; sinon mode dégradé (lecture seule).
+        restoreWcProviderIfAny().then(ok => {
+            if (ok) updateBalance();
+            else console.log("[App2] updateBalance ignoré : pas de provider (mode dégradé).");
+        });
         return;
     }
     if(AppState.walletAddress) {
@@ -899,14 +1139,14 @@ function updateBalance() {
                 try { bal = await provider.getBalance(AppState.walletAddress); } catch (e) { return; }
             }
             const el = document.getElementById('wallet-balance');
-            if (el) el.innerText = parseFloat(ethers.formatEther(bal)).toFixed(2) + " ETH";
+            if (el) el.innerText = parseFloat(ethers.formatEther(bal)).toFixed(2) + " " + (APP_CONFIG.NATIVE_SYMBOL || 'TST');
             // Deuxième lecture après 3s : si le retrait vient d'être miné, la
             // première lecture peut renvoyer l'ancien solde.
             setTimeout(async () => {
                 const bal2 = await readNative();
                 if (bal2 === null) return;
                 const el2 = document.getElementById('wallet-balance');
-                if (el2 && bal2 !== bal) el2.innerText = parseFloat(ethers.formatEther(bal2)).toFixed(2) + " ETH";
+                if (el2 && bal2 !== bal) el2.innerText = parseFloat(ethers.formatEther(bal2)).toFixed(2) + " " + (APP_CONFIG.NATIVE_SYMBOL || 'TST');
             }, 3000);
         })();
 
@@ -921,7 +1161,7 @@ async function claimPendingFunds() {
     }
     // ICDM : le retrait est soumis par le SERVEUR (voucher backend + withdrawTo
     // via le backend signer) — le joueur ne signe rien, ne paie pas de gaz,
-    // et voit ses ETH arriver directement dans son wallet. Idempotent :
+    // et voit ses TST arriver directement dans son wallet. Idempotent :
     // solde 0 → "rien à retirer".
     try {
         // Lire le solde on-chain réel (userBalances du contrat) pour un message
@@ -935,6 +1175,7 @@ async function claimPendingFunds() {
             return;
         }
         showToast("Transfert de vos gains en cours (sans signature)...", "info");
+        if (window.showLoader) window.showLoader("Transfert des gains…");
         const res = await fetch(`${APP_CONFIG.API_BASE_URL}/withdraw/push`, {
             method: "POST",
             headers: { "Content-Type": "application/json", "Accept": "application/json" },
@@ -961,6 +1202,8 @@ async function claimPendingFunds() {
     } catch (err) {
         console.error(err);
         showToast("Erreur lors de la récupération des fonds.", "error");
+    } finally {
+        if (window.hideLoader) window.hideLoader();
     }
 }
 
@@ -992,12 +1235,18 @@ function renderCharacterSelect() {
         card.id = `char-${char.id}`;
         card.onclick = () => selectCharacter(char);
 
+        // Nom et style traduits (clés char1..char4 / charStyle*) — le nom de
+        // l'objet reste français (source de vérité Godot/anim2d).
+        const charNameKey = 'char' + char.id;
+        const charName = tr(charNameKey);
+        const charStyle = tr(char.styleKey || char.style);
+
         card.innerHTML = `
             <div class="char-avatar" style="background-color: ${char.color}">
-                <img src="${char.photo}" alt="${char.name}" class="char-photo" loading="lazy">
+                <img src="${char.photo}" alt="${charName}" class="char-photo" loading="lazy">
             </div>
-            <h3>${char.name}</h3>
-            <p style="font-size: 0.75rem; color: var(--text-gray-400); margin-top: 0.25rem;">${char.style}</p>
+            <h3>${charName}</h3>
+            <p style="font-size: 0.75rem; color: var(--text-gray-400); margin-top: 0.25rem;">${charStyle}</p>
         `;
         grid.appendChild(card);
     });
@@ -1041,32 +1290,14 @@ function performLogin() {
     const isPortalEntry = portalWallet && (portalMode === 'DUEL' || portalMode === 'BATTLE');
 
     if (!isPortalEntry) {
-        const urlParams = new URLSearchParams(window.location.search);
-        const playerParam = urlParams.get('player');
-
-        // Mode e2e explicite ?player=N : compte Hardhat DÉTERMINISTE (jamais aléatoire),
-        // ré-écrit à chaque fois pour rester cohérent avec connectWallet().
-        if (playerParam !== null) {
-            if (typeof HARDHAT_ACCOUNTS === 'undefined' || HARDHAT_ACCOUNTS.length === 0) {
-                showToast("Les clés Hardhat ne sont pas chargées. Veuillez générer le fichier hardhat_keys.js.", "error");
-                return;
-            }
-            let accIndex = parseInt(playerParam, 10);
-            if (isNaN(accIndex) || accIndex < 0 || accIndex >= HARDHAT_ACCOUNTS.length) accIndex = 1;
-            const account = HARDHAT_ACCOUNTS[accIndex];
-            AppState.walletAddress = account.address;
-            AppState.privateKey = account.privateKey;
-            localStorage.setItem('web3combat_wallet', account.address);
-            localStorage.setItem('web3combat_pk', account.privateKey);
-        } else if (AppState.walletAddress) {
+        // Aucun mock : le wallet doit déjà être établi par connectWallet().
+        if (AppState.walletAddress) {
             // Wallet déjà établi par connectWallet() (MetaMask, localStorage['user']
             // ou session dev restaurée) : on le GARDE tel quel. Aucun fallback
             // aléatoire : un compte Hardhat ne doit jamais remplacer le wallet réel.
             // (ancien comportement : écrasement par Math.random() → SUPPRIMÉ)
         } else {
             // Sécurité (non atteignable dans le flow normal : connectWallet bloque avant).
-            const savedWallet = localStorage.getItem('web3combat_wallet');
-            const savedPk = localStorage.getItem('web3combat_pk');
             let app1User = null;
             try {
                 app1User = JSON.parse(localStorage.getItem('user') || 'null');
@@ -1075,14 +1306,10 @@ function performLogin() {
             }
             const app1Wallet = app1User && app1User.wallet_address ? app1User.wallet_address : null;
 
-            if (savedWallet && savedPk) {
-                AppState.walletAddress = savedWallet;
-                AppState.privateKey = savedPk;
-            } else if (app1Wallet) {
+            if (app1Wallet) {
                 AppState.walletAddress = app1Wallet;
-                AppState.privateKey = null;
             } else {
-                showToast("Aucun wallet détecté. Installez MetaMask ou connectez-vous via le portail.", "error");
+                showToast("Aucun wallet détecté. Installez MetaMask/Core ou connectez-vous via le portail.", "error");
                 return;
             }
         }
@@ -1091,13 +1318,8 @@ function performLogin() {
     window.gameConfig.walletAddress = AppState.walletAddress;
     console.log("Wallet connecté :", AppState.walletAddress);
 
-    // Initialisation du Provider Web3 et Contrat
-    // En mode portail sans clé privée ni MetaMask, on saute initWeb3.
-    if (isPortalEntry && !AppState.privateKey && typeof window.ethereum === 'undefined') {
-        console.log("[App2] performLogin: entrée portail sans clé privée ni MetaMask, initWeb3 sauté.");
-    } else {
-        initWeb3();
-    }
+    // Initialisation du Provider Web3 et Contrat (dégradé si aucun provider).
+    initWeb3();
 
     // Mise à jour du badge dans le Menu Principal
     document.getElementById('player-badge').innerHTML = `
@@ -1106,10 +1328,10 @@ function performLogin() {
         </div>
         <div class="player-badge-info">
             <div class="player-badge-name">${AppState.selectedCharacter.name} — ${AppState.playerName || AppState.walletAddress.substring(0,6) + '...'}</div>
-            <div class="player-badge-balance" id="wallet-balance">-- ETH</div>
+            <div class="player-badge-balance" id="wallet-balance">-- ${(window.APP_CONFIG && window.APP_CONFIG.NATIVE_SYMBOL) || 'TST'}</div>
             <div id="pending-funds-container" style="display:none; margin-top: 5px;">
                 <button class="btn btn-challenge" style="font-size: 0.8rem; padding: 0.5rem;" onclick="claimPendingFunds()">
-                    Réclamer <span id="pending-amount">0</span> ETH
+                    Réclamer <span id="pending-amount">0</span> ${(window.APP_CONFIG && window.APP_CONFIG.NATIVE_SYMBOL) || 'TST'}
                 </button>
             </div>
         </div>
@@ -1223,7 +1445,7 @@ function performLogin() {
                 AppState.currentChallengerChar = e.challengerChar || 2;
                 
                 const shortId = e.challengerId.substring(0,6) + '...' + e.challengerId.substring(e.challengerId.length - 4);
-                document.getElementById('challenge-text').innerText = `${shortId} vous met au défi pour ${e.betAmount} ETH !`;
+                document.getElementById('challenge-text').innerText = tr('challengeReceivedShort', { challenger: shortId, bet: e.betAmount });
                 
                 const actions = document.getElementById('challenge-modal-actions');
                 if (actions) actions.style.display = 'flex';
@@ -1250,6 +1472,22 @@ function performLogin() {
                 console.log("FIX ICDM : les deux dépôts sont confirmés — lancement du combat.", e);
                 AppState.depositsDone = true;
                 launchCombat(e);
+            })
+            .listen('MatchCancelled', (e) => {
+                // Fix (a) : un dépôt a échoué définitivement → match annulé.
+                console.log("Match annulé :", e);
+                const me = AppState.walletAddress ? AppState.walletAddress.toLowerCase() : '';
+                const iAmCanceller = e.cancelledBy && String(e.cancelledBy).toLowerCase() === me;
+                notifyMatchCancelledOnce(e.matchId, iAmCanceller
+                    ? "Match annulé : votre dépôt a échoué."
+                    : "L'adversaire n'a pas pu déposer — match annulé.");
+                if (AppState.currentMatchId == e.matchId || AppState.pendingDepositMatchId == e.matchId) {
+                    const cm = document.getElementById('challenge-modal');
+                    if (cm) cm.style.display = 'none';
+                    if (typeof window.toggleAnim2D === 'function') window.toggleAnim2D(false);
+                    if (typeof window.resetMatchState === 'function') window.resetMatchState();
+                    navigateTo('screen-main');
+                }
             })
             .listen('ChallengeDeclined', (e) => {
                 console.log("Défi refusé par :", e.targetId);
@@ -1308,7 +1546,7 @@ function renderDuelLobby(playersToRender = onlinePlayers) {
     list.innerHTML = '';
 
     if (playersToRender.length === 0) {
-        list.innerHTML = '<p class="empty-state">Aucun combattant trouvé.</p>';
+        list.innerHTML = `<p class="empty-state">${tr('noFighters')}</p>`;
         return;
     }
 
@@ -1320,10 +1558,10 @@ function renderDuelLobby(playersToRender = onlinePlayers) {
         const shortId = player.id.substring(0,6) + '...' + player.id.substring(player.id.length - 4);
         
         let cardStyle = "";
-        let buttonHtml = `<button class="btn btn-challenge" id="btn-chal-${player.id}" onclick="openBetModal('${player.id}')">Défier</button>`;
+        let buttonHtml = `<button class="btn btn-challenge" id="btn-chal-${player.id}" onclick="openBetModal('${player.id}')">${tr('challenge')}</button>`;
         if (player.status === 'in-game') {
             cardStyle = "opacity: 0.5; filter: grayscale(100%); pointer-events: none;";
-            buttonHtml = `<button class="btn btn-waiting" id="btn-chal-${player.id}" disabled><i data-lucide="swords" width="16" height="16" style="margin-right: 0.5rem"></i> En combat</button>`;
+            buttonHtml = `<button class="btn btn-waiting" id="btn-chal-${player.id}" disabled><i data-lucide="swords" width="16" height="16" style="margin-right: 0.5rem"></i> ${tr('inCombatBtn')}</button>`;
         }
 
         card.innerHTML = `
@@ -1416,9 +1654,10 @@ function filterLobby(query) {
 let html5QrcodeInstance = null;
 let _qrScanHandled = false;
 
-function openQRScanner() {
+async function openQRScanner() {
     document.getElementById('qr-modal').style.display = 'flex';
-    if (typeof Html5Qrcode === 'undefined') {
+    // Lazy-loading : lib de scan QR chargée à l'ouverture du scanner.
+    try { await ensureQrLibs(); } catch (e) {
         showToast("Le scanner QR n'a pas pu être chargé.", "error");
         return;
     }
@@ -1509,7 +1748,7 @@ function onScanSuccess(decodedText) {
                 return res.json();
             })
             .then(pool => {
-                showToast(`Battle #${pool.id} trouvée (mise ${pool.entry_fee} TKN) — rejoindre...`, "success");
+                showToast(`Battle #${pool.id} trouvée (mise ${pool.entry_fee} TST) — rejoindre...`, "success");
                 joinPool(pool.id);
             })
             .catch(err => {
@@ -1545,7 +1784,7 @@ function openBetModal(playerId) {
     
     const statsEl = document.getElementById('bet-stats');
     if (statsEl) {
-        statsEl.innerText = `Mise Max : ${maxBet} ETH | Mise Min : ${minBet > 0 ? minBet : '--'} ETH`;
+        statsEl.innerText = `Mise Max : ${maxBet} TST | Mise Min : ${minBet > 0 ? minBet : '--'} TST`;
     }
     
     document.getElementById('bet-modal').style.display = 'flex';
@@ -1696,13 +1935,15 @@ document.getElementById('btn-decline-challenge').addEventListener('click', async
 async function depositForMatch(amountEth) {
     if (!contract || !AppState.walletAddress || !amountEth || Number(amountEth) <= 0) return false;
     try {
-        showToast(`Dépôt de ${amountEth} ETH sur la blockchain...`, "info");
+        showToast(`Dépôt de ${amountEth} TST sur la blockchain...`, "info");
         const stakeWei = ethers.parseEther(String(amountEth));
         // Commission serveur (2,5 % par défaut, reconfigurable via feeBps sur le contrat)
         const feeBps = typeof contract.feeBps === 'function' ? Number(await contract.feeBps()) : 250;
         const feeWei = stakeWei * BigInt(feeBps) / 10000n;
         const totalWei = stakeWei + feeWei;
-        showToast(`Dépôt de ${amountEth} ETH (mise) + ${ethers.formatEther(feeWei)} ETH (frais)...`, "info");
+        showToast(`Dépôt de ${amountEth} TST (mise) + ${ethers.formatEther(feeWei)} TST (frais)...`, "info");
+        if (!(await hasEnoughNative(totalWei))) return false;
+        await prepareWalletForTx();
         const tx = await contract.register(stakeWei, { value: totalWei });
         await tx.wait();
         showToast("Dépôt confirmé sur la blockchain !", "success");
@@ -1710,7 +1951,7 @@ async function depositForMatch(amountEth) {
         return true;
     } catch (err) {
         console.error("Erreur de dépôt:", err);
-        showToast("Échec du dépôt on-chain : " + (err.shortMessage || err.message || "erreur"), "error");
+        showToast("Échec du dépôt on-chain : " + describeTxError(err), "error");
         return false;
     }
 }
@@ -1720,12 +1961,15 @@ async function depositForMatch(amountEth) {
 async function depositForPool(poolId, amountEth) {
     if (!contract || !AppState.walletAddress || !poolId || !amountEth || Number(amountEth) <= 0) return false;
     try {
-        showToast(`Dépôt de ${amountEth} ETH dans l'escrow de la poule...`, "info");
+        showToast(`Dépôt de ${amountEth} TST dans l'escrow de la poule...`, "info");
         const stakeWei = ethers.parseEther(String(amountEth));
         const feeBps = typeof contract.feeBps === 'function' ? Number(await contract.feeBps()) : 250;
         const feeWei = stakeWei * BigInt(feeBps) / 10000n;
         const totalWei = stakeWei + feeWei;
-        showToast(`Escrow +${amountEth} ETH (mise) + ${ethers.formatEther(feeWei)} ETH (frais)...`, "info");
+        showToast(`Escrow +${amountEth} TST (mise) + ${ethers.formatEther(feeWei)} TST (frais)...`, "info");
+        if (!(await hasEnoughNative(totalWei))) return false;
+        await prepareWalletForTx();
+        if (window.showLoader) window.showLoader("Dépôt dans la poule…");
         const tx = await contract.registerForPool(BigInt(poolId), stakeWei, { value: totalWei });
         await tx.wait();
         showToast("Mise verrouillée dans l'escrow de la poule !", "success");
@@ -1733,8 +1977,10 @@ async function depositForPool(poolId, amountEth) {
         return true;
     } catch (err) {
         console.error("Erreur de dépôt en poule:", err);
-        showToast("Échec du dépôt en poule : " + (err.shortMessage || err.message || "erreur"), "error");
+        showToast("Échec du dépôt en poule : " + describeTxError(err), "error");
         return false;
+    } finally {
+        if (window.hideLoader) window.hideLoader();
     }
 }
 
@@ -1772,9 +2018,11 @@ async function claimPoolGains(poolId, winnerAddress) {
             return;
         }
         showToast("Réclamation du pot en cours...", "info");
+        await prepareWalletForTx();
+        if (window.showLoader) window.showLoader("Réclamation du pot…");
         const tx = await contract.claimPool(BigInt(data.pool_id), BigInt(data.amount), BigInt(data.nonce), data.signature);
         await tx.wait();
-        showToast(`🏆 Pot de ${ethers.formatEther(totalWei)} ETH récupéré !`, "success");
+        showToast(`🏆 Pot de ${ethers.formatEther(totalWei)} TST récupéré !`, "success");
         AppState.claimingPool = false;
         updateBalance();
         return;
@@ -1783,6 +2031,7 @@ async function claimPoolGains(poolId, winnerAddress) {
         showToast("Erreur lors de la réclamation du pot.", "error");
     } finally {
         AppState.claimingPool = false;
+        if (window.hideLoader) window.hideLoader();
     }
 }
 
@@ -1823,7 +2072,9 @@ async function executeMatchOnChain(e) {
     const txHash = await submitDepositTx(betAmount);
     if (!txHash) {
         console.error("[Match] Dépôt échoué — annulation du match.");
-        showToast("Dépôt on-chain échoué — match annulé.", "error");
+        showToast("Dépôt on-chain échoué — match annulé.", "error", 0);
+        // Fix (a) : annuler le match côté serveur + prévenir l'adversaire.
+        notifyDepositFailed(e.matchId, AppState.walletAddress);
         // Masquer le layer 2D d'attente (retour au lobby)
         if (typeof window.toggleAnim2D === 'function') window.toggleAnim2D(false);
         window.resetMatchState();
@@ -1831,18 +2082,24 @@ async function executeMatchOnChain(e) {
         return;
     }
     notifyDepositToBackend(e.matchId, txHash);
+    // Watchdog : si l'adversaire ne dépose pas, le serveur ANNULE et prévient
+    // (visible) au lieu d'un forfait silencieux — cf. cancelFight backend.
+    waitForOpponentDeposit(e.matchId);
 }
 
 // Soumet la tx register (MetaMask) et retourne le tx hash (ou null si échec).
 async function submitDepositTx(betAmount) {
     if (!contract || !AppState.walletAddress || !betAmount || Number(betAmount) <= 0) return null;
     try {
-        showToast(`Dépôt de ${betAmount} ETH sur la blockchain...`, "info");
+        showToast(`Dépôt de ${betAmount} TST sur la blockchain...`, "info");
         const stakeWei = ethers.parseEther(String(betAmount));
         const feeBps = typeof contract.feeBps === 'function' ? Number(await contract.feeBps()) : 250;
         const feeWei = stakeWei * BigInt(feeBps) / 10000n;
         const totalWei = stakeWei + feeWei;
-        showToast(`Dépôt de ${betAmount} ETH (mise) + ${ethers.formatEther(feeWei)} ETH (frais)...`, "info");
+        showToast(`Dépôt de ${betAmount} TST (mise) + ${ethers.formatEther(feeWei)} TST (frais)...`, "info");
+        if (!(await hasEnoughNative(totalWei))) return null;
+        await prepareWalletForTx();
+        if (window.showLoader) window.showLoader("Validation du dépôt on-chain…");
         const tx = await contract.register(stakeWei, { value: totalWei });
         const receipt = await tx.wait();
         showToast("Dépôt confirmé sur la blockchain !", "success");
@@ -1850,8 +2107,10 @@ async function submitDepositTx(betAmount) {
         return receipt.hash || tx.hash;
     } catch (err) {
         console.error("Erreur de dépôt:", err);
-        showToast("Échec du dépôt on-chain : " + (err.shortMessage || err.message || "erreur"), "error");
+        showToast("Échec du dépôt on-chain : " + describeTxError(err), "error");
         return null;
+    } finally {
+        if (window.hideLoader) window.hideLoader();
     }
 }
 
@@ -1890,6 +2149,59 @@ async function notifyDepositToBackend(matchId, txHash) {
     console.error("[Match] Impossible de notifier le backend du dépôt (20 essais).");
 }
 
+// Fix (a) : prévient le backend qu'un dépôt a échoué définitivement → le serveur
+// annule le match et prévient l'adversaire (plus de forfait silencieux).
+async function notifyDepositFailed(matchId, wallet) {
+    try {
+        await fetch(`${APP_CONFIG.API_BASE_URL}/battle/deposit-failed`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Accept": "application/json" },
+            body: JSON.stringify({ match_id: matchId, wallet_address: wallet })
+        });
+        console.log("[Match] Dépôt échoué notifié au backend (match annulé).");
+    } catch (e) {
+        console.error("[Match] notifyDepositFailed:", e);
+    }
+}
+
+// Watchdog côté DÉPOSANT : poll /battle/status (qui, côté serveur, ANNULE le
+// match si un seul joueur a déposé après la deadline — cas « l'adversaire a
+// perdu le réseau »). Sort proprement du lobby sur 'canceled' avant combat.
+// S'arrête dès que le combat démarre (MatchReady → AppState.depositsDone).
+async function waitForOpponentDeposit(matchId) {
+    for (let i = 0; i < 30; i++) { // ~90 s
+        await new Promise(r => setTimeout(r, 3000));
+        if (AppState.depositsDone) return;             // combat lancé
+        if (AppState.currentMatchId != matchId) return; // autre état
+        try {
+            const res = await fetch(`${APP_CONFIG.API_BASE_URL}/battle/status/${matchId}`, { headers: { 'Accept': 'application/json' } });
+            if (!res.ok) continue;
+            const s = await res.json();
+            // Filet de sécurité : si MatchReady a été MANQUÉ (reconnexion Reverb),
+            // le serveur dit « les deux ont déposé » → on lance le combat ici.
+            if (s.both_deposited && s.status === 'waiting_for_commits') {
+                console.log("[Match] both_deposited vu au polling → lancement du combat (MatchReady manqué ?)");
+                AppState.depositsDone = true;
+                launchCombat({ matchId: matchId, player1: s.player1_wallet, player2: s.player2_wallet });
+                return;
+            }
+            if (s.status === 'canceled') {
+                notifyMatchCancelledOnce(matchId, "L'adversaire n'a pas déposé — match annulé.");
+                if (typeof window.toggleAnim2D === 'function') window.toggleAnim2D(false);
+                if (typeof window.resetMatchState === 'function') window.resetMatchState();
+                navigateTo('screen-main');
+                return;
+            }
+            if (s.status === 'completed') {
+                showToast("Match terminé sans combat.", "info", 8000);
+                if (typeof window.resetMatchState === 'function') window.resetMatchState();
+                navigateTo('screen-main');
+                return;
+            }
+        } catch (e) { /* réseau : retry au prochain tick */ }
+    }
+}
+
 // FIX ICDM #1 : lance le combat — appelé par l'event MatchReady (les deux
 // dépôts escrow confirmés on-chain).
 function launchCombat(e) {
@@ -1909,7 +2221,7 @@ function launchCombat(e) {
 // --- GÉNÉRATION ÉCRAN BATTLE ROYALE ---
 async function renderBRLobby() {
     const list = document.getElementById('br-list');
-    list.innerHTML = '<p class="empty-state">Recherche de poules...</p>';
+    list.innerHTML = `<p class="empty-state">${tr('searchingPools')}</p>`;
 
     try {
         const res = await fetch(`${APP_CONFIG.API_BASE_URL}/pools`);
@@ -1917,7 +2229,7 @@ async function renderBRLobby() {
         
         list.innerHTML = '';
         if (pools.length === 0) {
-            list.innerHTML = '<p class="empty-state">Aucune poule publique ouverte.</p>';
+            list.innerHTML = `<p class="empty-state">${tr('noPools')}</p>`;
             return;
         }
 
@@ -1933,8 +2245,8 @@ async function renderBRLobby() {
                 </div>
                 <div class="br-header">
                     <div>
-                        <h3 style="color: white; font-size: 1.1rem;">Poule #${lobby.id} ${lobby.penalty_mode == 1 ? '(All-In)' : ''}</h3>
-                        <span class="br-tag">${lobby.entry_fee} TKN</span>
+                        <h3 style="color: white; font-size: 1.1rem;">${tr('poolTitle', { id: lobby.id })} ${lobby.penalty_mode == 1 ? tr('poolAllIn') : ''}</h3>
+                        <span class="br-tag">${lobby.entry_fee} TST</span>
                     </div>
                     <div class="br-players">
                         <span>${lobby.players_count}</span>
@@ -1942,13 +2254,13 @@ async function renderBRLobby() {
                     </div>
                 </div>
                 <button class="btn btn-join ${isFull ? 'full' : ''}" ${isFull ? 'disabled' : ''} onclick="joinPool(${lobby.id})">
-                    ${isFull ? 'Salon Complet' : 'Rejoindre la file'}
+                    ${isFull ? tr('poolFullBtn') : tr('poolJoin')}
                 </button>
             `;
             list.appendChild(card);
         });
     } catch(e) {
-        list.innerHTML = '<p class="empty-state">Erreur de connexion.</p>';
+        list.innerHTML = `<p class="empty-state">${tr('poolsError')}</p>`;
     }
 }
 
@@ -2115,11 +2427,11 @@ window.animationFinished = function() {
     const { godotResult, ethPayout } = AppState.pendingResult;
     
     if (godotResult === 1) {
-        showToast(`Victoire ! Vous avez gagné ${ethPayout} ETH !`, 'success');
+        showToast(tr('victoryGains', { amount: ethPayout }), 'success');
     } else if (godotResult === 0) {
-        showToast(`Égalité ! Vous récupérez votre mise.`, 'info');
+        showToast(tr('drawRefund'), 'info');
     } else {
-        showToast(`Défaite... Vous avez perdu le match.`, 'error');
+        showToast(tr('defeatMsg'), 'error');
     }
 
     // Le perdant n'a rien à réclamer : masquer le bouton claim immédiatement.
@@ -2609,6 +2921,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const urlParams = new URLSearchParams(window.location.search);
     const modeParam = urlParams.get('mode');
     const walletParam = urlParams.get('wallet');
+
+    // Langue injectée par le portail hôte (?lang= / ?language=) : appliquée
+    // AVANT tout affichage (priorité sur la détection localStorage/navigateur).
+    const portalLang = urlParams.get('lang') || urlParams.get('language');
+    if (portalLang && window.I18N) {
+        const norm = String(portalLang).trim().toLowerCase().split(/[-_]/)[0];
+        if (window.I18N.SUPPORTED_LANGUAGES.includes(norm)) {
+            console.log("[App2] Langue reçue du portail :", norm);
+            AppState.language = norm;
+            window.I18N.applyLanguage(norm);
+        }
+    }
+
     if (modeParam) {
         const mode = modeParam.toUpperCase();
         if (mode === 'DUEL' || mode === 'BATTLE') {
@@ -2621,23 +2946,9 @@ document.addEventListener('DOMContentLoaded', () => {
             // sa clé privée pour pouvoir signer les commits/transactions on-chain.
             if (walletParam) {
                 AppState.walletAddress = walletParam;
-                AppState.privateKey = null;
                 console.log("[App2] Wallet reçu du portail :", walletParam);
-                // Recherche de la clé privée dans HARDHAT_ACCOUNTS (match case-insensitive)
-                if (typeof HARDHAT_ACCOUNTS !== 'undefined') {
-                    const match = HARDHAT_ACCOUNTS.find(
-                        a => a.address.toLowerCase() === walletParam.toLowerCase()
-                    );
-                    if (match) {
-                        AppState.privateKey = match.privateKey;
-                        console.log("[App2] Clé privée Hardhat retrouvée pour ce wallet.");
-                    }
-                }
+                // (Plus de récupération de clé privée Hardhat : mock de dev supprimé.)
             }
-            // Masquer la flèche de retour sur l'écran de sélection de personnage
-            // quand on vient du portail (l'iframe sera fermée par le bouton du portail).
-            const btnBackChar = document.getElementById('btn-back-character');
-            if (btnBackChar) btnBackChar.style.display = 'none';
             window.connectWallet();
             return;
         }
@@ -2801,9 +3112,9 @@ async function handlePoolRoundStarted(e) {
     try {
         if (e.winner) {
             const isWinner = e.winner.toLowerCase() === AppState.walletAddress.toLowerCase();
-            document.getElementById('pool-room-status').innerText = isWinner ? '🏆 Vous êtes le champion !' : `Champion : ${e.winner.slice(0,10)}...`;
+            document.getElementById('pool-room-status').innerText = isWinner ? tr('youAreChampion') : tr('championIs', { winner: e.winner.slice(0,10) });
             document.getElementById('pool-room-status').style.color = isWinner ? 'gold' : 'var(--color-red)';
-            showToast(isWinner ? '🏆 Vous avez remporté la poule !' : `Poule terminée ! Vainqueur : ${e.winner.slice(0,10)}...`, isWinner ? 'success' : 'info');
+            showToast(isWinner ? tr('youAreChampion') : tr('championIs', { winner: e.winner.slice(0,10) }), isWinner ? 'success' : 'info');
 
             // La consolidation du pot (winner-takes-all) est assurée côté serveur :
             // le champion peut directement réclamer ses gains. On rafraîchit le solde
@@ -2820,16 +3131,16 @@ async function handlePoolRoundStarted(e) {
             const quitText = document.getElementById('quit-pool-text');
             if (btnQuit && quitText) {
                 btnQuit.disabled = false;
-                quitText.innerText = isWinner ? '🏆 Réclamer les gains et Quitter' : '← Retour au lobby';
+                quitText.innerText = isWinner ? tr('quitPoolClaim') : tr('quitPoolBack');
             }
             return;
         }
 
-        document.getElementById('pool-room-status').innerText = "Round en cours...";
+        document.getElementById('pool-room-status').innerText = tr('poolRoundInProgress');
         document.getElementById('pool-room-status').style.color = "var(--color-red)";
         
         if (e.waitingPlayer && e.waitingPlayer.toLowerCase() === AppState.walletAddress.toLowerCase()) {
-            showToast("Vous êtes exempté pour ce round ! Attendez le prochain.", "info");
+            showToast(tr('poolExempted'), "info");
             return;
         }
         
@@ -2862,7 +3173,7 @@ async function handlePoolRoundStarted(e) {
 
 async function renderPoolRoom() {
     if (!AppState.currentPoolId) return;
-    document.getElementById('pool-room-title').innerText = "Poule #" + AppState.currentPoolId;
+    document.getElementById('pool-room-title').innerText = tr('poolTitle', { id: AppState.currentPoolId });
     
     try {
         const res = await fetch(`${APP_CONFIG.API_BASE_URL}/pools/${AppState.currentPoolId}`);
@@ -2908,21 +3219,21 @@ async function renderPoolRoom() {
                 const isWinner = winnerWallet === AppState.walletAddress.toLowerCase();
                 
                 btnQuit.disabled = false;
-                quitText.innerText = isWinner ? '🏆 Réclamer les gains et Quitter' : '← Retour au lobby';
+                quitText.innerText = isWinner ? tr('quitPoolClaim') : tr('quitPoolBack');
                 document.getElementById('pool-room-status').innerText = winnerWallet
-                    ? (isWinner ? '🏆 Vous êtes le champion !' : `Champion : ${winnerWallet.slice(0,10)}...`)
-                    : 'Poule terminée (aucun vainqueur)';
+                    ? (isWinner ? tr('youAreChampion') : tr('championIs', { winner: winnerWallet.slice(0,10) }))
+                    : tr('poolFinishedNoWinner');
                 document.getElementById('pool-room-status').style.color = isWinner ? 'gold' : 'var(--color-red)';
                 updateBalance();
             } else if (pCount >= mPlayers) {
                 btnQuit.disabled = true;
-                quitText.innerText = "Matchs en cours...";
-                document.getElementById('pool-room-status').innerText = "La poule est pleine, la bataille commence !";
+                quitText.innerText = tr('quitPoolMatches');
+                document.getElementById('pool-room-status').innerText = tr('poolFull');
                 document.getElementById('pool-room-status').style.color = '';
             } else {
                 btnQuit.disabled = false;
-                quitText.innerText = "Quitter la poule";
-                document.getElementById('pool-room-status').innerText = "En attente de joueurs...";
+                quitText.innerText = tr('quitPoolDefault');
+                document.getElementById('pool-room-status').innerText = tr('poolWaiting');
                 document.getElementById('pool-room-status').style.color = '';
             }
         }
@@ -2947,7 +3258,7 @@ async function checkPoolElimination(godotResult, matchId) {
             
             const me = data.players.find(p => p.wallet_address.toLowerCase() === AppState.walletAddress.toLowerCase());
             if (!me || me.status === 'eliminated') {
-                showToast("Vous êtes éliminé de la poule !", "error");
+                showToast(tr('poolEliminated'), "error");
                 quitPool(false);
             }
         }
@@ -2971,9 +3282,9 @@ async function quitPool(claim = true) {
                 if (winnerWallet && winnerWallet.wallet_address.toLowerCase() === AppState.walletAddress.toLowerCase()) {
                     await claimPoolGains(AppState.currentPoolId, AppState.walletAddress);
                 }
-                showToast("Vous pouvez fermer ce panneau.", "success");
+                showToast(tr('poolClosePanel'), "success");
             } else {
-                showToast("Vous avez quitté l'interface de la poule.", "info");
+                showToast(tr('poolLeftInterface'), "info");
             }
         } catch(e) {
             console.error("Erreur lors de la sortie de poule:", e);

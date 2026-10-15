@@ -36,13 +36,13 @@ return [
     ],
 
     'web3' => [
-        'contract_address' => env('CONTRACT_ADDRESS', '0x5FbDB2315678afecb367f032d93F642f64180aa3'),
+        'contract_address' => env('CONTRACT_ADDRESS', '0xA2722921B753C1E76e1d9a4294204DF983746C3D'),
         'backend_signer_key' => env('WEB3_BACKEND_SIGNER_KEY'),
         'node_path' => env('WEB3_NODE_PATH', 'node'),
         'consolidate_script' => env('WEB3_CONSOLIDATE_SCRIPT', base_path('../blockchain/scripts/consolidate_pool.js')),
         'settle_script' => env('WEB3_SETTLE_SCRIPT', base_path('../blockchain/scripts/settle_fight.js')),
         'withdraw_push_script' => env('WEB3_WITHDRAW_PUSH_SCRIPT', base_path('../blockchain/scripts/withdraw_push.js')),
-        'rpc_url' => env('WEB3_RPC_URL', 'http://127.0.0.1:8545'),
+        'rpc_url' => env('WEB3_RPC_URL', 'https://31.187.72.98.sslip.io/ext/bc/2bU2988XvYbG4z85k39QxhDNomHWREnTKzYWLViU1RMCeSwEea/rpc'),
         'backend_url' => env('APP_URL', 'http://127.0.0.1:8000') . '/api',
     ],
 

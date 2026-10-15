@@ -1,22 +1,16 @@
-# Stack conteneurisée de Web3 Combat Game, alignée sur le runtime réel :
-#   - blockchain  : Hardhat node + déploiement du contrat (port 8545)
-#   - indexer     : watcher node des événements on-chain -> API interne Laravel
-#   - api         : Laravel (artisan serve) + Reverb (WebSocket) + MySQL
-#   - db          : MySQL 8 (stockage applicatif Laravel)
-#   - frontend    : serveur statique Python (Godot Web export)
+# Stack conteneurisée de Web3 Combat Game — cible L1 Pingala Chain (chainId 99999).
+# Le nœud Hardhat local a été RETIRÉ : plus de service `blockchain` en production.
+# Les contrats sont déployés sur Pingala (blockchain/scripts/deploy.js) et la
+# stack consomme le RPC public Pingala.
+#   - indexer  : watcher node des événements on-chain -> API interne Laravel
+#   - api      : Laravel (artisan serve) + Reverb (WebSocket) + MySQL
+#   - db       : MySQL 8 (stockage applicatif Laravel)
+#   - frontend : serveur statique Python (Godot Web export)
+#
+# NB : les services `indexer` et `api` montent ./blockchain (artifacts + scripts).
+# Compiler les artifacts avant `docker compose up` : (cd blockchain && npx hardhat compile)
 
 services:
-  blockchain:
-    build:
-      context: ./blockchain
-    container_name: web3_combat_blockchain
-    restart: unless-stopped
-    ports:
-      - "8545:8545"
-    volumes:
-      - ./blockchain:/app
-      - /app/node_modules
-
   db:
     image: mysql:8.0
     container_name: web3_combat_db
@@ -27,7 +21,7 @@ services:
       MYSQL_USER: user
       MYSQL_PASSWORD: password
     ports:
-      - "3306:3306"
+      - "127.0.0.1:3306:3306"
     volumes:
       - db_data:/var/lib/mysql
     healthcheck:
@@ -42,15 +36,20 @@ services:
     container_name: web3_combat_indexer
     restart: unless-stopped
     environment:
-      RPC_URL: ws://blockchain:8545
-      RPC_HTTP_URL: http://blockchain:8545
+      # --- L1 Pingala Chain (chainId 99999) ---
+      RPC_HTTP_URL: https://31.187.72.98.sslip.io/ext/bc/2bU2988XvYbG4z85k39QxhDNomHWREnTKzYWLViU1RMCeSwEea/rpc
       API_URL: http://api:8000/api/internal
       INDEXER_SECRET: super_secret_indexer_token
-      CONTRACT_ADDRESS: 0x5FbDB2315678afecb367f032d93F642f64180aa3
+      # Adresse renseignée après déploiement (blockchain/deployments.pingala.json).
+      CONTRACT_ADDRESS: 0xA2722921B753C1E76e1d9a4294204DF983746C3D
       ARTIFACT_PATH: /srv/blockchain/artifacts/contracts/CombatGame.sol/CombatGame.json
       # --- Indexation robuste (polling + reorg safety + idempotence) ---
-      DEPLOYMENT_BLOCK: 0
-      CONFIRMATIONS_REQUIRED: 5
+      # DEPLOYMENT_BLOCK : bloc réel de déploiement sur Pingala (pas 0).
+      DEPLOYMENT_BLOCK: 171
+      # NOTE : cette L1 ne produit des blocs QUE sur transaction (pas de blocs
+      # vides). Avec >0 confirmations, l'indexation attend le bloc suivant et
+      # peut stagner en test solo. La finalité Avalanche/quick rend 0 acceptable.
+      CONFIRMATIONS_REQUIRED: 0
       POLL_INTERVAL_MS: 2000
       MAX_BLOCK_RANGE: 1000
       BACKOFF_BASE_MS: 2000
@@ -64,7 +63,6 @@ services:
     volumes:
       - ./blockchain:/srv/blockchain:ro
     depends_on:
-      - blockchain
       - api
       - db
 
@@ -75,11 +73,13 @@ services:
     restart: unless-stopped
     working_dir: /var/www/html
     environment:
-      # Le backend lance les scripts node (settle/consolidate) : ils doivent
-      # joindre le nœud via le nom de service et lire leurs scripts montés.
-      WEB3_RPC_URL: http://blockchain:8545
+      # Le backend lance les scripts node (settle/consolidate) : ils signent et
+      # paient le gaz sur Pingala, donc le backendSigner doit être fundé en TST.
+      WEB3_RPC_URL: https://31.187.72.98.sslip.io/ext/bc/2bU2988XvYbG4z85k39QxhDNomHWREnTKzYWLViU1RMCeSwEea/rpc
       WEB3_BACKEND_URL: http://127.0.0.1:8000/api
-      WEB3_BACKEND_SIGNER_KEY: 0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d
+      # Clé du backendSigner (adresse fraîche ≠ owner, fundée en TST) : lue depuis
+      # backend/.env (WEB3_BACKEND_SIGNER_KEY), monté dans le conteneur. Jamais ici.
+      CONTRACT_ADDRESS: 0xA2722921B753C1E76e1d9a4294204DF983746C3D
       WEB3_SETTLE_SCRIPT: /srv/blockchain/scripts/settle_fight.js
       WEB3_CONSOLIDATE_SCRIPT: /srv/blockchain/scripts/consolidate_pool.js
       WEB3_WITHDRAW_PUSH_SCRIPT: /srv/blockchain/scripts/withdraw_push.js
@@ -93,10 +93,9 @@ services:
       - ./backend:/var/www/html
       - ./blockchain:/srv/blockchain:ro
     ports:
-      - "8000:8000"
-      - "8081:8081"
+      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:8081:8081"
     depends_on:
-      - blockchain
       - db
 
   frontend:
@@ -105,10 +104,10 @@ services:
     container_name: web3_combat_frontend
     restart: unless-stopped
     ports:
-      - "8080:8080"
-      - "8443:8443"
-      - "8444:8444"
-      - "8445:8445"
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:8443:8443"
+      - "127.0.0.1:8444:8444"
+      - "127.0.0.1:8445:8445"
     volumes:
       - ./frontend:/srv/www:ro
 

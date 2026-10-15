@@ -20,9 +20,19 @@ class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
         super().__init__(*args, directory=WEB_ROOT, **kwargs)
 
     def end_headers(self):
-        self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
-        self.send_header("Pragma", "no-cache")
-        self.send_header("Expires", "0")
+        # Politique de cache différenciée (P1) : le HTML ne doit jamais être
+        # mis en cache, les gros assets immuables (Godot) DOIVENT l'être — sinon
+        # jeu.pck (107 Mo) + jeu.wasm (38 Mo) sont retéléchargés à chaque visite.
+        path = self.path.split('?', 1)[0].lower()
+        if path.endswith('.html') or path.endswith('/') or path == '':
+            self.send_header("Cache-Control", "no-cache")
+        elif path.endswith('.wasm') or path.endswith('.pck'):
+            # Revalidation (304 si inchangé, re-téléchargement si modifié) : permet
+            # de mettre à jour jeu.pck/wasm sans garder un cache éternel périmé.
+            self.send_header("Cache-Control", "no-cache")
+        else:
+            # js/css/images/fonts : 1 jour (les js/css portent un cache-buster ?v=).
+            self.send_header("Cache-Control", "public, max-age=86400")
         self.send_header("Access-Control-Allow-Origin", "*")
         super().end_headers()
 
@@ -43,9 +53,15 @@ def main():
     # HTTPS + proxy RPC + wss : générer le certificat partagé, lancer le proxy
     # TLS (RPC 8444 + wss 8445) DANS ce process (un seul PID, pas de job
     # background qui meurt avec le shell du CMD).
-    from tls_proxy import generate_self_signed_cert, start_rpc_tls, CERT_FILE, KEY_FILE
-    generate_self_signed_cert()
-    start_rpc_tls()
+    # Optionnel : derrière un reverse proxy (Caddy) le TLS est déjà terminé en
+    # amont. Si le montage est en lecture seule (pas de certs), on continue en
+    # HTTP simple plutôt que de crasher en boucle.
+    try:
+        from tls_proxy import generate_self_signed_cert, start_rpc_tls, CERT_FILE, KEY_FILE
+        generate_self_signed_cert()
+        start_rpc_tls()
+    except Exception as e:
+        print(f"[serve] proxy TLS/RPC désactivé ({e}) — HTTP simple uniquement", flush=True)
 
     # HTTP sur 8080 (toujours actif — utile PC localhost)
     with ThreadedServer(("0.0.0.0", PORT), NoCacheHandler) as httpd:

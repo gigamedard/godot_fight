@@ -162,7 +162,7 @@ class WithdrawController extends Controller
         // Vérif de cohérence : amount demandé vs poolTotal on-chain réel.
         // Détecte notamment les joueurs qui ont rejoint un pot mais n'ont jamais
         // réellement déposé leur mise dans l'escrow (dépôt client silencieusement absent).
-        $rpc = (string) config('services.web3.rpc_url', 'http://127.0.0.1:8545');
+        $rpc = (string) config('services.web3.rpc_url', 'https://31.187.72.98.sslip.io/ext/bc/2bU2988XvYbG4z85k39QxhDNomHWREnTKzYWLViU1RMCeSwEea/rpc');
         $poolTotalWei = '';
         try {
             // selector de poolTotal(uint256)

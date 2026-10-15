@@ -37,10 +37,15 @@ async function postToLaravel(endpoint, body) {
     await api.post(endpoint, body);
     console.log(`  ✅ [Indexer] → Laravel ${endpoint}`);
   } catch (e) {
-    // On loggue mais on ne fait PAS échouer le traitement : l'événement
-    // est déjà claimé en BDD, un re-run de réconciliation pourra le
-    // re-pousser si nécessaire.
+    const status = e.response?.status;
     console.error(`  ❌ [Indexer] Laravel ${endpoint} error:`, e.response?.data || e.message);
+    // 4xx définitif (endpoint absent / payload invalide) → non rejouable : on
+    // loggue sans faire échouer (évite une boucle infinie de rejeu).
+    // 5xx OU erreur réseau → TRANSITOIRE : on relance l'erreur ; le claim est
+    // rollback par processEvents → l'événement est rejoué au cycle suivant.
+    if (!(status >= 400 && status < 500)) {
+      throw e;
+    }
   }
 }
 
