@@ -14,7 +14,7 @@
 // IMPORTANT : tout nouveau jeu.pck/wasm ou changement d'asset versionné →
 // incrémenter CACHE (les fichiers à ?v= se renouvellent tout seuls).
 // ============================================================================
-const CACHE = 'w3c-app2-20261015-4';
+const CACHE = 'w3c-app2-20261015-5';
 const GODOT_PRECACHE = ['/godot/jeu.js', '/godot/jeu.wasm', '/godot/jeu.pck'];
 
 self.addEventListener('install', () => self.skipWaiting());
@@ -54,7 +54,7 @@ self.addEventListener('fetch', (event) => {
     if (p.endsWith('/speedtest.bin')) return;                    // test de débit = réseau
 
     // Fraîcheur : HTML + config.js (network-first, repli cache hors-ligne).
-    const networkFirst = (p === '/' || p.endsWith('.html') || p === '/config.js');
+    const networkFirst = (p === '/' || p.endsWith('.html') || p === '/config.js' || p === '/manifest.json');
     if (networkFirst) {
         event.respondWith((async () => {
             try {
