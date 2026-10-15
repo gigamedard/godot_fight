@@ -151,7 +151,7 @@
         card.style.cssText = 'background:#0a1a28;border:1px solid rgba(0,229,255,0.4);border-radius:12px;width:min(760px,96vw);max-height:86vh;display:flex;flex-direction:column;box-shadow:0 12px 48px rgba(0,0,0,0.6)';
 
         var title = document.createElement('div');
-        title.textContent = '🐞 Journal de debug — Web3 Combat Game';
+        title.textContent = '🐞 Journal de debug — GIGA FIGHT';
         title.style.cssText = 'padding:12px 16px 6px;font-weight:700;color:#aef2ff;font-size:1rem';
 
         var info = document.createElement('div');
