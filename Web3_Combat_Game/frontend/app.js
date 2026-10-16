@@ -21,6 +21,8 @@ const AppState = {
     defaultBetAmount: localStorage.getItem('web3combat_bet_amount') || '10',
     currentPoolId: null,
     currentPoolFee: 0,
+    poolSpectator: false,
+    poolRefreshTimer: null,
     pendingPoolParam: null,
     pendingPoolRoundEvent: null,
     pendingInvitePoolId: null,
@@ -62,7 +64,7 @@ function checkURLParameters() {
                 return res.json();
             })
             .then(pool => {
-                document.getElementById('invite-message').innerText = `Vous êtes invité à la poule #${pool.id} (Mise: ${pool.entry_fee} TST). Voulez-vous rejoindre ?`;
+                document.getElementById('invite-message').innerText = `Vous êtes invité à la poule #${pool.id} (Mise: ${fmtTST(pool.entry_fee)} TST). Voulez-vous rejoindre ?`;
                 document.getElementById('btn-accept-invite').onclick = () => {
                     stopInviteModalGuard();
                     document.getElementById('invite-modal').style.display = 'none';
@@ -155,7 +157,7 @@ window.joinPoolByCode = function() {
                 return res.json();
             })
             .then(pool => {
-                document.getElementById('invite-message').innerText = `Vous êtes invité à la poule #${pool.id} (Mise: ${pool.entry_fee} TST). Voulez-vous rejoindre ?`;
+                document.getElementById('invite-message').innerText = `Vous êtes invité à la poule #${pool.id} (Mise: ${fmtTST(pool.entry_fee)} TST). Voulez-vous rejoindre ?`;
                 document.getElementById('btn-accept-invite').onclick = () => {
                     stopInviteModalGuard();
                     document.getElementById('invite-modal').style.display = 'none';
@@ -1137,14 +1139,14 @@ function updateBalance() {
                 try { bal = await provider.getBalance(AppState.walletAddress); } catch (e) { return; }
             }
             const el = document.getElementById('wallet-balance');
-            if (el) el.innerText = parseFloat(ethers.formatEther(bal)).toFixed(2) + " " + (APP_CONFIG.NATIVE_SYMBOL || 'TST');
+            if (el) el.innerText = parseFloat(ethers.formatEther(bal)).toFixed(4) + " " + (APP_CONFIG.NATIVE_SYMBOL || 'TST');
             // Deuxième lecture après 3s : si le retrait vient d'être miné, la
             // première lecture peut renvoyer l'ancien solde.
             setTimeout(async () => {
                 const bal2 = await readNative();
                 if (bal2 === null) return;
                 const el2 = document.getElementById('wallet-balance');
-                if (el2 && bal2 !== bal) el2.innerText = parseFloat(ethers.formatEther(bal2)).toFixed(2) + " " + (APP_CONFIG.NATIVE_SYMBOL || 'TST');
+                if (el2 && bal2 !== bal) el2.innerText = parseFloat(ethers.formatEther(bal2)).toFixed(4) + " " + (APP_CONFIG.NATIVE_SYMBOL || 'TST');
             }, 3000);
         })();
 
@@ -1746,7 +1748,7 @@ function onScanSuccess(decodedText) {
                 return res.json();
             })
             .then(pool => {
-                showToast(`Battle #${pool.id} trouvée (mise ${pool.entry_fee} TST) — rejoindre...`, "success");
+                showToast(`Battle #${pool.id} trouvée (mise ${fmtTST(pool.entry_fee)} TST) — rejoindre...`, "success");
                 joinPool(pool.id);
             })
             .catch(err => {
@@ -2232,7 +2234,8 @@ async function renderBRLobby() {
         }
 
         pools.forEach(lobby => {
-            const isFull = lobby.players_count >= lobby.max_players;
+            const inProgress = lobby.status === 'active';
+            const isFull = inProgress || lobby.players_count >= lobby.max_players;
             const progress = (lobby.players_count / lobby.max_players) * 100;
             
             const card = document.createElement('div');
@@ -2243,16 +2246,16 @@ async function renderBRLobby() {
                 </div>
                 <div class="br-header">
                     <div>
-                        <h3 style="color: white; font-size: 1.1rem;">${tr('poolTitle', { id: lobby.id })} ${lobby.penalty_mode == 1 ? tr('poolAllIn') : ''}</h3>
-                        <span class="br-tag">${lobby.entry_fee} TST</span>
+                        <h3 style="color: white; font-size: 1.1rem;">${tr('poolTitle', { id: lobby.id })} ${lobby.penalty_mode == 1 ? tr('poolAllIn') : ''}${inProgress ? ' <span style="color: var(--cyan-spark); font-size: 0.8rem;">' + tr('poolInProgress') + '</span>' : ''}</h3>
+                        <span class="br-tag">${fmtTST(lobby.entry_fee)} TST</span>
                     </div>
                     <div class="br-players">
                         <span>${lobby.players_count}</span>
                         <span style="color: var(--text-gray-400)">/${lobby.max_players}</span>
                     </div>
                 </div>
-                <button class="btn btn-join ${isFull ? 'full' : ''}" ${isFull ? 'disabled' : ''} onclick="joinPool(${lobby.id})">
-                    ${isFull ? tr('poolFullBtn') : tr('poolJoin')}
+                <button class="btn btn-join ${isFull ? 'watch' : ''}" onclick="${isFull ? 'watchPool(' + lobby.id + ')' : 'joinPool(' + lobby.id + ')'}">
+                    ${isFull ? tr('poolWatch') : tr('poolJoin')}
                 </button>
             `;
             list.appendChild(card);
@@ -3033,7 +3036,7 @@ async function confirmCreatePool() {
         const joinRes = await fetch(`${APP_CONFIG.API_BASE_URL}/pools/${poolId}/join`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-            body: JSON.stringify({ player_wallet: AppState.walletAddress, character_id: AppState.selectedCharacter.id })
+            body: JSON.stringify({ player_wallet: AppState.walletAddress, character_id: AppState.selectedCharacter.id, player_name: AppState.playerName || null })
         });
 
         if(!joinRes.ok) throw new Error("Failed to join pool");
@@ -3081,11 +3084,15 @@ async function joinPool(poolId) {
         const joinRes = await fetch(`${APP_CONFIG.API_BASE_URL}/pools/${poolId}/join`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-            body: JSON.stringify({ player_wallet: AppState.walletAddress, character_id: AppState.selectedCharacter.id })
+            body: JSON.stringify({ player_wallet: AppState.walletAddress, character_id: AppState.selectedCharacter.id, player_name: AppState.playerName || null })
         });
 
         if(!joinRes.ok) {
-            const err = await joinRes.json();
+            const err = await joinRes.json().catch(() => ({}));
+            if ((err.error || '').toLowerCase().includes('full')) {
+                showToast(tr('poolFullWatch'), "info");
+                return watchPool(poolId);
+            }
             throw new Error(err.error || "Failed to join pool");
         }
         
@@ -3113,8 +3120,25 @@ async function joinPool(poolId) {
     }
 }
 
+async function watchPool(poolId) {
+    try {
+        AppState.poolSpectator = true;
+        AppState.currentPoolId = Number(poolId);
+        const detailsRes = await fetch(`${APP_CONFIG.API_BASE_URL}/pools/${poolId}`);
+        const poolData = await detailsRes.json();
+        AppState.currentPoolFee = poolData.entry_fee;
+        subscribeToPoolRound(Number(poolId));
+        navigateTo('screen-pool-room');
+        renderPoolRoom();
+        showToast(tr('spectatorMode'), "info");
+    } catch (e) {
+        console.error(e);
+        showToast("Impossible d'ouvrir le salon en spectateur", "error");
+    }
+}
+
 function subscribeToPoolRound(poolId) {
-    if(window.poolChannel) {
+    if (window.poolChannel) {
         window.echoInstance.leave('pool.' + window.poolChannel);
     }
     window.poolChannel = poolId;
@@ -3233,35 +3257,48 @@ async function renderPoolRoom() {
         const pCount = poolData.players_count || 1;
         const mPlayers = poolData.max_players;
 
+        const players = poolData.players || [];
+        const me = players.find(p => AppState.walletAddress && p.wallet_address.toLowerCase() === AppState.walletAddress.toLowerCase());
+        const iAmAlive = !!(me && me.status === 'alive');
+        AppState.poolSpectator = !iAmAlive;
+
         document.getElementById('pool-room-count').innerText = pCount + " / " + mPlayers;
 
-        renderPoolPlayers(poolData.players || []);
-        
+        renderPoolPlayers(players);
+
         const btnQuit = document.getElementById('btn-quit-pool');
         const quitText = document.getElementById('quit-pool-text');
-        if (btnQuit && quitText) {
+        const statusEl = document.getElementById('pool-room-status');
+        if (btnQuit && quitText && statusEl) {
             if (poolData.status === 'finished') {
-                const winnerPlayer = pickPoolWinner(poolData.players);
+                const winnerPlayer = pickPoolWinner(players);
                 const winnerWallet = winnerPlayer ? winnerPlayer.wallet_address.toLowerCase() : null;
                 const isWinner = winnerWallet === AppState.walletAddress.toLowerCase();
-                
+
                 btnQuit.disabled = false;
                 quitText.innerText = isWinner ? tr('quitPoolClaim') : tr('quitPoolBack');
-                document.getElementById('pool-room-status').innerText = winnerWallet
+                statusEl.innerText = winnerWallet
                     ? (isWinner ? tr('youAreChampion') : tr('championIs', { winner: winnerWallet.slice(0,10) }))
                     : tr('poolFinishedNoWinner');
-                document.getElementById('pool-room-status').style.color = isWinner ? 'gold' : 'var(--color-red)';
+                statusEl.style.color = isWinner ? 'gold' : 'var(--color-red)';
                 updateBalance();
+            } else if (AppState.poolSpectator) {
+                // Spectateur (éliminé ou observateur externe) : suit la poule
+                // et peut sortir à tout moment.
+                btnQuit.disabled = false;
+                quitText.innerText = tr('quitPoolDefault');
+                statusEl.innerText = tr('spectatorStatus');
+                statusEl.style.color = 'var(--cyan-spark)';
             } else if (pCount >= mPlayers) {
                 btnQuit.disabled = true;
                 quitText.innerText = tr('quitPoolMatches');
-                document.getElementById('pool-room-status').innerText = tr('poolFull');
-                document.getElementById('pool-room-status').style.color = '';
+                statusEl.innerText = tr('poolFull');
+                statusEl.style.color = '';
             } else {
                 btnQuit.disabled = false;
                 quitText.innerText = tr('quitPoolDefault');
-                document.getElementById('pool-room-status').innerText = tr('poolWaiting');
-                document.getElementById('pool-room-status').style.color = '';
+                statusEl.innerText = tr('poolWaiting');
+                statusEl.style.color = '';
             }
         }
 
@@ -3275,20 +3312,41 @@ async function renderPoolRoom() {
     } catch(e) {
         console.error(e);
     }
+
+    // Rafraîchissement périodique du salon : permet aux SPECTATEURS et aux
+    // ÉLIMINÉS de suivre la liste des survivants + le butin en direct (audit).
+    if (AppState.poolRefreshTimer) clearTimeout(AppState.poolRefreshTimer);
+    if (AppState.currentPoolId && AppState.currentScreen === 'screen-pool-room' && !AppState.currentMatchId) {
+        AppState.poolRefreshTimer = setTimeout(() => {
+            if (AppState.currentPoolId && AppState.currentScreen === 'screen-pool-room' && !AppState.currentMatchId) {
+                renderPoolRoom();
+            }
+        }, 5000);
+    }
 }
 
 // --- Économie de butin : helpers d'affichage ---
 
-// wei (string) → TST lisible
+function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// TST (chiffre, peut être "0.50000000") → affichage propre sans zéros inutiles
+function fmtTST(v) {
+    const n = Number(v);
+    return isFinite(n) ? String(n) : String(v);
+}
+
+// wei (string) → TST lisible, TOUJOURS 4 décimales (ex: 10.0000 / 2.1500)
 function formatLootTST(weiStr) {
     try {
         const wei = BigInt(weiStr || '0');
         const whole = wei / 1000000000000000000n;
         const frac = wei % 1000000000000000000n;
-        const fracStr = frac.toString().padStart(18, '0').slice(0, 4).replace(/0+$/, '');
-        return fracStr ? `${whole}.${fracStr}` : `${whole}`;
+        const fracStr = frac.toString().padStart(18, '0').slice(0, 4);
+        return `${whole}.${fracStr}`;
     } catch (e) {
-        return '0';
+        return '0.0000';
     }
 }
 
@@ -3332,9 +3390,12 @@ function renderPoolPlayers(players) {
         row.className = 'list-item';
         row.style.opacity = eliminated ? '0.45' : '1';
         const short = p.wallet_address.slice(0, 6) + '…' + p.wallet_address.slice(-4);
+        const nameLabel = p.player_name
+            ? `<strong style="color:#fff;">${escapeHtml(p.player_name)}</strong> <span style="font-family:monospace; color:var(--text-muted); font-size:12px;">${short}</span>`
+            : `<span style="font-family:monospace;">${short}</span>`;
         row.innerHTML = `
             <span class="br-tag" style="${eliminated ? 'filter:grayscale(1);' : ''}">${isMe ? '★ ' : ''}${p.character_id ? 'P' + p.character_id : '?'}</span>
-            <span style="flex:1; font-family:monospace;">${short}</span>
+            <span style="flex:1;">${nameLabel}</span>
             <span style="color:gold; font-weight:700;">${formatLootTST(p.loot)} TST</span>
             <span style="color:${eliminated ? 'var(--color-red)' : 'var(--cyan-spark)'}; font-size:11px; margin-left:8px;">
                 ${eliminated ? tr('lootOut') : tr('lootAlive')}
@@ -3352,8 +3413,15 @@ async function checkPoolElimination(godotResult, matchId) {
 
             const me = data.players.find(p => p.wallet_address.toLowerCase() === AppState.walletAddress.toLowerCase());
             if (!me || me.status === 'eliminated') {
-                showToast(tr('poolEliminated'), "error");
-                quitPool(false);
+                // Éliminé : on NE quitte PAS le salon — le joueur reste en
+                // spectateur pour auditer la suite de la poule (liste des
+                // survivants + butin en direct).
+                AppState.poolSpectator = true;
+                showToast(tr('poolEliminatedSpectator'), "info");
+                if (AppState.currentScreen !== 'screen-pool-room') navigateTo('screen-pool-room');
+                renderPoolRoom();
+            } else if (AppState.currentScreen === 'screen-pool-room') {
+                renderPoolRoom();
             }
         }
     } catch(e) { console.error(e); }
@@ -3372,8 +3440,8 @@ async function quitPool(claim = true) {
             if (claim && poolStatus === 'finished') {
                 // Winner-take-all : le champion réclame LE POT entier (une seule signature),
                 // depuis l'escrow. Les éliminés voient 0 et n'ont rien à réclamer.
-                const winnerWallet = poolData.players ? poolData.players.find(p => p.status === 'alive') : null;
-                if (winnerWallet && winnerWallet.wallet_address.toLowerCase() === AppState.walletAddress.toLowerCase()) {
+                const winnerPlayer = pickPoolWinner(poolData.players);
+                if (winnerPlayer && winnerPlayer.wallet_address.toLowerCase() === AppState.walletAddress.toLowerCase()) {
                     await claimPoolGains(AppState.currentPoolId, AppState.walletAddress);
                 }
                 showToast(tr('poolClosePanel'), "success");
@@ -3386,6 +3454,8 @@ async function quitPool(claim = true) {
     }
 
     isQuitting = false;
+    if (AppState.poolRefreshTimer) { clearTimeout(AppState.poolRefreshTimer); AppState.poolRefreshTimer = null; }
+    AppState.poolSpectator = false;
     AppState.currentPoolId = null;
     AppState.currentInviteCode = null;
     AppState.currentInviteQRPayload = null;

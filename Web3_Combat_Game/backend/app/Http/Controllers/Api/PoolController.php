@@ -18,7 +18,8 @@ class PoolController extends Controller
     // List open public pools
     public function index()
     {
-        $pools = Pool::withCount('players')->where('status', 'open')->where('is_private', false)->get();
+        // Salons ouverts (rejoignables) + salons en cours (observables en spectateur).
+        $pools = Pool::withCount('players')->whereIn('status', ['open', 'active'])->where('is_private', false)->get();
         return response()->json($pools);
     }
 
@@ -117,21 +118,42 @@ class PoolController extends Controller
         $request->validate([
             'player_wallet' => 'required|string',
             'character_id' => 'nullable|integer',
+            'player_name' => 'nullable|string|max:24',
         ]);
 
         $pool = Pool::findOrFail($id);
+        $wallet = strtolower($request->player_wallet);
+        $name = $request->filled('player_name') ? trim((string) $request->player_name) : null;
+        if ($name === '') {
+            $name = null;
+        }
 
-        if ($pool->players()->count() >= $pool->max_players) {
+        $existing = PoolPlayer::where('pool_id', $id)->where('wallet_address', $wallet)->first();
+
+        // Rejet seulement si c'est un NOUVEAU joueur et que la poule est pleine.
+        if (!$existing && $pool->players()->count() >= $pool->max_players) {
             return response()->json(['error' => 'Pool is full'], 400);
         }
 
-        PoolPlayer::firstOrCreate(
-            ['pool_id' => $id, 'wallet_address' => strtolower($request->player_wallet)],
-            ['character_id' => $request->character_id ?? 2, 'loot' => Wei::toWei($pool->entry_fee), 'losses' => 0]
-        );
+        if ($existing) {
+            if ($name && $existing->player_name !== $name) {
+                $existing->player_name = $name;
+                $existing->save();
+            }
+        } else {
+            PoolPlayer::create([
+                'pool_id' => $id,
+                'wallet_address' => $wallet,
+                'character_id' => $request->character_id ?? 2,
+                'status' => 'alive',
+                'loot' => Wei::toWei($pool->entry_fee),
+                'losses' => 0,
+                'player_name' => $name,
+            ]);
+        }
 
         $currentCount = $pool->players()->count();
-        \Illuminate\Support\Facades\Log::info("Pool #{$id} JOIN wallet=" . strtolower($request->player_wallet) . " count_after={$currentCount} max={$pool->max_players}");
+        \Illuminate\Support\Facades\Log::info("Pool #{$id} JOIN wallet={$wallet} name=" . ($name ?: '-') . " count_after={$currentCount} max={$pool->max_players}");
         if ($currentCount >= $pool->max_players && $pool->status == 'open') {
             $pool->update(['status' => 'active', 'started_at' => now()]);
             $this->triggerMatchmaking($id);

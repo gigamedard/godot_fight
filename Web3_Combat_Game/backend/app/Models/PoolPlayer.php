@@ -13,6 +13,7 @@ class PoolPlayer extends Model
         'pool_id',
         'wallet_address',
         'character_id',
+        'player_name',
         'status',
         'loot',
         'losses'
