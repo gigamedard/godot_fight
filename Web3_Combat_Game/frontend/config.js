@@ -65,10 +65,12 @@ const APP_CONFIG = {
     WALLETCONNECT_PROJECT_ID,
 
     // --- Portail BATTLEPOOL (App 1) ---
+    // DEEP LINK : App 2 n'embarque plus App 1 en iframe. On ouvre le portail
+    // (nouvel onglet) sur son URL racine ; chaque app garde sa propre session.
     // PUBLIC : sous-domaine public d'App 1 (même VPS / même Caddy).
     PORTAL_URL: IS_PUBLIC
-        ? 'https://battlepool.31.187.72.98.sslip.io/portal?v=6'
-        : `http://${HOST}:8001/portal?v=6`
+        ? 'https://battlepool.31.187.72.98.sslip.io/'
+        : `http://${HOST}:8001/`
 };
 
 // Adresse du contrat CombatGame (déployée sur Pingala).

@@ -53,24 +53,6 @@
         </div>
     </div>
 
-    <!-- ============================================================
-         OVERLAY PORTAIL BATTLEPOOL (App 1) — z-index 30
-         iframe plein écran + bouton retour vers le jeu (App 2).
-         ============================================================ -->
-    <div id="portal-overlay" class="portal-overlay hidden">
-        <div class="portal-bar">
-            <button id="portal-back-btn" class="btn-back" onclick="closeBattlePool()">
-                <i data-lucide="arrow-left"></i> <span data-i18n="portalBackBtn">RETOUR AU JEU</span>
-            </button>
-            <span class="portal-title">BATTLEPOOL — APP 1</span>
-            <span class="portal-spacer"></span>
-        </div>
-        <div id="portal-loading" class="portal-loading">
-            <div class="portal-loader-spinner"></div>
-            <p data-i18n="portalLoading">Chargement du portail BATTLEPOOL...</p>
-        </div>
-        <iframe id="portal-iframe" src="about:blank" title="BATTLEPOOL App 1" allow="ethereum"></iframe>
-    </div>
 
     <!-- ============================================================
          TIMER DE TOUR (z-index 20) — superposé à Godot pendant combat
@@ -586,7 +568,7 @@
         });
     </script>
 
-    <script src="config.js?v=9"></script>
+    <script src="config.js?v=10"></script>
     <!-- Couche wallet (MetaMask/Core injecté + WalletConnect/Core Mobile deeplink) :
          chargée À LA DEMANDE (2,9 Mo), uniquement si l'utilisateur se connecte
          sans provider injecté — voir window.connectWallet/ensureWalletLib (app.js).
@@ -599,12 +581,12 @@
          capturer ses logs console. Voir window.openDebugLog(). -->
     <script src="debug-log.js?v=7" defer></script>
     <script src="ui-loader.js?v=2" defer></script>
-    <script src="app.js?v=4.49" defer></script>
+    <script src="app.js?v=4.50" defer></script>
     <!-- PWA : service worker (met en cache les gros fichiers /godot/*) -->
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', function () {
-                navigator.serviceWorker.register('sw.js?v=10').catch(function (e) {
+                navigator.serviceWorker.register('sw.js?v=11').catch(function (e) {
                     console.warn('[PWA] service worker non enregistré:', e);
                 });
             });

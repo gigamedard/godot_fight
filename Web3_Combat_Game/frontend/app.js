@@ -667,126 +667,24 @@ window.navGoBack = function() {
     navigateTo(prev);
 };
 
-// Lancement du portail BATTLEPOOL (App 1) depuis l'écran SPIRIT.
-// Ouvre l'App 1 dans un overlay iframe plein écran (bouton retour vers le jeu).
+// Retour au portail BATTLEPOOL (App 1) depuis l'écran SPIRIT — DEEP LINK.
+// App 2 n'embarque plus App 1 en iframe : on ouvre le portail dans un NOUVEL
+// ONGLET (contexte top-level). Chaque app garde sa propre session ; le wallet
+// est commun aux deux.
 window.launchBattlePool = function() {
     const portalUrl = (typeof APP_CONFIG !== 'undefined' && APP_CONFIG.PORTAL_URL)
         ? APP_CONFIG.PORTAL_URL
-        : `http://${window.location.hostname}:8001/portal?v=4`;
-
-    const overlay = document.getElementById('portal-overlay');
-    const iframe = document.getElementById('portal-iframe');
-    if (!overlay || !iframe) {
-        // Fallback si l'overlay n'existe pas (HTML obsolète) : navigation directe
-        showToast("Ouverture de BATTLEPOOL (App 1)...", "info");
-        setTimeout(() => { window.location.href = portalUrl; }, 400);
-        return;
-    }
-
-    showToast("Ouverture de BATTLEPOOL (App 1)...", "info");
-    // Loader visible pendant le chargement de l'iframe
-    const loading = document.getElementById('portal-loading');
-    if (loading) loading.style.display = 'flex';
-    iframe.onload = function () {
-        if (loading) loading.style.display = 'none';
-    };
-    iframe.src = portalUrl;
-    overlay.classList.remove('hidden');
+        : 'https://battlepool.31.187.72.98.sslip.io/';
+    showToast("Ouverture du portail BATTLEPOOL (App 1)...", "info");
     if (typeof window.AUDIO_FX !== 'undefined') window.AUDIO_FX.success();
+    const w = window.open(portalUrl, '_blank', 'noopener');
+    if (!w) { window.location.href = portalUrl; } // repli si la popup est bloquée
 };
 
-// Fermeture de l'overlay portail : retour au jeu (écran SPIRIT), Godot intact.
-window.closeBattlePool = function() {
-    const overlay = document.getElementById('portal-overlay');
-    const iframe = document.getElementById('portal-iframe');
-    const loading = document.getElementById('portal-loading');
-    if (loading) loading.style.display = 'flex'; // ré-armé pour la prochaine ouverture
-    if (overlay) overlay.classList.add('hidden');
-    if (iframe) {
-        // On vide le src pour couper l'audio/WebRTC de l'App 1 immédiatement.
-        iframe.onload = null;
-        iframe.src = 'about:blank';
-    }
-    if (typeof window.AUDIO_FX !== 'undefined') window.AUDIO_FX.click();
-};
+// Plus d'overlay portail : no-op conservé pour compat (anciens HTML).
+window.closeBattlePool = function() {};
 
-// Le portail App 1 (iframe cross-origin 8001) ne peut pas appeler closeBattlePool()
-// directement : il envoie un postMessage que l'on écoute ici.
-// On gère aussi la persistance de session cross-origin (le localStorage de l'iframe
-// peut être isolé par le navigateur : on garde user+auth_token côté App 2 et on les
-// redonne au portail à chaque ouverture).
-window.addEventListener('message', function (e) {
-    if (!e.data || typeof e.data.type !== 'string') return;
-
-    switch (e.data.type) {
-        case 'BATTLEPOOL_CLOSE':
-            window.closeBattlePool();
-            break;
-
-        // Le portail vient de se connecter : on sauvegarde sa session côté App 2
-        // (même clés que l'App 1 : user + auth_token) pour la persistance.
-        case 'BATTLEPOOL_SESSION_SAVE':
-            try {
-                if (e.data.user) localStorage.setItem('user', JSON.stringify(e.data.user));
-                if (e.data.auth_token) localStorage.setItem('auth_token', e.data.auth_token);
-            } catch (err) { /* ignore */ }
-            break;
-
-        // Le portail demande une session existante : on la lui renvoie.
-        case 'BATTLEPOOL_SESSION_GET': {
-            let user = null, authToken = null;
-            try {
-                const raw = localStorage.getItem('user');
-                if (raw) user = JSON.parse(raw);
-                authToken = localStorage.getItem('auth_token');
-            } catch (err) { /* ignore */ }
-            if (e.source && user && authToken) {
-                e.source.postMessage({
-                    type: 'BATTLEPOOL_SESSION_RETURN',
-                    user: user,
-                    auth_token: authToken
-                }, '*');
-            }
-            break;
-        }
-
-        // Déconnexion depuis le portail : purge locale App 2 aussi.
-        case 'BATTLEPOOL_SESSION_CLEAR':
-            try {
-                localStorage.removeItem('user');
-                localStorage.removeItem('auth_token');
-            } catch (err) { /* ignore */ }
-            break;
-
-        // Le portail hôte impose un changement de langue (sélecteur App 1) :
-        // on applique la même langue sur App 2 (UI + localStorage + re-render).
-        case 'BATTLEPOOL_LANG': {
-            const lang = typeof e.data.lang === 'string'
-                ? e.data.lang.trim().toLowerCase().split(/[-_]/)[0]
-                : null;
-            if (lang && window.I18N && window.I18N.SUPPORTED_LANGUAGES.includes(lang)) {
-                window.selectLanguage(lang);
-                // En mode portail, la navigation vers screen-connect est
-                // indésirable : l'utilisateur est déjà dans le flow de jeu.
-                if (AppState.currentScreen !== 'screen-language') {
-                    AppState.language = lang;
-                }
-            }
-            break;
-        }
-
-        // Sélecteur de mode de l'hôte App 1 (iframe) : bascule le mode SANS
-        // recharger l'application (conserve l'état, le provider pont et le solde).
-        case 'BATTLEPOOL_SET_MODE': {
-            const m = (typeof e.data.mode === 'string') ? e.data.mode.toUpperCase() : null;
-            if ((m === 'DUEL' || m === 'BATTLE' || m === 'SPIRIT') && typeof window.selectGameMode === 'function') {
-                console.log('[App2] Mode imposé par App1 :', m);
-                window.selectGameMode(m);
-            }
-            break;
-        }
-    }
-});
+// (Ancien listener postMessage App1 <-> App2 retire : on n'embarque plus d'iframe.)
 
 // Confirmation du personnage : enregistre puis lance la connexion finale
 window.confirmCharacterSelection = function() {
