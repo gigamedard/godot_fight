@@ -76,7 +76,7 @@ const APP_CONFIG = {
 // Adresse du contrat CombatGame (déployée sur Pingala).
 // Doit correspondre à CONTRACT_ADDRESS du backend (.env) et à l'indexer.
 // Source : blockchain/deployments.pingala.json. Vérifiable : window.CONTRACT_ADDRESS
-const CONTRACT_ADDRESS = "0xA2722921B753C1E76e1d9a4294204DF983746C3D";
+const CONTRACT_ADDRESS = "0x73F5065cBD382EF0D4b75c9e19f556E1D4Ba40f9";
 
 // --- Helpers réseau wallet (MetaMask / Core) ---
 // Ajoute ou bascule le wallet sur Pingala Chain si nécessaire.

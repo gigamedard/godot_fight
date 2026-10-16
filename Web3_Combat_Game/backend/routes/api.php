@@ -140,6 +140,7 @@ use App\Http\Controllers\Api\WithdrawController;
 Route::post('/withdraw/voucher', [WithdrawController::class, 'voucher']);
 Route::post('/withdraw/settle-voucher', [WithdrawController::class, 'settleVoucher']);
 Route::post('/withdraw/claim-pool-voucher', [WithdrawController::class, 'claimPoolVoucher']);
+Route::post('/withdraw/claim-pool-share-voucher', [WithdrawController::class, 'claimPoolShareVoucher']);
 
 // Règlement gasless d'un duel : le serveur soumet lui-même settleLoser via le
 // backend signer (0 validation MetaMask pour le gagnant). Rejouable/idempotent :

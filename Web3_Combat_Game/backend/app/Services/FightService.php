@@ -77,13 +77,13 @@ class FightService
         $p1 = $players[strtolower($fight->player1_wallet)] ?? null;
         $p2 = $players[strtolower($fight->player2_wallet)] ?? null;
 
-        if ($result === 'double_elimination') {
-            foreach ([$p1, $p2] as $pp) {
-                if ($pp) { $pp->loot = '0'; $pp->status = 'eliminated'; $pp->save(); }
-            }
-            return;
-        }
-        if ($result === 'draw') {
+        if ($result === 'draw' || $result === 'double_elimination') {
+            // Poule : un match NUL (mêmes coups) OU un double-forfait (aucun coup
+            // révélé) ne transfère AUCUN butin et n'élimine personne. Le front
+            // affiche déjà « nul » dans ces deux cas (winner_wallet = null) : on
+            // aligne le serveur dessus. Avant, `double_elimination` mettait les
+            // deux à loot=0 + éliminé → plus personne en vie → aucun champion →
+            // pot impossible à réclamer (bug constaté poule #25).
             return;
         }
 

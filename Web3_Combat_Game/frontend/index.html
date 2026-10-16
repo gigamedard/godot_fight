@@ -568,7 +568,7 @@
         });
     </script>
 
-    <script src="config.js?v=10"></script>
+    <script src="config.js?v=11"></script>
     <!-- Couche wallet (MetaMask/Core injecté + WalletConnect/Core Mobile deeplink) :
          chargée À LA DEMANDE (2,9 Mo), uniquement si l'utilisateur se connecte
          sans provider injecté — voir window.connectWallet/ensureWalletLib (app.js).
@@ -576,17 +576,17 @@
     <script src="audio.js?v=4"></script>
     <!-- QR code : libs chargées À LA DEMANDE (scanner / génération) par app.js -->
     <!-- Internationalisation multilingue (FR, EN, ES, PT) -->
-    <script src="i18n.js?v=8"></script>
+    <script src="i18n.js?v=9"></script>
     <!-- Journal client (bouton 🐞 + modal + copie) — chargé AVANT app.js pour
          capturer ses logs console. Voir window.openDebugLog(). -->
     <script src="debug-log.js?v=7" defer></script>
     <script src="ui-loader.js?v=2" defer></script>
-    <script src="app.js?v=4.50" defer></script>
+    <script src="app.js?v=4.51" defer></script>
     <!-- PWA : service worker (met en cache les gros fichiers /godot/*) -->
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', function () {
-                navigator.serviceWorker.register('sw.js?v=11').catch(function (e) {
+                navigator.serviceWorker.register('sw.js?v=12').catch(function (e) {
                     console.warn('[PWA] service worker non enregistré:', e);
                 });
             });

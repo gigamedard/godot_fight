@@ -82,6 +82,12 @@ const handlers = {
     });
   },
 
+  // Répartition par joueur (fin de poule) : chaque survivant réclame sa part.
+  async PoolShareClaimed(ev) {
+    const [poolId, user, amount] = ev.args;
+    console.log(`  🏆 [PoolShareClaimed] poolId=${poolId.toString()} user=${user} amount=${amount.toString()}`);
+  },
+
   // --- Retraits / règlements ---
   async Withdrawal(ev) {
     const [user, amount, nonce] = ev.args;

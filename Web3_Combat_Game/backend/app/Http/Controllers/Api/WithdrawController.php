@@ -273,4 +273,82 @@ class WithdrawController extends Controller
     {
         $this->guardLoserWithdraw($wallet);
     }
+
+    /**
+     * Émet un bon de réclamation de la PART d'un joueur à la fin d'une poule
+     * (répartition du butin) pour CombatGame.claimPoolShare(poolId, amount, nonce, signature).
+     *
+     * Le contrat attend (msg.sender = le joueur qui réclame) :
+     *     keccak256(abi.encodePacked("POOL_SHARE", poolId, player, amount, nonce, address(this)))
+     * préfixé EIP-191. amount = butin final du joueur (en wei). Les survivants
+     * repartent avec leur butin ; les éliminés ont loot = 0 (rien à réclamer).
+     */
+    public function claimPoolShareVoucher(Request $request): JsonResponse
+    {
+        $request->validate([
+            'pool_id' => ['required', 'integer', 'min:1'],
+            'player_address' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{40}$/'],
+        ]);
+
+        $poolId = (int) $request->pool_id;
+        $player = strtolower($request->player_address);
+
+        $pool = \App\Models\Pool::find($poolId);
+        if (!$pool) {
+            return response()->json(['error' => 'Poule introuvable.'], 404);
+        }
+        if ($pool->status !== 'finished') {
+            return response()->json(['error' => 'La poule n\'est pas encore terminée.'], 409);
+        }
+
+        $pp = \App\Models\PoolPlayer::where('pool_id', $poolId)->where('wallet_address', $player)->first();
+        if (!$pp) {
+            return response()->json(['error' => 'Joueur non inscrit dans cette poule.'], 404);
+        }
+
+        $amountWei = (string) ($pp->loot ?: '0');
+        if (gmp_cmp($amountWei, '0') <= 0) {
+            return response()->json(['error' => 'Aucun butin à réclamer pour ce joueur.'], 422);
+        }
+
+        $signerKey = (string) config('services.web3.backend_signer_key');
+        if ($signerKey === '') {
+            return response()->json(['error' => 'Backend signer non configuré (WEB3_BACKEND_SIGNER_KEY).'], 500);
+        }
+        if (str_starts_with($signerKey, '0x')) {
+            $signerKey = substr($signerKey, 2);
+        }
+
+        $contract = strtolower((string) config('services.web3.contract_address'));
+
+        $nonceHex = bin2hex(random_bytes(32));
+        $nonceDec = gmp_strval(gmp_init($nonceHex, 16), 10);
+
+        // abi.encodePacked("POOL_SHARE", poolId(u256), player(address), amount(u256), nonce(u256), address(this))
+        $packed = "POOL_SHARE"
+            . hex2bin(str_pad(gmp_strval(gmp_init($poolId, 10), 16), 64, '0', STR_PAD_LEFT))
+            . hex2bin(substr($player, 2))
+            . hex2bin(str_pad(gmp_strval(gmp_init($amountWei, 10), 16), 64, '0', STR_PAD_LEFT))
+            . hex2bin(str_pad(gmp_strval(gmp_init($nonceDec, 10), 16), 64, '0', STR_PAD_LEFT))
+            . hex2bin(substr($contract, 2));
+        $messageHash = Keccak::hash($packed, 256);
+        $ethSigned = Keccak::hash("\x19Ethereum Signed Message:\n32" . hex2bin($messageHash), 256);
+
+        $ec = new EC('secp256k1');
+        $sig = $ec->keyFromPrivate($signerKey)->sign($ethSigned, ['canonical' => true]);
+        $r = str_pad($sig->r->toString(16), 64, '0', STR_PAD_LEFT);
+        $s = str_pad($sig->s->toString(16), 64, '0', STR_PAD_LEFT);
+        $v = ($sig->recoveryParam ?? 0) + 27;
+
+        Log::info("claimPoolShareVoucher pool={$poolId} player={$player} amount={$amountWei}");
+
+        return response()->json([
+            'pool_id' => $poolId,
+            'player' => $player,
+            'amount' => $amountWei,
+            'nonce' => $nonceDec,
+            'contract_address' => $contract,
+            'signature' => '0x' . $r . $s . dechex($v),
+        ]);
+    }
 }

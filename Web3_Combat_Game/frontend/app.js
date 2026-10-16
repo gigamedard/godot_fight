@@ -1900,51 +1900,51 @@ async function confirmPoolDeposit(poolId, txHash) {
     }
 }
 
-// Le champion réclame l'intégralité du pot de la poule (winner-take-all) en une seule tx,
-// via un voucher signé par le backend pour claimPool.
-async function claimPoolGains(poolId, winnerAddress) {
+// Réclame la PART du joueur issue de la poule (répartition) via un voucher backend
+// pour claimPoolShare. Chaque survivant récupère SON butin ; les éliminés ont 0.
+async function claimPoolGains(poolId, playerAddress) {
     if (!contract || !AppState.walletAddress) return;
     if (poolId === null || poolId === undefined) return;
     if (AppState.claimingPool) return;
     AppState.claimingPool = true;
     try {
         const pool = await fetch(`${APP_CONFIG.API_BASE_URL}/pools/${poolId}`).then(r => r.json());
-        const winnerWallet = pool.players ? pool.players.find(p => p.status === 'alive') : null;
-        if (!winnerWallet || winnerWallet.wallet_address.toLowerCase() !== AppState.walletAddress.toLowerCase()) {
-            showToast("Seul le champion peut réclamer le pot.", "error");
+        if (!pool || pool.status !== 'finished') {
+            showToast("La poule n'est pas terminée.", "info");
             return;
         }
-        const totalWei = await contract.poolTotal(BigInt(poolId));
-        if (totalWei <= 0n) {
-            showToast("Aucun pot à réclamer (déjà réglé ?).", "info");
+        const me = pool.players
+            ? pool.players.find(p => p.wallet_address.toLowerCase() === AppState.walletAddress.toLowerCase())
+            : null;
+        const myLoot = BigInt((me && me.loot) ? me.loot : '0');
+        if (myLoot <= 0n) {
+            showToast("Aucun butin à réclamer pour vous.", "info");
             return;
         }
-        const res = await fetch(`${APP_CONFIG.API_BASE_URL}/withdraw/claim-pool-voucher`, {
+        const res = await fetch(`${APP_CONFIG.API_BASE_URL}/withdraw/claim-pool-share-voucher`, {
             method: "POST",
             headers: { "Content-Type": "application/json", "Accept": "application/json" },
             body: JSON.stringify({
                 pool_id: Number(poolId),
-                winner_address: AppState.walletAddress,
-                amount_wei: totalWei.toString()
+                player_address: AppState.walletAddress
             })
         });
         const data = await res.json();
         if (!res.ok || !data.signature) {
-            showToast("Bon du pot refusé : " + (data.error || 'Erreur inconnue'), "error");
+            showToast("Bon de réclamation refusé : " + (data.error || 'Erreur inconnue'), "error");
             return;
         }
-        showToast("Réclamation du pot en cours...", "info");
+        showToast("Réclamation de votre part en cours...", "info");
         await prepareWalletForTx();
-        if (window.showLoader) window.showLoader("Réclamation du pot…");
-        const tx = await contract.claimPool(BigInt(data.pool_id), BigInt(data.amount), BigInt(data.nonce), data.signature);
+        if (window.showLoader) window.showLoader("Réclamation de votre butin…");
+        const tx = await contract.claimPoolShare(BigInt(data.pool_id), BigInt(data.amount), BigInt(data.nonce), data.signature);
         await tx.wait();
-        showToast(`🏆 Pot de ${ethers.formatEther(totalWei)} TST récupéré !`, "success");
-        AppState.claimingPool = false;
+        showToast(`🏆 ${ethers.formatEther(BigInt(data.amount))} TST récupérés !`, "success");
         updateBalance();
         return;
     } catch (err) {
-        console.error("Erreur claim pool:", err);
-        showToast("Erreur lors de la réclamation du pot.", "error");
+        console.error("Erreur claim pool share:", err);
+        showToast("Erreur lors de la réclamation : " + describeTxError(err), "error");
     } finally {
         AppState.claimingPool = false;
         if (window.hideLoader) window.hideLoader();
@@ -3191,16 +3191,18 @@ async function renderPoolRoom() {
         const statusEl = document.getElementById('pool-room-status');
         if (btnQuit && quitText && statusEl) {
             if (poolData.status === 'finished') {
+                const meFin = players.find(p => AppState.walletAddress && p.wallet_address.toLowerCase() === AppState.walletAddress.toLowerCase());
+                const myLootFin = BigInt((meFin && meFin.loot) ? meFin.loot : '0');
+                const canClaim = myLootFin > 0n;
                 const winnerPlayer = pickPoolWinner(players);
                 const winnerWallet = winnerPlayer ? winnerPlayer.wallet_address.toLowerCase() : null;
-                const isWinner = winnerWallet === AppState.walletAddress.toLowerCase();
 
                 btnQuit.disabled = false;
-                quitText.innerText = isWinner ? tr('quitPoolClaim') : tr('quitPoolBack');
-                statusEl.innerText = winnerWallet
-                    ? (isWinner ? tr('youAreChampion') : tr('championIs', { winner: winnerWallet.slice(0,10) }))
-                    : tr('poolFinishedNoWinner');
-                statusEl.style.color = isWinner ? 'gold' : 'var(--color-red)';
+                quitText.innerText = canClaim ? tr('quitPoolClaim') : tr('quitPoolBack');
+                statusEl.innerText = canClaim
+                    ? tr('poolClaimYourLoot', { amount: formatLootTST(myLootFin.toString()) })
+                    : (winnerWallet ? tr('championIs', { winner: winnerWallet.slice(0,10) }) : tr('poolFinishedNoWinner'));
+                statusEl.style.color = canClaim ? 'gold' : 'var(--color-red)';
                 updateBalance();
             } else if (AppState.poolSpectator) {
                 // Spectateur (éliminé ou observateur externe) : suit la poule
@@ -3358,10 +3360,13 @@ async function quitPool(claim = true) {
             const poolStatus = poolData.status || 'unknown';
 
             if (claim && poolStatus === 'finished') {
-                // Winner-take-all : le champion réclame LE POT entier (une seule signature),
-                // depuis l'escrow. Les éliminés voient 0 et n'ont rien à réclamer.
-                const winnerPlayer = pickPoolWinner(poolData.players);
-                if (winnerPlayer && winnerPlayer.wallet_address.toLowerCase() === AppState.walletAddress.toLowerCase()) {
+                // Répartition : chaque survivant réclame SA part (butin final).
+                // Les éliminés ont loot=0 → rien à réclamer.
+                const meQ = poolData.players
+                    ? poolData.players.find(p => p.wallet_address.toLowerCase() === AppState.walletAddress.toLowerCase())
+                    : null;
+                const myLootQ = meQ ? BigInt(meQ.loot || '0') : 0n;
+                if (myLootQ > 0n) {
                     await claimPoolGains(AppState.currentPoolId, AppState.walletAddress);
                 }
                 showToast(tr('poolClosePanel'), "success");

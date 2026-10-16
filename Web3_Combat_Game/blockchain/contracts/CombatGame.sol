@@ -20,6 +20,9 @@ contract CombatGame {
     mapping(uint256 => uint256) public poolTotal;          // pot total (N x mise) détenu en escrow
     mapping(uint256 => bool) public poolSettled;           // tremière poule déjà payée
     mapping(uint256 => mapping(uint256 => bool)) public poolUsedNonces;
+    // Répartition par joueur (fin de poule) : chaque joueur réclame SA part.
+    mapping(uint256 => mapping(address => bool)) public poolShareClaimed; // poule => joueur => a réclamé
+    mapping(uint256 => uint256) public poolClaimedTotal;   // somme déjà réclamée pour une poule
 
     uint256 public feeBps = 250; // 2,5 % de commission sur la mise d'entrée, reconfigurable
 
@@ -30,6 +33,7 @@ contract CombatGame {
     event DepositWithFee(address indexed user, uint256 stake, uint256 fee);
     event PoolDeposit(uint256 indexed poolId, address indexed user, uint256 stake);
     event PoolClaimed(uint256 indexed poolId, address indexed winner, uint256 amount);
+    event PoolShareClaimed(uint256 indexed poolId, address indexed user, uint256 amount);
     event TreasuryWithdrawn(address indexed owner, uint256 amount);
     event Withdrawal(address indexed user, uint256 amount, uint256 nonce);
     event MoveCommitted(bytes32 indexed matchHash, address indexed player, bytes32 commitHash);
@@ -98,31 +102,53 @@ contract CombatGame {
     }
 
     /**
-     * @dev Winner-take-all : le champion retire l'intégralité du pot de la poule,
-     * en une seule fois, depuis l'escrow de la poule.
-     * Autorisé par une signature unique du backend signer sur
-     *     keccak256(abi.encodePacked( poolId, winner, amount, nonce, address(this) ))
-     * puis préfixé EIP-191. amount == poolTotal[poolId] doit être strict.
-     * Une fois payée, la poule est marquée settled : plus aucun dépôt/claim possible.
+     * @dev Réclamation de la PART d'un joueur à la fin d'une poule (répartition
+     * du butin : chaque survivant repart avec son butin final, les éliminés ont 0).
+     * Le backend atteste le montant exact dû à CE joueur. Autorisé par une
+     * signature du backend signer sur
+     *     keccak256(abi.encodePacked("POOL_SHARE", poolId, user, amount, nonce, address(this)))
+     * puis préfixée EIP-191. Distinct de withdraw/claimPool (préfixe différent)
+     * pour éviter tout rejeu de signature entre types de voucher.
+     * Le cumul réclamé ne peut jamais dépasser poolTotal[poolId]. Quand tout est
+     * réclamé, la poule est marquée settled (plus aucun dépôt possible).
      */
-    function claimPool(uint256 poolId, uint256 amount, uint256 nonce, bytes calldata signature) external {
-        require(amount == poolTotal[poolId], "Amount != pool total");
+    function claimPoolShare(uint256 poolId, uint256 amount, uint256 nonce, bytes calldata signature) external {
         require(amount > 0, "Nothing to claim");
-        require(!poolSettled[poolId], "Pool already settled");
+        require(!poolShareClaimed[poolId][msg.sender], "Already claimed");
         require(!poolUsedNonces[poolId][nonce], "Nonce already used");
+        require(poolClaimedTotal[poolId] + amount <= poolTotal[poolId], "Exceeds pool total");
 
-        bytes32 messageHash = keccak256(abi.encodePacked(poolId, msg.sender, amount, nonce, address(this)));
+        bytes32 messageHash = keccak256(abi.encodePacked("POOL_SHARE", poolId, msg.sender, amount, nonce, address(this)));
         bytes32 ethSignedMessageHash = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", messageHash));
         address recovered = recoverSigner(ethSignedMessageHash, signature);
         require(recovered == backendSigner, "Invalid backend signature");
 
         poolUsedNonces[poolId][nonce] = true;
-        poolSettled[poolId] = true;
-        poolTotal[poolId] = 0;
+        poolShareClaimed[poolId][msg.sender] = true;
+        poolClaimedTotal[poolId] += amount;
+        if (poolClaimedTotal[poolId] >= poolTotal[poolId]) {
+            poolSettled[poolId] = true;
+        }
+
         (bool success, ) = msg.sender.call{value: amount}("");
         require(success, "Transfer failed");
 
-        emit PoolClaimed(poolId, msg.sender, amount);
+        emit PoolShareClaimed(poolId, msg.sender, amount);
+    }
+
+    /**
+     * @dev Récupère le reliquat d'une poule partiellement (ou jamais) réclamée
+     * (ex. un joueur éligible n'a jamais réclamé). Restreint au owner, par
+     * politique off-chain (fenêtre de réclamation). Évite des fonds bloqués.
+     */
+    function withdrawPoolRemainder(uint256 poolId) external onlyOwner {
+        require(poolTotal[poolId] > poolClaimedTotal[poolId], "Nothing to withdraw");
+        uint256 amount = poolTotal[poolId] - poolClaimedTotal[poolId];
+        poolClaimedTotal[poolId] = poolTotal[poolId];
+        poolSettled[poolId] = true;
+        (bool success, ) = owner.call{value: amount}("");
+        require(success, "Transfer failed");
+        emit PoolShareClaimed(poolId, owner, amount);
     }
 
     /**

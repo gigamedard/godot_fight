@@ -70,22 +70,43 @@ describe("CombatGame (Pingala) — register, escrow de poule, règlements", func
         });
     });
 
-    describe("claimPool (voucher backend)", function () {
-        it("le champion récupère le pot avec une signature valide", async function () {
+    describe("claimPoolShare (répartition par joueur, voucher backend)", function () {
+        const mkShare = (contractAddr, poolId, user, amount, nonce) =>
+            ethers.solidityPackedKeccak256(
+                ["string", "uint256", "address", "uint256", "uint256", "address"],
+                ["POOL_SHARE", poolId, user, amount, nonce, contractAddr]
+            );
+
+        it("chaque joueur réclame sa part ; pool settled quand épuisé", async function () {
             const stake = ONE;
             const fee = (stake * FEE_BPS) / 10000n;
             await game.connect(p1).registerForPool(1, stake, { value: stake + fee });
             await game.connect(p2).registerForPool(1, stake, { value: stake + fee });
 
+            const addr = await game.getAddress();
             const pot = await game.poolTotal(1); // 2 * stake
-            const messageHash = ethers.solidityPackedKeccak256(
-                ["uint256", "address", "uint256", "uint256", "address"],
-                [1, p1.address, pot, 1, await game.getAddress()]
-            );
-            const sig = await backendSigner.signMessage(ethers.getBytes(messageHash));
+            const sig1 = await backendSigner.signMessage(ethers.getBytes(mkShare(addr, 1, p1.address, stake, 11)));
+            const sig2 = await backendSigner.signMessage(ethers.getBytes(mkShare(addr, 1, p2.address, stake, 12)));
 
-            await expect(game.connect(p1).claimPool(1, pot, 1, sig)).to.emit(game, "PoolClaimed");
-            expect(await game.poolTotal(1)).to.equal(0n);
+            await expect(game.connect(p1).claimPoolShare(1, stake, 11, sig1))
+                .to.emit(game, "PoolShareClaimed").withArgs(1, p1.address, stake);
+            expect(await game.poolSettled(1)).to.equal(false);
+
+            await expect(game.connect(p2).claimPoolShare(1, stake, 12, sig2))
+                .to.emit(game, "PoolShareClaimed").withArgs(1, p2.address, stake);
+            expect(await game.poolClaimedTotal(1)).to.equal(pot);
+            expect(await game.poolSettled(1)).to.equal(true);
+        });
+
+        it("revert si la signature n'est pas du backend signer", async function () {
+            const stake = ONE;
+            const fee = (stake * FEE_BPS) / 10000n;
+            await game.connect(p1).registerForPool(1, stake, { value: stake + fee });
+            const addr = await game.getAddress();
+            const bad = mkShare(addr, 1, p1.address, stake, 99);
+            const sig = await p2.signMessage(ethers.getBytes(bad));
+            await expect(game.connect(p1).claimPoolShare(1, stake, 99, sig))
+                .to.be.revertedWith("Invalid backend signature");
         });
     });
 

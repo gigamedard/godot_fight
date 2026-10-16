@@ -2,11 +2,11 @@
   "network": "pingala",
   "chainId": 99999,
   "contract": "CombatGame",
-  "address": "0xA2722921B753C1E76e1d9a4294204DF983746C3D",
-  "txHash": "0x575ebb151c4038f01e82b2beb0d8f57cc7700cb6d653397b5236b5d12ab48acc",
-  "blockNumber": 171,
+  "address": "0x73F5065cBD382EF0D4b75c9e19f556E1D4Ba40f9",
+  "txHash": "0x0c3b11645ea928be1d67d9ffedd444eba5c81210a171e8d5c9f75a18929b3617",
+  "blockNumber": 352,
   "owner": "0x3Fc5DdB932d0263b0d30BFE94ED98803c84C7ec1",
   "backendSigner": "0xa07c07E4C7EE00243D1591313911DB2Ef753a146",
   "feeBps": 250,
-  "deployedAt": "2026-10-13T20:02:25.622Z"
+  "deployedAt": "2026-10-16T06:44:39.054Z"
 }
