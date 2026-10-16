@@ -141,11 +141,15 @@ class PoolController extends Controller
                 $existing->save();
             }
         } else {
+            // Poule gratuite (mise 0) : aucun dépôt on-chain à confirmer → le
+            // joueur est « déposé » dès la jonction.
+            $freePool = ((float) $pool->entry_fee) <= 0;
             PoolPlayer::create([
                 'pool_id' => $id,
                 'wallet_address' => $wallet,
                 'character_id' => $request->character_id ?? 2,
                 'status' => 'alive',
+                'deposited' => $freePool,
                 'loot' => Wei::toWei($pool->entry_fee),
                 'losses' => 0,
                 'player_name' => $name,
@@ -154,12 +158,71 @@ class PoolController extends Controller
 
         $currentCount = $pool->players()->count();
         \Illuminate\Support\Facades\Log::info("Pool #{$id} JOIN wallet={$wallet} name=" . ($name ?: '-') . " count_after={$currentCount} max={$pool->max_players}");
-        if ($currentCount >= $pool->max_players && $pool->status == 'open') {
-            $pool->update(['status' => 'active', 'started_at' => now()]);
-            $this->triggerMatchmaking($id);
-        }
+
+        // On NE démarre PAS ici : on attend la confirmation du dépôt on-chain de
+        // CHAQUE joueur (voir depositConfirmed / maybeStartPool). Le démarrage
+        // immédiat ne concerne que les poules gratuites (déjà « déposées »).
+        $this->maybeStartPool($id);
 
         return response()->json(['status' => 'success']);
+    }
+
+    /**
+     * Le front notifie qu'un joueur a confirmé (tx minée) son dépôt escrow.
+     * La poule ne démarre qu'une fois TOUS les dépôts confirmés.
+     */
+    public function depositConfirmed(Request $request, $id)
+    {
+        $request->validate([
+            'player_wallet' => 'required|string',
+            'tx_hash' => 'nullable|string',
+        ]);
+
+        $wallet = strtolower($request->player_wallet);
+        $player = PoolPlayer::where('pool_id', $id)->where('wallet_address', $wallet)->first();
+
+        if (!$player) {
+            return response()->json(['error' => 'Player not in pool'], 404);
+        }
+
+        if (!$player->deposited) {
+            $player->deposited = true;
+            $player->deposit_tx = $request->tx_hash;
+            $player->deposited_at = now();
+            $player->save();
+        }
+
+        $this->maybeStartPool($id);
+
+        $pool = Pool::find($id);
+        return response()->json([
+            'status' => 'success',
+            'pool_status' => $pool ? $pool->status : null,
+        ]);
+    }
+
+    /**
+     * Démarre la poule si (et seulement si) elle est PLEINE et que TOUS les
+     * joueurs ont confirmé leur dépôt : évite que le combat commence pendant
+     * que le dernier joueur valide encore sa transaction dans son wallet.
+     */
+    private function maybeStartPool($poolId)
+    {
+        $pool = Pool::find($poolId);
+        if (!$pool || $pool->status !== 'open') {
+            return;
+        }
+
+        if ($pool->players()->count() < $pool->max_players) {
+            return;
+        }
+
+        if ($pool->players()->where('deposited', false)->count() > 0) {
+            return;
+        }
+
+        $pool->update(['status' => 'active', 'started_at' => now()]);
+        $this->triggerMatchmaking($poolId);
     }
     // Trigger Matchmaking manually or after a round
     public function triggerMatchmaking($poolId)

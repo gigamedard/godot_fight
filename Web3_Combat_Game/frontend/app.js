@@ -1972,6 +1972,10 @@ async function depositForPool(poolId, amountEth) {
         if (window.showLoader) window.showLoader("Dépôt dans la poule…");
         const tx = await contract.registerForPool(BigInt(poolId), stakeWei, { value: totalWei });
         await tx.wait();
+        // Confirmer le dépôt au backend : la poule ne démarre que lorsque TOUS
+        // les joueurs ont confirmé → évite que le combat commence pendant que
+        // le dernier joueur valide encore sa transaction dans son wallet.
+        await confirmPoolDeposit(poolId, tx.hash);
         showToast("Mise verrouillée dans l'escrow de la poule !", "success");
         updateBalance();
         return true;
@@ -1981,6 +1985,20 @@ async function depositForPool(poolId, amountEth) {
         return false;
     } finally {
         if (window.hideLoader) window.hideLoader();
+    }
+}
+
+// Notifie le backend qu'un dépôt escrow de poule est confirmé (tx minée).
+// Le backend ne lance le combat que lorsque TOUS les joueurs ont confirmé.
+async function confirmPoolDeposit(poolId, txHash) {
+    try {
+        await fetch(`${APP_CONFIG.API_BASE_URL}/pools/${poolId}/deposited`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({ player_wallet: AppState.walletAddress, tx_hash: txHash || null })
+        });
+    } catch (e) {
+        console.error("confirmPoolDeposit:", e);
     }
 }
 
@@ -3044,28 +3062,29 @@ async function confirmCreatePool() {
         AppState.currentPoolId = Number(poolId);
         AppState.currentPoolFee = Number(fee);
 
-        // Le créateur doit aussi verrouiller sa mise dans l'escrow de la poule,
-        // comme tout participant. Sinon le pot serait privé de sa mise (N-1 participants).
-        if (AppState.currentPoolFee > 0) {
-            const deposited = await depositForPool(poolId, AppState.currentPoolFee);
-            if (!deposited) {
-                showToast("Dépôt dans l'escrow échoué, poule non créée.", "error");
-                return;
-            }
-        }
-
-        showToast("Poule créée et rejointe ! ID: " + poolId, "success");
-        
         if (isPrivate && createdPool.pool.invite_code) {
             AppState.currentInviteCode = createdPool.pool.invite_code;
         } else {
             AppState.currentInviteCode = null;
         }
 
+        showToast("Poule créée et rejointe ! ID: " + poolId, "success");
+
+        // Entrer dans le salon AVANT le dépôt : le lancement du combat (broadcast
+        // émis quand TOUS les dépôts sont confirmés) arrive alors qu'on est déjà
+        // dans la salle, et non pendant la validation wallet.
         renderBRLobby();
         navigateTo('screen-pool-room');
         renderPoolRoom();
         subscribeToPoolRound(Number(poolId));
+
+        // Le créateur verrouille aussi sa mise dans l'escrow (comme tout participant).
+        if (AppState.currentPoolFee > 0) {
+            const deposited = await depositForPool(poolId, AppState.currentPoolFee);
+            if (!deposited) {
+                showToast("Dépôt dans l'escrow échoué.", "error");
+            }
+        }
     } catch(e) {
         console.error(e);
         showToast("Erreur lors de la création de la poule", "error");
@@ -3106,13 +3125,16 @@ async function joinPool(poolId) {
         AppState.currentPoolFee = poolData.entry_fee;
         showToast("Poule rejointe !", "success");
 
-        // Dépôt on-chain de la mise d'entrée (escrow de la poule) à la jonction
-        if (AppState.currentPoolFee > 0) {
-            await depositForPool(poolId, AppState.currentPoolFee);
-        }
-
+        // Entrer dans le salon AVANT le dépôt (le combat ne démarre qu'après la
+        // confirmation de tous les dépôts → on est déjà dans la salle à ce moment).
         navigateTo('screen-pool-room');
         renderPoolRoom();
+
+        // Dépôt on-chain de la mise d'entrée (escrow de la poule) à la jonction
+        if (AppState.currentPoolFee > 0) {
+            const ok = await depositForPool(poolId, AppState.currentPoolFee);
+            if (!ok) showToast("Dépôt dans l'escrow échoué.", "error");
+        }
         
     } catch(e) {
         console.error(e);
@@ -3292,7 +3314,7 @@ async function renderPoolRoom() {
             } else if (pCount >= mPlayers) {
                 btnQuit.disabled = true;
                 quitText.innerText = tr('quitPoolMatches');
-                statusEl.innerText = tr('poolFull');
+                statusEl.innerText = tr('poolWaitingDeposits');
                 statusEl.style.color = '';
             } else {
                 btnQuit.disabled = false;

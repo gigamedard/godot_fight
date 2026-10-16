@@ -78,6 +78,7 @@ Route::get('/pools/{id}', [PoolController::class, 'show'])->where('id', '[0-9]+'
 Route::get('/pools/invite/{code}', [PoolController::class, 'showByInviteCode']);
 Route::post('/pools', [PoolController::class, 'store']);
 Route::post('/pools/{id}/join', [PoolController::class, 'join']);
+Route::post('/pools/{id}/deposited', [PoolController::class, 'depositConfirmed']);
 Route::post('/pools/{id}/matchmake', [PoolController::class, 'triggerMatchmaking']);
 
 // Routes internes pour l'Indexeur Blockchain

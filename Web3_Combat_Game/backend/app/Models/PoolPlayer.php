@@ -15,6 +15,9 @@ class PoolPlayer extends Model
         'character_id',
         'player_name',
         'status',
+        'deposited',
+        'deposit_tx',
+        'deposited_at',
         'loot',
         'losses'
     ];
