@@ -77,7 +77,7 @@ if (!res.ok || !v.signature) {
 try {
   const tx = await writeContract.settleLoser(v.winner, v.loser, v.signature);
   await tx.wait();
-  console.log(`  ${loser.slice(0, 6)}... réglé -> +${ethers.formatEther(bal)} ETH (tx ${tx.hash})`);
+  console.log(`  ${loser.slice(0, 6)}... réglé -> +${ethers.formatEther(bal)} TST (tx ${tx.hash})`);
 } catch (e) {
   console.error(`Échec settle pour ${loser.slice(0, 6)}... :`, e.shortMessage || e.message);
   process.exit(1);

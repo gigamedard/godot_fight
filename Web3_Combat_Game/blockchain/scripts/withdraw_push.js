@@ -9,7 +9,7 @@
  * 2. Soumet withdrawTo(user, amount, nonce, signature) via le compte signer
  *    backend (paie le gaz — le joueur ne signe rien, ne paie rien).
  *
- * Le joueur voit ses ETH arriver directement dans son wallet : 0 popup MetaMask.
+ * Le joueur voit ses TST arriver directement dans son wallet : 0 popup MetaMask.
  */
 import { ethers } from "ethers";
 
@@ -76,7 +76,7 @@ if (!vRes.ok || !v.signature) {
 try {
   const tx = await writeContract.withdrawTo(user, v.amount, v.nonce, v.signature);
   const rec = await tx.wait();
-  console.log(`  ${user.slice(0, 6)}... a retiré ${ethers.formatEther(v.amount)} ETH (tx ${rec.hash})`);
+  console.log(`  ${user.slice(0, 6)}... a retiré ${ethers.formatEther(v.amount)} TST (tx ${rec.hash})`);
 } catch (e) {
   console.error(`Échec retrait pour ${user.slice(0, 6)}... :`, e.shortMessage || e.message);
   process.exit(1);

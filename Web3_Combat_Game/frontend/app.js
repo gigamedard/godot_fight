@@ -411,6 +411,27 @@ async function prepareWalletForTx() {
     } catch (e) { /* non bloquant */ }
 }
 
+// Après un switch de réseau (wallet_switchEthereumChain), ethers v6 invalide le
+// BrowserProvider ("network changed: A => B"). On le RECRÉE (provider/signer/
+// contract) avant toute écriture, sinon la tx échoue encore après le switch.
+async function refreshWalletContract() {
+    try {
+        if (typeof window.ethereum !== 'undefined') {
+            provider = new ethers.BrowserProvider(window.ethereum);
+            signer = await provider.getSigner();
+        } else if (window.App2Wallet && window.App2Wallet.getWcSessionAddress && window.App2Wallet.getWcSessionAddress()) {
+            provider = await window.App2Wallet.getProvider('walletconnect');
+            signer = await provider.getSigner();
+        } else {
+            return;
+        }
+        const abi = typeof CONTRACT_ABI !== 'undefined' ? CONTRACT_ABI : (typeof COMBAT_GAME_ABI !== 'undefined' ? COMBAT_GAME_ABI : null);
+        if (abi) contract = new ethers.Contract(CONTRACT_ADDRESS, abi, signer);
+    } catch (e) {
+        console.log('[App2] refreshWalletContract :', e);
+    }
+}
+
 // Recrée le provider/signer depuis une session WalletConnect vivante (retour de
 // Core, ou provider jamais instancié) SANS ouvrir de modal ni re-pairer.
 async function restoreWcProviderIfAny() {
@@ -455,7 +476,7 @@ async function hasEnoughNative(totalWei) {
     try {
         if (!provider) { await restoreWcProviderIfAny(); }
         if (!provider || !AppState.walletAddress) return true; // laisser la tx tenter
-        const bal = await provider.getBalance(AppState.walletAddress);
+        const bal = await getReadProvider().getBalance(AppState.walletAddress);
         if (bal < totalWei) {
             showToast(`Solde TST insuffisant : ${parseFloat(ethers.formatEther(bal)).toFixed(4)} dispo, ${parseFloat(ethers.formatEther(totalWei)).toFixed(4)} requis.`, "error");
             return false;
@@ -698,6 +719,42 @@ let provider;
 let signer;
 let contract;
 
+// --- Provider LECTURE seule, épinglé sur Pingala ---------------------------
+// Les lectures on-chain (userBalances, feeBps, solde natif…) ne doivent PAS
+// dépendre de la chaîne COURANTE du wallet : sur Core Mobile (WalletConnect),
+// la chaîne par défaut est Avalanche (43114) → eth_call renvoyait "0x"
+// (BAD_DATA) et les dépôts échouaient (feeBps). Les ÉCRITURES gardent le
+// provider wallet (contract/signer) ; les LECTURES passent par ce provider RPC
+// Pingala (CORS ouvert), déterministe quelle que soit la chaîne du wallet.
+let __readProvider = null;
+let __readContract = null;
+function getReadProvider() {
+    if (!__readProvider) {
+        __readProvider = new ethers.JsonRpcProvider(APP_CONFIG.RPC_URL, APP_CONFIG.CHAIN_ID);
+    }
+    return __readProvider;
+}
+function getReadContract() {
+    if (!__readContract) {
+        const abi = typeof CONTRACT_ABI !== 'undefined' ? CONTRACT_ABI : (typeof COMBAT_GAME_ABI !== 'undefined' ? COMBAT_GAME_ABI : null);
+        __readContract = new ethers.Contract(CONTRACT_ADDRESS, abi, getReadProvider());
+    }
+    return __readContract;
+}
+
+// Enveloppe un appel wallet (signMessage…) avec un délai maximal : évite qu'un
+// loader (ex. « ouverture de session ») tourne indéfiniment si le wallet mobile
+// ne se rouvre pas / ne répond pas.
+function withTimeout(promise, ms, message) {
+    return new Promise((resolve, reject) => {
+        const t = setTimeout(() => reject(new Error(message || 'Délai dépassé')), ms);
+        Promise.resolve(promise).then(
+            (v) => { clearTimeout(t); resolve(v); },
+            (e) => { clearTimeout(t); reject(e); }
+        );
+    });
+}
+
 window.showToast = function(message, type = 'info', ms = 3500) {
     const container = document.getElementById('toast-container');
     if (!container) return;
@@ -894,9 +951,10 @@ async function initSessionKey() {
     if (!savedSignature) {
         showToast("Signature de la clé de session requise (le wallet va s'ouvrir une seule fois)...", "info");
         await prepareWalletForTx();
+        await refreshWalletContract();
         if (window.showLoader) window.showLoader("Signature de la clé de session…");
         try {
-            savedSignature = await signer.signMessage(authMessage);
+            savedSignature = await withTimeout(signer.signMessage(authMessage), 180000, "Wallet sans réponse : signature de clé de session expirée. Réessayez (le wallet doit s'ouvrir).");
         } catch (e) {
             showToast(describeTxError(e), "error");
             return;
@@ -930,7 +988,7 @@ async function initSessionKey() {
 }
 
 async function refreshClaimable() {
-    if (!contract || typeof contract.userBalances !== 'function') return;
+    if (!contract || typeof getReadContract().userBalances !== 'function') return;
     const container = document.getElementById('pending-funds-container');
     const amt = document.getElementById('pending-amount');
     if (!container || !amt) return;
@@ -948,7 +1006,7 @@ async function refreshClaimable() {
     if (!w) { container.style.display = 'none'; return; }
 
     try {
-        const pending = await contract.userBalances(AppState.walletAddress);
+        const pending = await getReadContract().userBalances(AppState.walletAddress);
         // Consultons le dernier match terminé pour déterminer l'éligibilité.
         const lastResult = await fetch(`${APP_CONFIG.API_BASE_URL}/battle/last-result?wallet=${w}`)
             .then(r => r.ok ? r.json() : null)
@@ -1034,7 +1092,7 @@ function updateBalance() {
         (async () => {
             let bal = await readNative();
             if (bal === null) {
-                try { bal = await provider.getBalance(AppState.walletAddress); } catch (e) { return; }
+                try { bal = await getReadProvider().getBalance(AppState.walletAddress); } catch (e) { return; }
             }
             const el = document.getElementById('wallet-balance');
             if (el) el.innerText = parseFloat(ethers.formatEther(bal)).toFixed(4) + " " + (APP_CONFIG.NATIVE_SYMBOL || 'TST');
@@ -1066,7 +1124,7 @@ async function claimPendingFunds() {
         // informatif avant le push serveur
         let pending = 0n;
         if (typeof contract !== 'undefined' && contract && typeof contract.userBalances === 'function') {
-            pending = await contract.userBalances(AppState.walletAddress);
+            pending = await getReadContract().userBalances(AppState.walletAddress);
         }
         if (pending <= 0n) {
             showToast("Aucun fonds à réclamer.", "info");
@@ -1836,12 +1894,13 @@ async function depositForMatch(amountEth) {
         showToast(`Dépôt de ${amountEth} TST sur la blockchain...`, "info");
         const stakeWei = ethers.parseEther(String(amountEth));
         // Commission serveur (2,5 % par défaut, reconfigurable via feeBps sur le contrat)
-        const feeBps = typeof contract.feeBps === 'function' ? Number(await contract.feeBps()) : 250;
+        const feeBps = typeof getReadContract().feeBps === 'function' ? Number(await getReadContract().feeBps()) : 250;
         const feeWei = stakeWei * BigInt(feeBps) / 10000n;
         const totalWei = stakeWei + feeWei;
         showToast(`Dépôt de ${amountEth} TST (mise) + ${ethers.formatEther(feeWei)} TST (frais)...`, "info");
         if (!(await hasEnoughNative(totalWei))) return false;
         await prepareWalletForTx();
+        await refreshWalletContract();
         const tx = await contract.register(stakeWei, { value: totalWei });
         await tx.wait();
         showToast("Dépôt confirmé sur la blockchain !", "success");
@@ -1861,12 +1920,13 @@ async function depositForPool(poolId, amountEth) {
     try {
         showToast(`Dépôt de ${amountEth} TST dans l'escrow de la poule...`, "info");
         const stakeWei = ethers.parseEther(String(amountEth));
-        const feeBps = typeof contract.feeBps === 'function' ? Number(await contract.feeBps()) : 250;
+        const feeBps = typeof getReadContract().feeBps === 'function' ? Number(await getReadContract().feeBps()) : 250;
         const feeWei = stakeWei * BigInt(feeBps) / 10000n;
         const totalWei = stakeWei + feeWei;
         showToast(`Escrow +${amountEth} TST (mise) + ${ethers.formatEther(feeWei)} TST (frais)...`, "info");
         if (!(await hasEnoughNative(totalWei))) return false;
         await prepareWalletForTx();
+        await refreshWalletContract();
         if (window.showLoader) window.showLoader("Dépôt dans la poule…");
         const tx = await contract.registerForPool(BigInt(poolId), stakeWei, { value: totalWei });
         await tx.wait();
@@ -1936,6 +1996,7 @@ async function claimPoolGains(poolId, playerAddress) {
         }
         showToast("Réclamation de votre part en cours...", "info");
         await prepareWalletForTx();
+        await refreshWalletContract();
         if (window.showLoader) window.showLoader("Réclamation de votre butin…");
         const tx = await contract.claimPoolShare(BigInt(data.pool_id), BigInt(data.amount), BigInt(data.nonce), data.signature);
         await tx.wait();
@@ -2009,12 +2070,13 @@ async function submitDepositTx(betAmount) {
     try {
         showToast(`Dépôt de ${betAmount} TST sur la blockchain...`, "info");
         const stakeWei = ethers.parseEther(String(betAmount));
-        const feeBps = typeof contract.feeBps === 'function' ? Number(await contract.feeBps()) : 250;
+        const feeBps = typeof getReadContract().feeBps === 'function' ? Number(await getReadContract().feeBps()) : 250;
         const feeWei = stakeWei * BigInt(feeBps) / 10000n;
         const totalWei = stakeWei + feeWei;
         showToast(`Dépôt de ${betAmount} TST (mise) + ${ethers.formatEther(feeWei)} TST (frais)...`, "info");
         if (!(await hasEnoughNative(totalWei))) return null;
         await prepareWalletForTx();
+        await refreshWalletContract();
         if (window.showLoader) window.showLoader("Validation du dépôt on-chain…");
         const tx = await contract.register(stakeWei, { value: totalWei });
         const receipt = await tx.wait();
