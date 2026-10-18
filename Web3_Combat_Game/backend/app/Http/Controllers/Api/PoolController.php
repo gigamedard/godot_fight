@@ -234,6 +234,34 @@ class PoolController extends Controller
     }
 
     /**
+     * Retire un joueur d'une poule (cas : dépôt refusé/échoué → il ne doit pas
+     * rester "dans la poule"). Si c'est le créateur d'une poule encore en
+     * pending_creation, la poule est supprimée (elle n'a jamais réellement existé).
+     */
+    public function leave(Request $request, $id)
+    {
+        $request->validate([
+            'player_wallet' => 'required|string',
+        ]);
+
+        $wallet = strtolower($request->player_wallet);
+        $pool = Pool::findOrFail($id);
+
+        // Une poule lancée ou terminée : on ne retire pas le joueur.
+        if (in_array($pool->status, ['active', 'finished'], true)) {
+            return response()->json(['error' => 'Pool already started'], 400);
+        }
+
+        PoolPlayer::where('pool_id', $id)->where('wallet_address', $wallet)->delete();
+
+        if ($pool->status === 'pending_creation' && $wallet === strtolower((string) $pool->owner_wallet)) {
+            $pool->delete();
+        }
+
+        return response()->json(['status' => 'success']);
+    }
+
+    /**
      * Démarre la poule si (et seulement si) elle est PLEINE et que TOUS les
      * joueurs ont confirmé leur dépôt : évite que le combat commence pendant
      * que le dernier joueur valide encore sa transaction dans son wallet.

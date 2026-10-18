@@ -2004,6 +2004,35 @@ async function confirmPoolDeposit(poolId, txHash) {
     }
 }
 
+// Retire le joueur d'une poule côté backend (dépôt refusé/échoué → il ne doit pas
+// rester "dans la poule"). Le backend supprime aussi la poule si c'est le créateur
+// d'une poule encore en pending_creation.
+async function leavePool(poolId) {
+    try {
+        await fetch(`${APP_CONFIG.API_BASE_URL}/pools/${poolId}/leave`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({ player_wallet: AppState.walletAddress })
+        });
+    } catch (e) {
+        console.error("leavePool:", e);
+    }
+}
+
+// Sortie complète après échec de dépôt : retire du backend puis nettoie l'UI
+// (timer, canal Reverb, état) et revient à la liste des poules.
+async function leavePoolAndExit(poolId) {
+    await leavePool(poolId);
+    if (AppState.poolRefreshTimer) { clearTimeout(AppState.poolRefreshTimer); AppState.poolRefreshTimer = null; }
+    if (window.poolChannel) { try { window.echoInstance.leave('pool.' + window.poolChannel); } catch (e) { /* noop */ } window.poolChannel = null; }
+    AppState.poolSpectator = false;
+    AppState.currentPoolId = null;
+    AppState.currentInviteCode = null;
+    AppState.currentInviteQRPayload = null;
+    navigateTo('screen-br');
+    renderBRLobby();
+}
+
 // Réclame la PART du joueur issue de la poule (répartition) via un voucher backend
 // pour claimPoolShare. Chaque survivant récupère SON butin ; les éliminés ont 0.
 async function claimPoolGains(poolId, playerAddress) {
@@ -3086,7 +3115,9 @@ async function confirmCreatePool() {
         if (AppState.currentPoolFee > 0) {
             const deposited = await depositForPool(poolId, AppState.currentPoolFee);
             if (!deposited) {
-                showToast("Dépôt dans l'escrow échoué.", "error");
+                showToast("Dépôt refusé — poule annulée.", "error");
+                await leavePoolAndExit(poolId);
+                return;
             }
         }
     } catch(e) {
@@ -3137,7 +3168,11 @@ async function joinPool(poolId) {
         // Dépôt on-chain de la mise d'entrée (escrow de la poule) à la jonction
         if (AppState.currentPoolFee > 0) {
             const ok = await depositForPool(poolId, AppState.currentPoolFee);
-            if (!ok) showToast("Dépôt dans l'escrow échoué.", "error");
+            if (!ok) {
+                showToast("Dépôt refusé — sortie de la poule.", "error");
+                await leavePoolAndExit(poolId);
+                return;
+            }
         }
         
     } catch(e) {
