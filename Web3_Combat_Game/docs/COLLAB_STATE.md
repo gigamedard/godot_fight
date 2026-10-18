@@ -20,6 +20,9 @@
 | Commit code déployé | `36003fe` |
 | Docs / onboarding | `701af02` puis ce commit |
 
+> **Agents** : LOCAL = poste Windows (déploie via SSH) · CLOUD = **root sur le VPS**
+> (`srv2032251`, `31.187.72.98`). Les deux peuvent déployer → verrou §4.
+
 ---
 
 ## 2. Propriété des zones (anti-conflit)
@@ -56,14 +59,53 @@
 
 ---
 
-## 4. Verrou
+## 4. Verrou & déploiement
 
-- Aucun fichier chaud verrouillé.
-- Pour verrouiller : écrire ici `Verrou : <fichier> par <owner> (depuis <date>)`
-  avant d'éditer un hotspot, puis retirer la ligne en fin de tâche.
+### 4.1 Fichiers chauds
+- Aucun verrou actif.
+- Avant d'éditer un hotspot (`frontend/app.js`, `backend/routes/api.php`,
+  `PoolController.php`) : écrire `Verrou fichier : <fichier> par <owner> (depuis <date>)`,
+  puis retirer en fin de tâche.
+
+### 4.2 Déploiement (LOCAL **et** CLOUD peuvent déployer)
+- **Un seul déployeur à la fois** : écrire `Verrou deploy : <owner> (depuis <date>)`
+  avant toute opération VPS, puis retirer après.
+- **Jamais** de déploiement concurrent (scp/restart/build simultanés = panne).
+- Après déploiement : renseigner `Dernier déployé : <commit> par <owner> (<date>)`
+  et incrémenter les cache-busters + `sw.js` CACHE.
+- Un déploiement n'est autorisé que **dans le cadre d'une mission explicite**
+  (pas de déploiement « au passage »).
+
+| Déploiement | Valeur |
+|---|---|
+| Dernier déployé | `36003fe` (front 4.53 / sw 14) par LOCAL (2026-10-16) |
+| Déployeurs | LOCAL, CLOUD |
+| Verrou deploy | (aucun) |
 
 ---
 
-## 5. Dernière passation
+## 5. Périmètre & sécurité (CLOUD = root sur le VPS)
+
+Le CLOUD est **root** : les interdits sont **procéduraux**, pas techniques.
+
+**Autorisé** (avec mandat de mission) :
+- `scp`/édition des fichiers bind-mount (`frontend/`, `backend/`, `blockchain/`),
+- `docker restart web3_combat_api`,
+- `docker compose -f docker-compose.vps.yml build/up` pour `frontend`/`indexer`,
+- lecture de `backend/.env` **seulement si la mission l'exige**.
+
+**Interdit (absolu)** :
+- `avalanchego`, `signature-aggregator`, `battlepool-*` (6 conteneurs), `/opt/battlepool`,
+  blocs Caddy L1/battlepool.
+- Toute opération destructive DB (`truncate`, `migrate:fresh`, `DROP`) sans mandat explicite + backup.
+- Exposer/copier des secrets (`backend/.env`, clés, mots de passe) hors du VPS.
+- Déployer hors verrou / sans mission.
+
+**Recommandé (durcissement)** : utilisateur de déploiement **non-root** avec droits
+limités à `docker` sur `web3_combat_*`, et clé dédiée.
+
+---
+
+## 6. Dernière passation
 
 - Voir `docs/handoffs/2026-10-16-local.md`.
