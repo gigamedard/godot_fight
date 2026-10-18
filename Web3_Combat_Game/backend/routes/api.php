@@ -13,29 +13,6 @@ Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');
 
-Route::get('/test-pool', function() {
-    \App\Models\Pool::truncate();
-    \App\Models\Pool::create([
-        'id' => 9999,
-        'entry_fee' => 0,
-        'max_players' => 3,
-        'status' => 'open',
-        'penalty_mode' => 0,
-    ]);
-    
-    $pool = \App\Models\Pool::firstOrCreate(
-        ['id' => 9999],
-        [
-            'entry_fee' => 0,
-            'max_players' => 3,
-            'status' => 'waiting',
-            'round_pending_matches' => 0,
-            'penalty_mode' => 0,
-        ]
-    );
-    return response()->json(['pool' => $pool, 'is_null' => is_null($pool), 'id' => $pool->id]);
-});
-
 Route::post('/match-result', [MatchController::class, 'store']);
 
 // Mock d'authentification pour Laravel Echo / Reverb
