@@ -432,6 +432,66 @@ async function refreshWalletContract() {
     }
 }
 
+// Resynchronise AppState.walletAddress + signer avec le compte RÉELLEMENT actif
+// du wallet (injecté MetaMask/Core extension OU WalletConnect/Core Mobile).
+// Corrige l'erreur MetaMask "The account shown for this request is not part of
+// the active wallet" sur personal_sign : quand le compte change, le signer restait
+// lié à l'ancien compte alors que AppState.walletAddress (restauré depuis le
+// localStorage) pointait ailleurs → désynchronisation.
+// Retourne l'adresse active normalisée (minuscules) ou null.
+async function syncWalletAccount() {
+    let current = null;
+    try {
+        if (typeof window.ethereum !== 'undefined') {
+            const accts = await window.ethereum.request({ method: 'eth_accounts' });
+            current = (accts && accts.length) ? String(accts[0]) : null;
+        } else if (window.App2Wallet && typeof window.App2Wallet.getWcSessionAddress === 'function') {
+            current = window.App2Wallet.getWcSessionAddress();
+        }
+    } catch (e) {
+        console.warn('[App2] syncWalletAccount :', e);
+    }
+
+    if (!current) return AppState.walletAddress || null;
+
+    const normalized = current.toLowerCase();
+    if (!AppState.walletAddress || AppState.walletAddress.toLowerCase() !== normalized) {
+        AppState.walletAddress = normalized;
+        try { localStorage.setItem('web3combat_wallet', normalized); } catch (e) { /* noop */ }
+    }
+
+    // Re-lier signer/contrat au compte actif (ethers v6 : getSigner(address)).
+    try {
+        if (provider) {
+            signer = await provider.getSigner(normalized);
+            const abi = typeof CONTRACT_ABI !== 'undefined' ? CONTRACT_ABI : (typeof COMBAT_GAME_ABI !== 'undefined' ? COMBAT_GAME_ABI : null);
+            if (abi && typeof CONTRACT_ADDRESS !== 'undefined') {
+                contract = new ethers.Contract(CONTRACT_ADDRESS, abi, signer);
+            }
+        }
+    } catch (e) {
+        console.warn('[App2] syncWalletAccount (rebind signer) :', e);
+    }
+
+    return normalized;
+}
+
+// Changement de compte MetaMask/Core (injecté) → resynchronisation immédiate.
+// (WalletConnect/Core Mobile : géré par syncWalletAccount() au moment de signer.)
+if (typeof window.ethereum !== 'undefined' && typeof window.ethereum.on === 'function') {
+    window.ethereum.on('accountsChanged', (accts) => {
+        const next = (accts && accts.length) ? String(accts[0]) : null;
+        if (!next) {
+            AppState.walletAddress = null;
+            try { localStorage.removeItem('web3combat_wallet'); } catch (e) { /* noop */ }
+            return;
+        }
+        AppState.walletAddress = next.toLowerCase();
+        try { localStorage.setItem('web3combat_wallet', next.toLowerCase()); } catch (e) { /* noop */ }
+        refreshWalletContract();
+    });
+}
+
 // Recrée le provider/signer depuis une session WalletConnect vivante (retour de
 // Core, ou provider jamais instancié) SANS ouvrir de modal ni re-pairer.
 async function restoreWcProviderIfAny() {
@@ -952,6 +1012,14 @@ async function initSessionKey() {
         showToast("Signature de la clé de session requise (le wallet va s'ouvrir une seule fois)...", "info");
         await prepareWalletForTx();
         await refreshWalletContract();
+        // Resynchroniser avec le compte RÉELLEMENT actif AVANT de signer : évite
+        // l'erreur MetaMask "account not part of the active wallet" quand le compte
+        // a changé (signer resté sur l'ancien compte).
+        await syncWalletAccount();
+        if (!signer) {
+            showToast("Aucun signataire wallet disponible.", "error");
+            return;
+        }
         if (window.showLoader) window.showLoader("Signature de la clé de session…");
         try {
             savedSignature = await withTimeout(signer.signMessage(authMessage), 180000, "Wallet sans réponse : signature de clé de session expirée. Réessayez (le wallet doit s'ouvrir).");
