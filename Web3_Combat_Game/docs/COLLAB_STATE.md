@@ -16,8 +16,8 @@
 | Contrat CombatGame | `0x73F5065cBD382EF0D4b75c9e19f556E1D4Ba40f9` (bloc **352**) |
 | Contrat legacy | `0xA2722921…` (NE PAS utiliser) |
 | Chaîne | Pingala **99999** (`0x1869f`), symbole **TST** |
-| Front déployé (VPS) | `app.js?v=4.55` · `config.js?v=11` · `i18n.js?v=9` · `sw.js?v=16` |
-| Commit code déployé | `84bd47a` |
+| Front déployé (VPS) | `app.js?v=4.56` · `config.js?v=11` · `i18n.js?v=10` · `sw.js?v=17` |
+| Commit code déployé | `b1e9fd1` |
 | Docs / onboarding | `701af02` puis ce commit |
 
 > **Agents** : LOCAL = poste Windows (déploie via SSH) · CLOUD = **root sur le VPS**
@@ -63,7 +63,7 @@
 ## 4. Verrou & déploiement
 
 ### 4.1 Fichiers chauds
-- `Verrou fichier : PoolController.php + frontend/app.js par CLOUD (depuis 2026-10-18)` — joueurs non-déposés hors comptage.
+- Aucun verrou actif.
 - Avant d'éditer un hotspot (`frontend/app.js`, `backend/routes/api.php`,
   `PoolController.php`) : écrire `Verrou fichier : <fichier> par <owner> (depuis <date>)`,
   puis retirer en fin de tâche.
@@ -79,7 +79,7 @@
 
 | Déploiement | Valeur |
 |---|---|
-| Dernier déployé | `8664955` (backend fix depositConfirmed) par CLOUD (2026-10-18) |
+| Dernier déployé | `b1e9fd1` (backend + front 4.56/sw 17) par CLOUD (2026-10-18) |
 | Déployeurs | LOCAL, CLOUD |
 | Verrou deploy | (aucun) |
 
