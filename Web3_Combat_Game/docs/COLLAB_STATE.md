@@ -56,13 +56,14 @@
 | M7 — monitoring (signer/health/indexer) | TODO | LOCAL | — | — | VPS |
 | M8 — domaine réel + TLS | BLOCKED | LOCAL | — | — | **domaine à fournir** |
 | M9 — Godot export Release | TODO | CLOUD | — | — | rapport d'abord |
+| M10 — création de poule conditionnée au dépôt du créateur | IN PROGRESS | CLOUD | feat/app2-pool-share-payout | — | poule `pending_creation` tant que le créateur n'a pas déposé |
 
 ---
 
 ## 4. Verrou & déploiement
 
 ### 4.1 Fichiers chauds
-- Aucun verrou actif.
+- `Verrou fichier : backend/app/Http/Controllers/Api/PoolController.php par CLOUD (depuis 2026-10-18)` — M10.
 - Avant d'éditer un hotspot (`frontend/app.js`, `backend/routes/api.php`,
   `PoolController.php`) : écrire `Verrou fichier : <fichier> par <owner> (depuis <date>)`,
   puis retirer en fin de tâche.

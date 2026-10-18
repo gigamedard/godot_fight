@@ -85,6 +85,7 @@ class PoolController extends Controller
             'max_players' => 'required|integer',
             'penalty_mode' => 'required|integer',
             'is_private' => 'boolean',
+            'owner_wallet' => 'nullable|string',
             'character_id' => 'nullable|integer',
             'end_condition' => 'nullable|string|in:last_man,remaining,time',
             'end_count' => 'nullable|integer|min:1',
@@ -94,13 +95,20 @@ class PoolController extends Controller
         $inviteCode = $request->is_private ? Str::random(8) : null;
         $endCondition = $request->end_condition ?? 'last_man';
 
+        // Poule payante : elle reste "pending_creation" (invisible/joignable par
+        // personne) tant que le créateur n'a pas verrouillé sa mise on-chain.
+        // Poule gratuite (mise 0) : rien à valider → directement "open".
+        $isFree = ((float) $request->entry_fee) <= 0;
+        $status = $isFree ? 'open' : 'pending_creation';
+
         $pool = Pool::create([
             'entry_fee' => $request->entry_fee,
             'max_players' => $request->max_players,
             'penalty_mode' => $request->penalty_mode,
             'is_private' => $request->is_private ?? false,
+            'owner_wallet' => $request->owner_wallet ? strtolower($request->owner_wallet) : null,
             'invite_code' => $inviteCode,
-            'status' => 'open',
+            'status' => $status,
             'end_condition' => $endCondition,
             'end_count' => $endCondition === 'remaining' ? ($request->end_count ?? 2) : null,
             'end_seconds' => $endCondition === 'time' ? ($request->end_seconds ?? 600) : null,
@@ -123,6 +131,13 @@ class PoolController extends Controller
 
         $pool = Pool::findOrFail($id);
         $wallet = strtolower($request->player_wallet);
+
+        // Poule en attente du dépôt du créateur : seul le créateur peut adhérer
+        // (les autres n'ont pas à rejoindre une poule qui n'existe pas encore).
+        if ($pool->status === 'pending_creation' && $wallet !== strtolower((string) $pool->owner_wallet)) {
+            return response()->json(['error' => 'Pool not available yet'], 404);
+        }
+
         $name = $request->filled('player_name') ? trim((string) $request->player_name) : null;
         if ($name === '') {
             $name = null;
@@ -190,6 +205,14 @@ class PoolController extends Controller
             $player->deposit_tx = $request->tx_hash;
             $player->deposited_at = now();
             $player->save();
+        }
+
+        // Dépôt du créateur confirmé → la poule devient réellement ouverte
+        // (visible dans la liste et joignable). Seul le créateur peut être dans
+        // une poule "pending_creation" (join() le bloque sinon), donc ce dépôt
+        // est forcément le sien.
+        if ($pool->status === 'pending_creation') {
+            $pool->update(['status' => 'open']);
         }
 
         $this->maybeStartPool($id);

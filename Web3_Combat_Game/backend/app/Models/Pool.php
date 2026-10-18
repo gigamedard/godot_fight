@@ -18,6 +18,7 @@ class Pool extends Model
         'max_players',
         'penalty_mode',
         'is_private',
+        'owner_wallet',
         'invite_code',
         'status',
         'round_pending_matches',
