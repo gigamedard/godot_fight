@@ -14,7 +14,7 @@
 // IMPORTANT : tout nouveau jeu.pck/wasm ou changement d'asset versionné →
 // incrémenter CACHE (les fichiers à ?v= se renouvellent tout seuls).
 // ============================================================================
-const CACHE = 'w3c-app2-20261018-19';
+const CACHE = 'w3c-app2-20261018-20';
 const GODOT_PRECACHE = ['/godot/jeu.js', '/godot/jeu.wasm', '/godot/jeu.pck'];
 
 self.addEventListener('install', () => self.skipWaiting());

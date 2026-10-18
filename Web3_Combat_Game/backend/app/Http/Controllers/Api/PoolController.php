@@ -62,8 +62,9 @@ class PoolController extends Controller
         $player = \App\Models\PoolPlayer::where('wallet_address', strtolower($wallet))
             ->where('status', 'alive')
             ->whereHas('pool', function($q) {
-                $q->whereIn('status', ['open', 'active']);
+                $q->whereIn('status', ['open', 'active', 'pending_creation']);
             })
+            ->with('pool')
             ->latest()
             ->first();
 
@@ -73,7 +74,10 @@ class PoolController extends Controller
 
         return response()->json([
             'active' => true,
-            'pool_id' => $player->pool_id
+            'pool_id' => $player->pool_id,
+            'deposited' => (bool) $player->deposited,
+            'pool_status' => $player->pool ? $player->pool->status : null,
+            'entry_fee' => $player->pool ? $player->pool->entry_fee : 0,
         ]);
     }
 

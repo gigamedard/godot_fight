@@ -574,7 +574,11 @@ window.connectWallet = async function() {
         if (AppState.selectedGameMode && (AppState.selectedGameMode === 'DUEL' || AppState.selectedGameMode === 'BATTLE')) {
             setTimeout(() => navigateTo('screen-character'), 500);
         } else {
-            setTimeout(() => navigateTo('screen-mode'), 500);
+            setTimeout(() => {
+                // Ne pas rediriger vers le choix de mode si une poule a été reprise
+                // (refresh/réouverture → on est déjà dans le salon).
+                if (!AppState.currentPoolId) navigateTo('screen-mode');
+            }, 500);
         }
     };
 
@@ -938,6 +942,7 @@ async function initWeb3() {
         
         await initSessionKey();
         updateBalance();
+        resumeActivePool();
         
         window.attemptReveal = async function() {
             if (AppState.isRevealing || AppState.hasRevealed) return;
@@ -2031,6 +2036,44 @@ async function leavePoolAndExit(poolId) {
     AppState.currentInviteQRPayload = null;
     navigateTo('screen-br');
     renderBRLobby();
+}
+
+// Reprend une poule en cours après un refresh / une réouverture de l'app :
+// le joueur reconnecte son wallet, on détecte sa poule active et on le ramène
+// dans le salon. S'il n'a pas encore déposé, on reprend le dépôt (en évitant le
+// double dépôt si la tx on-chain a déjà été minée avant la confirmation backend).
+async function resumeActivePool() {
+    if (!AppState.walletAddress) return;
+    try {
+        const res = await fetch(`${APP_CONFIG.API_BASE_URL}/pools/user/${AppState.walletAddress}`);
+        const data = await res.json();
+        if (!data || !data.active || !data.pool_id) return;
+
+        AppState.currentPoolId = Number(data.pool_id);
+        AppState.currentPoolFee = Number(data.entry_fee || 0);
+        subscribeToPoolRound(AppState.currentPoolId);
+        navigateTo('screen-pool-room');
+        renderPoolRoom();
+
+        if (!data.deposited && AppState.currentPoolFee > 0) {
+            // L'escrow on-chain a-t-il déjà été approvisionné ? (tx minée mais
+            // confirmation backend manquée) → juste confirmer, pas re-déposer.
+            let alreadyOnChain = false;
+            try {
+                const escrow = await getReadContract().poolEscrow(AppState.currentPoolId, AppState.walletAddress);
+                alreadyOnChain = escrow && escrow > 0n;
+            } catch (e) { /* ignore */ }
+
+            if (alreadyOnChain) {
+                await confirmPoolDeposit(AppState.currentPoolId, null);
+            } else {
+                const ok = await depositForPool(AppState.currentPoolId, AppState.currentPoolFee);
+                if (!ok) await leavePoolAndExit(AppState.currentPoolId);
+            }
+        }
+    } catch (e) {
+        console.error('resumeActivePool:', e);
+    }
 }
 
 // Réclame la PART du joueur issue de la poule (répartition) via un voucher backend
@@ -3513,6 +3556,11 @@ async function quitPool(claim = true) {
                 }
                 showToast(tr('poolClosePanel'), "success");
             } else {
+                // Retirer réellement de la poule (le compteur diminue) si elle
+                // n'est pas encore lancée. Le backend ignore active/finished.
+                if (poolStatus === 'open' || poolStatus === 'pending_creation') {
+                    await leavePool(AppState.currentPoolId);
+                }
                 showToast(tr('poolLeftInterface'), "info");
             }
         } catch(e) {
