@@ -1,3 +1,7 @@
+> ⚠️ **OBSOLÈTE (2026-10-16)** — Le pont postMessage et l'iframe App1↔App2 ont
+> été **supprimés** au profit de **deep-links**. Ce document n'est conservé que
+> comme historique. Lire `AGENT_ONBOARDING_APP2.md`.
+
 # App 2 — correctifs pont App1 ↔ iframe (2026-10-15)
 
 Contexte : App 2 est embarqué dans l'iframe d'App 1 (`https://app2.31.187.72.98.sslip.io`),

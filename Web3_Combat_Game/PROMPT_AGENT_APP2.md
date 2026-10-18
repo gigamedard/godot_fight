@@ -1,3 +1,9 @@
+> ⚠️ **OBSOLÈTE (2026-10-16)** — Ce prompt décrit l'ancien modèle **iframe +
+> pont postMessage** et l'**ancien contrat `0xA2722921…`**. Le projet est passé
+> aux **deep-links** (plus d'iframe/pont) et au contrat
+> **`0x73F5065cBD382EF0D4b75c9e19f556E1D4Ba40f9`**. **Ne pas suivre ce fichier.**
+> Lire `AGENT_ONBOARDING_APP2.md` à la place.
+
 # PROMPT — Agent App 2 : mettre Web3 Combat Game à jour et en ligne sur le VPS
 
 ## Contexte (ne pas modifier App 1)
