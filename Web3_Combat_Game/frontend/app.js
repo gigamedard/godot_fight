@@ -3414,9 +3414,10 @@ function renderPoolPlayers(players) {
     sorted.forEach(p => {
         const isMe = AppState.walletAddress && p.wallet_address.toLowerCase() === AppState.walletAddress.toLowerCase();
         const eliminated = p.status === 'eliminated';
+        const pending = !eliminated && p.deposited === false;
         const row = document.createElement('div');
         row.className = 'list-item';
-        row.style.opacity = eliminated ? '0.45' : '1';
+        row.style.opacity = eliminated ? '0.45' : (pending ? '0.6' : '1');
         const short = p.wallet_address.slice(0, 6) + '…' + p.wallet_address.slice(-4);
         const nameLabel = p.player_name
             ? `<strong style="color:#fff;">${escapeHtml(p.player_name)}</strong> <span style="font-family:monospace; color:var(--text-muted); font-size:12px;">${short}</span>`
@@ -3425,8 +3426,8 @@ function renderPoolPlayers(players) {
             <span class="br-tag" style="${eliminated ? 'filter:grayscale(1);' : ''}">${isMe ? '★ ' : ''}${p.character_id ? 'P' + p.character_id : '?'}</span>
             <span style="flex:1;">${nameLabel}</span>
             <span style="color:gold; font-weight:700;">${formatLootTST(p.loot)} TST</span>
-            <span style="color:${eliminated ? 'var(--color-red)' : 'var(--cyan-spark)'}; font-size:11px; margin-left:8px;">
-                ${eliminated ? tr('lootOut') : tr('lootAlive')}
+            <span style="color:${eliminated ? 'var(--color-red)' : (pending ? 'var(--text-muted)' : 'var(--cyan-spark)')}; font-size:11px; margin-left:8px;">
+                ${eliminated ? tr('lootOut') : (pending ? tr('lootPending') : tr('lootAlive'))}
             </span>
         `;
         box.appendChild(row);

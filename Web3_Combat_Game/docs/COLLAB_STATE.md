@@ -63,7 +63,7 @@
 ## 4. Verrou & déploiement
 
 ### 4.1 Fichiers chauds
-- Aucun verrou actif.
+- `Verrou fichier : PoolController.php + frontend/app.js par CLOUD (depuis 2026-10-18)` — joueurs non-déposés hors comptage.
 - Avant d'éditer un hotspot (`frontend/app.js`, `backend/routes/api.php`,
   `PoolController.php`) : écrire `Verrou fichier : <fichier> par <owner> (depuis <date>)`,
   puis retirer en fin de tâche.

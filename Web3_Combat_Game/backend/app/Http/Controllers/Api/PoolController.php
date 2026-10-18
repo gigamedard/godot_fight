@@ -19,15 +19,22 @@ class PoolController extends Controller
     public function index()
     {
         // Salons ouverts (rejoignables) + salons en cours (observables en spectateur).
-        $pools = Pool::withCount('players')->whereIn('status', ['open', 'active'])->where('is_private', false)->get();
+        // Seuls les joueurs ayant DÉPOSÉ (payé) comptent comme "dans la poule" :
+        // les joints non-déposés n'inflent pas le compteur affiché.
+        $pools = Pool::withCount(['players as players_count' => function ($q) {
+            $q->where('deposited', true);
+        }])->whereIn('status', ['open', 'active'])->where('is_private', false)->get();
         return response()->json($pools);
     }
 
     // Get a specific pool by id
     public function show($id)
     {
-        $pool = Pool::withCount('players')->with('players')->findOrFail($id);
+        $pool = Pool::with('players')->findOrFail($id);
         $response = $pool->toArray();
+
+        // Seuls les joueurs ayant DÉPOSÉ (payé) comptent comme "dans la poule".
+        $response['players_count'] = $pool->players->where('deposited', true)->count();
 
         if ($pool->status === 'active') {
             $playersCache = $pool->players->keyBy(function($p) { return strtolower($p->wallet_address); });
@@ -73,7 +80,9 @@ class PoolController extends Controller
     // Get a specific pool by invite code
     public function showByInviteCode($code)
     {
-        $pool = Pool::withCount('players')->where('invite_code', $code)->firstOrFail();
+        $pool = Pool::withCount(['players as players_count' => function ($q) {
+            $q->where('deposited', true);
+        }])->where('invite_code', $code)->firstOrFail();
         return response()->json($pool);
     }
 
