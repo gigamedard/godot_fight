@@ -46,7 +46,7 @@
 
 | ID | Statut | Owner | Branche | Commit | Note |
 |---|---|---|---|---|---|
-| M1 — retirer `/api/test-pool` | IN PROGRESS | CLOUD | (branche cloud) | — | diff validé ; preuves (grep / `php -l` / maj doc) en attente |
+| M1 — retirer `/api/test-pool` | DONE | CLOUD | feat/app2-pool-share-payout | 3e2f2c7 | route supprimée ; `php -l` OK ; maj `AGENT_ONBOARDING_APP2.md` ligne ~151 à faire |
 | M2 — audit config prod | DONE | CLOUD | — | — | rapport validé (APP_ENV/DEBUG/URL/LOG + CORS) |
 | M2b — durcir CORS | TODO | CLOUD | — | — | à faire **avec** le domaine prod (M8) |
 | M3 — reset données de test | TODO | LOCAL | — | — | VPS ; accord + backup requis |
@@ -56,14 +56,14 @@
 | M7 — monitoring (signer/health/indexer) | TODO | LOCAL | — | — | VPS |
 | M8 — domaine réel + TLS | BLOCKED | LOCAL | — | — | **domaine à fournir** |
 | M9 — Godot export Release | TODO | CLOUD | — | — | rapport d'abord |
-| M10 — création de poule conditionnée au dépôt du créateur | IN PROGRESS | CLOUD | feat/app2-pool-share-payout | — | poule `pending_creation` tant que le créateur n'a pas déposé |
+| M10 — création de poule conditionnée au dépôt du créateur | DONE | CLOUD | feat/app2-pool-share-payout | 1f9e249 | poule `pending_creation` tant que le créateur n'a pas déposé |
 
 ---
 
 ## 4. Verrou & déploiement
 
 ### 4.1 Fichiers chauds
-- `Verrou fichier : backend/app/Http/Controllers/Api/PoolController.php par CLOUD (depuis 2026-10-18)` — M10.
+- Aucun verrou actif.
 - Avant d'éditer un hotspot (`frontend/app.js`, `backend/routes/api.php`,
   `PoolController.php`) : écrire `Verrou fichier : <fichier> par <owner> (depuis <date>)`,
   puis retirer en fin de tâche.
@@ -109,4 +109,4 @@ limités à `docker` sur `web3_combat_*`, et clé dédiée.
 
 ## 6. Dernière passation
 
-- Voir `docs/handoffs/2026-10-16-local.md`.
+- Voir `docs/handoffs/2026-10-18-cloud.md`.
