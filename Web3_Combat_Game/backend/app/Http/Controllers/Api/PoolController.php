@@ -194,6 +194,7 @@ class PoolController extends Controller
         ]);
 
         $wallet = strtolower($request->player_wallet);
+        $pool = Pool::findOrFail($id);
         $player = PoolPlayer::where('pool_id', $id)->where('wallet_address', $wallet)->first();
 
         if (!$player) {
@@ -217,10 +218,9 @@ class PoolController extends Controller
 
         $this->maybeStartPool($id);
 
-        $pool = Pool::find($id);
         return response()->json([
             'status' => 'success',
-            'pool_status' => $pool ? $pool->status : null,
+            'pool_status' => $pool->fresh()->status ?? $pool->status,
         ]);
     }
 
