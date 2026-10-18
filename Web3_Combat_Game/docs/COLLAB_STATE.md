@@ -79,9 +79,9 @@
 
 | Déploiement | Valeur |
 |---|---|
-| Dernier déployé | `36003fe` (front 4.53 / sw 14) par LOCAL (2026-10-16) |
+| Dernier déployé | `73f1daf` (backend M1+M10) par CLOUD (2026-10-18) |
 | Déployeurs | LOCAL, CLOUD |
-| Verrou deploy | CLOUD (depuis 2026-10-18) — M1+M10 |
+| Verrou deploy | (aucun) |
 
 ---
 
