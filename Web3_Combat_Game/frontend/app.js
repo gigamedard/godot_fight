@@ -3414,7 +3414,7 @@ function renderPoolPlayers(players) {
     sorted.forEach(p => {
         const isMe = AppState.walletAddress && p.wallet_address.toLowerCase() === AppState.walletAddress.toLowerCase();
         const eliminated = p.status === 'eliminated';
-        const pending = !eliminated && p.deposited === false;
+        const pending = !eliminated && !p.deposited;
         const row = document.createElement('div');
         row.className = 'list-item';
         row.style.opacity = eliminated ? '0.45' : (pending ? '0.6' : '1');
