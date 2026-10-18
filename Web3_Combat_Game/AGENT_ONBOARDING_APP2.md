@@ -31,6 +31,26 @@
 
 ---
 
+## 0bis. Collaboration LOCAL ↔ CLOUD — à lire à chaque session
+
+- **Tableau noir partagé** : `docs/COLLAB_STATE.md` (ancrages, propriété des zones,
+  tâches, verrou).
+- **Journal de passation** : `docs/handoffs/YYYY-MM-DD-<local|cloud>.md` (append-only).
+- **Rituel AVANT de travailler** :
+  ```
+  git fetch --all --prune
+  git switch <branche>
+  git pull --rebase
+  ```
+  puis lire `docs/COLLAB_STATE.md` + les 2 dernières passations.
+- **AVANT de rendre la main** : commit + push ; mettre à jour `COLLAB_STATE.md`
+  (tâche, ancrages) ; écrire une entrée dans `docs/handoffs/`.
+- **Règles** : une branche par tâche ; PR obligatoire (le LOCAL merge) ; ne jamais
+  pousser sur `main` ; **un seul agent par fichier chaud** (verrou dans
+  `COLLAB_STATE.md`) ; journal append-only ; **seul le LOCAL déploie sur le VPS**.
+
+---
+
 ## 1. Architecture déployée (VPS `31.187.72.98`)
 
 ```
