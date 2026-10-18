@@ -79,7 +79,7 @@
 
 | Déploiement | Valeur |
 |---|---|
-| Dernier déployé | `84bd47a` (front 4.55 / sw 16) par CLOUD (2026-10-18) |
+| Dernier déployé | `8664955` (backend fix depositConfirmed) par CLOUD (2026-10-18) |
 | Déployeurs | LOCAL, CLOUD |
 | Verrou deploy | (aucun) |
 
