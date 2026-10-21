@@ -1162,6 +1162,14 @@ input:focus, select:focus { border-color: var(--cyan-spark) !important; box-shad
     font-size: 0.8rem;
     color: var(--text-white);
 }
+.status-badge.live {
+    background: var(--error-red);
+    animation: livePulse 1.2s ease-in-out infinite;
+}
+@keyframes livePulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255,60,60,0.55); }
+    50% { box-shadow: 0 0 0 7px rgba(255,60,60,0); }
+}
 .count-badge {
     color: var(--gold-primary);
     font-family: var(--font-heading);
@@ -1460,8 +1468,30 @@ textarea { touch-action: pan-y; }
     max-width: 320px;
 }
 .toast.success { border-left-color: var(--success-green); }
-.toast.error   { border-left-color: var(--error-red); }
+.toast.error   { border-left-color: var(--error-red); animation: slideInRight 0.3s forwards, toastShake 0.45s 0.3s; }
 .toast.info    { border-left-color: var(--cyan-spark); }
+@keyframes toastShake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-7px); }
+    40% { transform: translateX(7px); }
+    60% { transform: translateX(-5px); }
+    80% { transform: translateX(5px); }
+}
+
+/* Flash d'écran (retour visuel d'erreur) */
+#screen-flash {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 300;
+    background: radial-gradient(ellipse at center, rgba(255,60,60,0.35), rgba(255,60,60,0.08));
+    opacity: 0;
+    transition: opacity 0.5s ease;
+}
+#screen-flash.active {
+    opacity: 1;
+    transition: opacity 0.06s ease;
+}
 
 /* ==========================================================================
    19. ANIMATIONS

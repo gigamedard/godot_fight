@@ -814,6 +814,17 @@ window.showToast = function(message, type = 'info', ms = 3500) {
         else if (type === 'error') window.AUDIO_FX.error();
         else window.AUDIO_FX.info();
     }
+
+    // Flash d'écran rouge en cas d'erreur : retour visuel immédiat.
+    if (type === 'error') {
+        const flash = document.getElementById('screen-flash');
+        if (flash) {
+            flash.classList.remove('active');
+            void flash.offsetWidth; // force reflow pour relancer l'animation
+            flash.classList.add('active');
+            setTimeout(() => flash.classList.remove('active'), 500);
+        }
+    }
     
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
@@ -3374,6 +3385,7 @@ async function renderPoolRoom() {
         const quitText = document.getElementById('quit-pool-text');
         const statusEl = document.getElementById('pool-room-status');
         if (btnQuit && quitText && statusEl) {
+            statusEl.classList.remove('live');
             if (poolData.status === 'finished') {
                 const meFin = players.find(p => AppState.walletAddress && p.wallet_address.toLowerCase() === AppState.walletAddress.toLowerCase());
                 const myLootFin = BigInt((meFin && meFin.loot) ? meFin.loot : '0');
@@ -3406,6 +3418,13 @@ async function renderPoolRoom() {
                 quitText.innerText = tr('quitPoolDefault');
                 statusEl.innerText = tr('spectatorStatus');
                 statusEl.style.color = 'var(--cyan-spark)';
+            } else if (poolData.status === 'active') {
+                // Poule démarrée (entre deux rounds) : indicateur "EN COURS".
+                btnQuit.disabled = false;
+                quitText.innerText = tr('quitPoolDefault');
+                statusEl.classList.add('live');
+                statusEl.innerText = tr('poolInProgress');
+                statusEl.style.color = '';
             } else if (pCount >= mPlayers) {
                 btnQuit.disabled = true;
                 quitText.innerText = tr('quitPoolMatches');

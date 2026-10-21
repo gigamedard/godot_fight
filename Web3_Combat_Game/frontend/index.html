@@ -13,7 +13,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <title>POLY COMBAT</title>
-    <link rel="stylesheet" href="style.css?v=4.7">
+    <link rel="stylesheet" href="style.css?v=4.8">
 </head>
 <body>
 
@@ -446,6 +446,9 @@
             </div>
         </div>
 
+    <!-- Flash d'écran (retour visuel d'erreur) -->
+    <div id="screen-flash"></div>
+
     <!-- Toasts -->
     <div id="toast-container" class="toast-container"></div>
 
@@ -581,12 +584,12 @@
          capturer ses logs console. Voir window.openDebugLog(). -->
     <script src="debug-log.js?v=7" defer></script>
     <script src="ui-loader.js?v=2" defer></script>
-    <script src="app.js?v=4.60" defer></script>
+    <script src="app.js?v=4.61" defer></script>
     <!-- PWA : service worker (met en cache les gros fichiers /godot/*) -->
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', function () {
-                navigator.serviceWorker.register('sw.js?v=21').catch(function (e) {
+                navigator.serviceWorker.register('sw.js?v=22').catch(function (e) {
                     console.warn('[PWA] service worker non enregistré:', e);
                 });
             });
