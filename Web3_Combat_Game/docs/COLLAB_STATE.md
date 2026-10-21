@@ -16,8 +16,8 @@
 | Contrat CombatGame | `0x73F5065cBD382EF0D4b75c9e19f556E1D4Ba40f9` (bloc **352**) |
 | Contrat legacy | `0xA2722921…` (NE PAS utiliser) |
 | Chaîne | Pingala **99999** (`0x1869f`), symbole **TST** |
-| Front déployé (VPS) | `app.js?v=4.59` · `config.js?v=11` · `i18n.js?v=10` · `sw.js?v=20` |
-| Commit code déployé | `759bad5` |
+| Front déployé (VPS) | `app.js?v=4.60` · `config.js?v=11` · `i18n.js?v=11` · `sw.js?v=21` |
+| Commit code déployé | `f51b52a` |
 | Docs / onboarding | `701af02` puis ce commit |
 
 > **Agents** : LOCAL = poste Windows (déploie via SSH) · CLOUD = **root sur le VPS**
@@ -79,7 +79,7 @@
 
 | Déploiement | Valeur |
 |---|---|
-| Dernier déployé | `759bad5` (backend + front 4.59/sw 20) par CLOUD (2026-10-18) |
+| Dernier déployé | `f51b52a` (backend + front 4.60/sw 21 + indexer rebuild) par CLOUD (2026-10-21) |
 | Déployeurs | LOCAL, CLOUD |
 | Verrou deploy | (aucun) |
 
