@@ -17,4 +17,16 @@ return [
 
     'fight_timeout_ms' => (int) env('FIGHT_TIMEOUT_MS', 60000),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Délai d'annulation d'une poule bloquée (dépôts incomplets)
+    |--------------------------------------------------------------------------
+    | Une poule en statut "open" ou "pending_creation" qui n'a pas atteint
+    | "pleine + tous dépôts confirmés" au bout de ce délai (en minutes, compté
+    | depuis sa création) est annulée : les joueurs ayant déposé peuvent alors
+    | réclamer leur mise (remboursement via claimPoolShare).
+    | Configurable via POOL_DEPOSIT_TIMEOUT_MINUTES.
+    */
+    'pool_deposit_timeout_minutes' => (int) env('POOL_DEPOSIT_TIMEOUT_MINUTES', 10),
+
 ];

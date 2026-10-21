@@ -2085,7 +2085,7 @@ async function claimPoolGains(poolId, playerAddress) {
     AppState.claimingPool = true;
     try {
         const pool = await fetch(`${APP_CONFIG.API_BASE_URL}/pools/${poolId}`).then(r => r.json());
-        if (!pool || pool.status !== 'finished') {
+        if (!pool || (pool.status !== 'finished' && pool.status !== 'cancelled')) {
             showToast("La poule n'est pas terminée.", "info");
             return;
         }
@@ -3388,6 +3388,17 @@ async function renderPoolRoom() {
                     : (winnerWallet ? tr('championIs', { winner: winnerWallet.slice(0,10) }) : tr('poolFinishedNoWinner'));
                 statusEl.style.color = canClaim ? 'gold' : 'var(--color-red)';
                 updateBalance();
+            } else if (poolData.status === 'cancelled') {
+                const meCanc = players.find(p => AppState.walletAddress && p.wallet_address.toLowerCase() === AppState.walletAddress.toLowerCase());
+                const myLootCanc = BigInt((meCanc && meCanc.loot) ? meCanc.loot : '0');
+                const canRefund = !!(meCanc && meCanc.deposited && myLootCanc > 0n);
+                btnQuit.disabled = false;
+                quitText.innerText = canRefund ? tr('quitPoolClaim') : tr('quitPoolBack');
+                statusEl.innerText = canRefund
+                    ? tr('poolCancelledRefund', { amount: formatLootTST(myLootCanc.toString()) })
+                    : tr('poolCancelled');
+                statusEl.style.color = canRefund ? 'gold' : 'var(--color-red)';
+                updateBalance();
             } else if (AppState.poolSpectator) {
                 // Spectateur (éliminé ou observateur externe) : suit la poule
                 // et peut sortir à tout moment.
@@ -3544,14 +3555,15 @@ async function quitPool(claim = true) {
             const poolData = await fetch(`${APP_CONFIG.API_BASE_URL}/pools/${AppState.currentPoolId}`).then(r => r.json());
             const poolStatus = poolData.status || 'unknown';
 
-            if (claim && poolStatus === 'finished') {
+            if (claim && (poolStatus === 'finished' || poolStatus === 'cancelled')) {
                 // Répartition : chaque survivant réclame SA part (butin final).
-                // Les éliminés ont loot=0 → rien à réclamer.
+                // Les éliminés ont loot=0 → rien à réclamer. Poule annulée →
+                // remboursement de la mise pour les joueurs déposés.
                 const meQ = poolData.players
                     ? poolData.players.find(p => p.wallet_address.toLowerCase() === AppState.walletAddress.toLowerCase())
                     : null;
                 const myLootQ = meQ ? BigInt(meQ.loot || '0') : 0n;
-                if (myLootQ > 0n) {
+                if (myLootQ > 0n && (poolStatus !== 'cancelled' || (meQ && meQ.deposited))) {
                     await claimPoolGains(AppState.currentPoolId, AppState.walletAddress);
                 }
                 showToast(tr('poolClosePanel'), "success");

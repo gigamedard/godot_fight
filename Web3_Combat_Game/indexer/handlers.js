@@ -70,6 +70,13 @@ const handlers = {
   async PoolDeposit(ev) {
     const [poolId, user, stake] = ev.args;
     console.log(`  🟦 [PoolDeposit] poolId=${poolId.toString()} user=${user} stake=${stake.toString()}`);
+    // Réconciliation : le dépôt on-chain fait foi. On notifie Laravel pour
+    // marquer le joueur "déposé" même si la confirmation front a échoué.
+    await postToLaravel('/pool-deposit', {
+      pool_id: poolId.toString(),
+      user,
+      stake: stake.toString(),
+    });
   },
 
   async PoolClaimed(ev) {

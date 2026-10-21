@@ -18,6 +18,7 @@ class PoolController extends Controller
     // List open public pools
     public function index()
     {
+        $this->cancelStuckPools();
         // Salons ouverts (rejoignables) + salons en cours (observables en spectateur).
         // Seuls les joueurs ayant DÉPOSÉ (payé) comptent comme "dans la poule" :
         // les joints non-déposés n'inflent pas le compteur affiché.
@@ -27,9 +28,33 @@ class PoolController extends Controller
         return response()->json($pools);
     }
 
+    /**
+     * Annule les poules bloquées (open/pending_creation) dont le dépôt n'est pas
+     * complet au bout de pool_deposit_timeout_minutes (compté depuis created_at).
+     * Les joueurs ayant déposé pourront alors réclamer leur mise (remboursement).
+     * Appelé paresseusement depuis index()/show() (le salon est pollé ~5s).
+     */
+    public function cancelStuckPools()
+    {
+        $timeout = (int) config('game.pool_deposit_timeout_minutes', 10);
+        $deadline = now()->subMinutes($timeout);
+
+        $stuck = Pool::whereIn('status', ['open', 'pending_creation'])
+            ->where('created_at', '<', $deadline)
+            ->get();
+
+        foreach ($stuck as $pool) {
+            $pool->update(['status' => 'cancelled', 'finished_at' => now()]);
+            \Illuminate\Support\Facades\Log::info("Poule #{$pool->id} annulée (dépôt incomplet après {$timeout} min).");
+        }
+
+        return count($stuck);
+    }
+
     // Get a specific pool by id
     public function show($id)
     {
+        $this->cancelStuckPools();
         $pool = Pool::with('players')->findOrFail($id);
         $response = $pool->toArray();
 
@@ -270,7 +295,7 @@ class PoolController extends Controller
      * joueurs ont confirmé leur dépôt : évite que le combat commence pendant
      * que le dernier joueur valide encore sa transaction dans son wallet.
      */
-    private function maybeStartPool($poolId)
+    public function maybeStartPool($poolId)
     {
         $pool = Pool::find($poolId);
         if (!$pool || $pool->status !== 'open') {

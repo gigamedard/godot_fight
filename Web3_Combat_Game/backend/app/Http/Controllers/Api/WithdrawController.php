@@ -297,13 +297,19 @@ class WithdrawController extends Controller
         if (!$pool) {
             return response()->json(['error' => 'Poule introuvable.'], 404);
         }
-        if ($pool->status !== 'finished') {
+        if (!in_array($pool->status, ['finished', 'cancelled'], true)) {
             return response()->json(['error' => 'La poule n\'est pas encore terminée.'], 409);
         }
 
         $pp = \App\Models\PoolPlayer::where('pool_id', $poolId)->where('wallet_address', $player)->first();
         if (!$pp) {
             return response()->json(['error' => 'Joueur non inscrit dans cette poule.'], 404);
+        }
+
+        // Poule annulée = remboursement : seuls les joueurs ayant réellement
+        // déposé (escrow on-chain) peuvent réclamer leur mise.
+        if ($pool->status === 'cancelled' && !$pp->deposited) {
+            return response()->json(['error' => 'Aucun dépôt à rembourser pour ce joueur.'], 422);
         }
 
         $amountWei = (string) ($pp->loot ?: '0');

@@ -19,6 +19,45 @@ class InternalController extends Controller
         }
     }
 
+    /**
+     * Réconciliation : le dépôt on-chain (événement PoolDeposit) fait foi. Si la
+     * confirmation front (POST /pools/{id}/deposited) a échoué/été perdue, on
+     * marque ici le joueur "déposé" pour que la poule puisse démarrer.
+     */
+    public function poolDeposit(Request $request)
+    {
+        $this->checkToken($request);
+
+        $request->validate([
+            'pool_id' => 'required|string',
+            'user' => 'required|string',
+            'stake' => 'nullable|string',
+        ]);
+
+        $poolId = (int) $request->pool_id;
+        $wallet = strtolower($request->user);
+
+        $player = PoolPlayer::where('pool_id', $poolId)->where('wallet_address', $wallet)->first();
+        if (!$player) {
+            return response()->json(['status' => 'noop', 'message' => 'Player not in pool']);
+        }
+
+        if (!$player->deposited) {
+            $player->deposited = true;
+            $player->deposited_at = now();
+            $player->save();
+        }
+
+        $pool = Pool::find($poolId);
+        if ($pool && $pool->status === 'pending_creation') {
+            $pool->update(['status' => 'open']);
+        }
+
+        app(\App\Http\Controllers\Api\PoolController::class)->maybeStartPool($poolId);
+
+        return response()->json(['status' => 'success']);
+    }
+
     public function poolStarted(Request $request)
     {
         $this->checkToken($request);

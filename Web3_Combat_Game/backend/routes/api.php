@@ -62,6 +62,7 @@ Route::post('/pools/{id}/matchmake', [PoolController::class, 'triggerMatchmaking
 // Routes internes pour l'Indexeur Blockchain
 Route::post('/internal/pool-started', [InternalController::class, 'poolStarted']);
 Route::post('/internal/match-finished', [InternalController::class, 'matchFinished']);
+Route::post('/internal/pool-deposit', [InternalController::class, 'poolDeposit']);
 
 // Off-Chain Hybrid Battle API
 use App\Http\Controllers\Api\BattleController;
