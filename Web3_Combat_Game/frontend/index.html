@@ -13,7 +13,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <title>POLY COMBAT</title>
-    <link rel="stylesheet" href="style.css?v=4.8">
+    <link rel="stylesheet" href="style.css?v=4.9">
 </head>
 <body>
 
@@ -589,7 +589,9 @@
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', function () {
-                navigator.serviceWorker.register('sw.js?v=23').catch(function (e) {
+                // updateViaCache 'none' : force le navigateur à re-télécharger sw.js
+                // (pas de cache HTTP) pour détecter immédiatement les nouvelles versions.
+                navigator.serviceWorker.register('sw.js?v=23', { updateViaCache: 'none' }).catch(function (e) {
                     console.warn('[PWA] service worker non enregistré:', e);
                 });
             });
