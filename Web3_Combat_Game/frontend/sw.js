@@ -14,13 +14,21 @@
 // IMPORTANT : tout nouveau jeu.pck/wasm ou changement d'asset versionné →
 // incrémenter CACHE (les fichiers à ?v= se renouvellent tout seuls).
 // ============================================================================
-const CACHE = 'w3c-app2-20261018-22';
+const CACHE = 'w3c-app2-20261018-23';
 const GODOT_PRECACHE = ['/godot/jeu.js', '/godot/jeu.wasm', '/godot/jeu.pck'];
 
 self.addEventListener('install', () => self.skipWaiting());
 
 self.addEventListener('activate', (e) => {
     e.waitUntil(self.clients.claim());
+    // Nettoyage des anciens caches (versions précédentes du SW) : évite que les
+    // anciens fichiers ?v= restent servis à cause du matching par recherche.
+    e.waitUntil((async () => {
+        try {
+            const keys = await caches.keys();
+            await Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)));
+        } catch (err) { /* ignore */ }
+    })());
     // Pré-cache des fichiers Godot : après le 1er chargement ils sont déjà dans
     // le cache HTTP du navigateur → fetch quasi gratuit (304) ; on remplit le
     // cache du SW pour que les chargements SUIVANTS n'aient plus besoin du réseau.
@@ -84,7 +92,9 @@ self.addEventListener('fetch', (event) => {
 
     event.respondWith((async () => {
         const c = await caches.open(CACHE);
-        const hit = await c.match(req, { ignoreSearch: true });
+        // Pas de ignoreSearch : les assets versionnés (?v=) doivent être
+        // renouvelés quand la version change (sinon l'ancien js/css reste servi).
+        const hit = await c.match(req);
         if (hit) return hit;
         const res = await fetch(req);
         if (res && res.ok && res.type === 'basic') c.put(req, res.clone());
