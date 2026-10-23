@@ -815,14 +815,14 @@ window.showToast = function(message, type = 'info', ms = 3500) {
         else window.AUDIO_FX.info();
     }
 
-    // Flash d'écran rouge en cas d'erreur : retour visuel immédiat.
+    // Flash d'écran rouge en cas d'erreur : retour visuel immédiat (opacité en
+    // style inline pour être indépendant du cache CSS / de la classe .active).
     if (type === 'error') {
         const flash = document.getElementById('screen-flash');
         if (flash) {
-            flash.classList.remove('active');
-            void flash.offsetWidth; // force reflow pour relancer l'animation
-            flash.classList.add('active');
-            setTimeout(() => flash.classList.remove('active'), 500);
+            flash.style.opacity = '1';
+            if (flash.__flashTimer) clearTimeout(flash.__flashTimer);
+            flash.__flashTimer = setTimeout(() => { flash.style.opacity = '0'; }, 450);
         }
     }
     
@@ -3301,6 +3301,7 @@ async function handlePoolRoundStarted(e) {
         }
 
         document.getElementById('pool-room-status').innerText = tr('poolRoundInProgress');
+        document.getElementById('pool-room-status').classList.add('live');
         document.getElementById('pool-room-status').style.color = "var(--color-red)";
         
         if (e.waitingPlayer && e.waitingPlayer.toLowerCase() === AppState.walletAddress.toLowerCase()) {
