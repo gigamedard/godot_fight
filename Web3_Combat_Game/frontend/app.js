@@ -2096,7 +2096,7 @@ async function claimPoolGains(poolId, playerAddress) {
     AppState.claimingPool = true;
     try {
         const pool = await fetch(`${APP_CONFIG.API_BASE_URL}/pools/${poolId}`).then(r => r.json());
-        if (!pool || (pool.status !== 'finished' && pool.status !== 'cancelled')) {
+        if (!pool || !['finished', 'cancelled', 'open', 'pending_creation'].includes(pool.status)) {
             showToast("La poule n'est pas terminée.", "info");
             return;
         }
@@ -3591,6 +3591,14 @@ async function quitPool(claim = true) {
                 // Retirer réellement de la poule (le compteur diminue) si elle
                 // n'est pas encore lancée. Le backend ignore active/finished.
                 if (poolStatus === 'open' || poolStatus === 'pending_creation') {
+                    const meQ = poolData.players
+                        ? poolData.players.find(p => p.wallet_address.toLowerCase() === AppState.walletAddress.toLowerCase())
+                        : null;
+                    // Remboursement immédiat de la mise (hors frais) si le joueur
+                    // avait déjà déposé, puis retrait de la poule.
+                    if (meQ && meQ.deposited) {
+                        await claimPoolGains(AppState.currentPoolId, AppState.walletAddress);
+                    }
                     await leavePool(AppState.currentPoolId);
                 }
                 showToast(tr('poolLeftInterface'), "info");

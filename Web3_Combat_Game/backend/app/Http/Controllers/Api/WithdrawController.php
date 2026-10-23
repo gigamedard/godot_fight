@@ -297,7 +297,7 @@ class WithdrawController extends Controller
         if (!$pool) {
             return response()->json(['error' => 'Poule introuvable.'], 404);
         }
-        if (!in_array($pool->status, ['finished', 'cancelled'], true)) {
+        if (!in_array($pool->status, ['finished', 'cancelled', 'open', 'pending_creation'], true)) {
             return response()->json(['error' => 'La poule n\'est pas encore terminée.'], 409);
         }
 
@@ -306,9 +306,10 @@ class WithdrawController extends Controller
             return response()->json(['error' => 'Joueur non inscrit dans cette poule.'], 404);
         }
 
-        // Poule annulée = remboursement : seuls les joueurs ayant réellement
-        // déposé (escrow on-chain) peuvent réclamer leur mise.
-        if ($pool->status === 'cancelled' && !$pp->deposited) {
+        // Remboursement (poule non-finie : open/pending_creation/cancelled) :
+        // seuls les joueurs ayant réellement déposé (escrow on-chain) peuvent
+        // réclamer leur mise. Une poule "finished" répartit le butin final.
+        if ($pool->status !== 'finished' && !$pp->deposited) {
             return response()->json(['error' => 'Aucun dépôt à rembourser pour ce joueur.'], 422);
         }
 
