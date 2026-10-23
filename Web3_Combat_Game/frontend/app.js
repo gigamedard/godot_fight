@@ -301,9 +301,8 @@ window.selectLanguage = function(lang) {
 
 // Étape 2 : Connexion du wallet — provider injecté (MetaMask/Core) ou WalletConnect
 // (Core Mobile via deeplink), sinon restauration localStorage. Aucun mock de dev.
-// Chargement paresseux du bundle wallet (web3.iife.js ~2,9 Mo) : uniquement
-// quand une connexion WalletConnect / Core Mobile est nécessaire (aucun provider
-// injecté). Évite de charger 2,9 Mo pour tous les utilisateurs d'extension.
+// Le bundle wallet (web3.iife.js ~2,9 Mo) est préchargé en arrière-plan au démarrage
+// (voir preloadConnectionLibs) pour que la connexion WalletConnect soit instantanée.
 let _walletLibPromise = null;
 function ensureWalletLib() {
     if (window.App2Wallet) return Promise.resolve(window.App2Wallet);
@@ -356,6 +355,22 @@ function ensureQrLibs() {
         (typeof QRCode !== 'undefined') ? Promise.resolve() : loadScript('qrcode.min.js?v=1'),
     ]);
 }
+
+// ── Préchargement des bibliothèques de connexion ─────────────────────────────
+// Dès le chargement de l'app, on lance en arrière-plan (non bloquant) le
+// téléchargement des libs nécessaires à la connexion wallet + au lobby Reverb.
+// Objectif : quand l'utilisateur clique « Connecter », tout est déjà en mémoire
+// (et mis en cache par le Service Worker) → connexion instantanée, sans attendre
+// un téléchargement à la volée (ethers ~479 Ko, bundle WalletConnect ~2,9 Mo).
+// Les appels sont idempotents : ensureEthers/ensureWalletLib/ensureEchoLibs
+// retournent la même promesse s'ils sont appelés à nouveau plus tard.
+(function preloadConnectionLibs() {
+    try {
+        ensureEthers();      // ethers.min.js : signer/contrat (tous wallets)
+        ensureWalletLib();   // web3.iife.js : WalletConnect / Core Mobile
+        ensureEchoLibs();    // echo + pusher : Reverb (présence lobby)
+    } catch (e) { /* non bloquant */ }
+})();
 
 // ── Pont provider EIP-1193 vers le parent (App1) quand App2 est embarqué ─────
 // App2 dans l'iframe App1 n'a pas de provider injecté exploitable (cross-origin)
