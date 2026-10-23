@@ -16,8 +16,8 @@
 | Contrat CombatGame | `0x73F5065cBD382EF0D4b75c9e19f556E1D4Ba40f9` (bloc **352**) |
 | Contrat legacy | `0xA2722921…` (NE PAS utiliser) |
 | Chaîne | Pingala **99999** (`0x1869f`), symbole **TST** |
-| Front déployé (VPS) | `app.js?v=4.61` · `config.js?v=11` · `i18n.js?v=11` · `style.css?v=4.9` · `sw.js?v=23` |
-| Commit code déployé | `d020d4b` |
+| Front déployé (VPS) | `app.js?v=4.63` · `config.js?v=11` · `i18n.js?v=11` · `style.css?v=4.10` · `sw.js?v=24` |
+| Commit code déployé | `d98d865` |
 | Docs / onboarding | `701af02` puis ce commit |
 
 > **Agents** : LOCAL = poste Windows (déploie via SSH) · CLOUD = **root sur le VPS**
