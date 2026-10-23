@@ -283,8 +283,19 @@ class PoolController extends Controller
 
         PoolPlayer::where('pool_id', $id)->where('wallet_address', $wallet)->delete();
 
+        // Créateur d'une poule pending_creation (jamais née) → suppression.
         if ($pool->status === 'pending_creation' && $wallet === strtolower((string) $pool->owner_wallet)) {
             $pool->delete();
+            return response()->json(['status' => 'success']);
+        }
+
+        // Poule vide (tous partis / remboursés) → fermer. Sinon elle resterait
+        // "open" joignable alors que l'escrow est déjà réglé (claimPoolShare a
+        // marqué poolSettled=true) : un nouveau join puis dépôt ferait revert
+        // "Pool already settled".
+        $remaining = PoolPlayer::where('pool_id', $id)->count();
+        if ($remaining === 0) {
+            $pool->update(['status' => 'cancelled', 'finished_at' => now()]);
         }
 
         return response()->json(['status' => 'success']);
