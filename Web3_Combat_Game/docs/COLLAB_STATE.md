@@ -17,7 +17,7 @@
 | Contrat legacy | `0xA2722921…` (NE PAS utiliser) |
 | Chaîne | Pingala **99999** (`0x1869f`), symbole **TST** |
 | Front déployé (VPS) | `app.js?v=4.64` · `config.js?v=11` · `i18n.js?v=11` · `style.css?v=4.10` · `sw.js?v=25` |
-| Commit code déployé | `858d72f` |
+| Commit code déployé | `021dca6` |
 | Docs / onboarding | `701af02` puis ce commit |
 
 > **Agents** : LOCAL = poste Windows (déploie via SSH) · CLOUD = **root sur le VPS**
@@ -79,7 +79,7 @@
 
 | Déploiement | Valeur |
 |---|---|
-| Dernier déployé | `f59a7a4` (front 4.61/style 4.8/sw 22) par CLOUD (2026-10-21) |
+| Dernier déployé | `021dca6` (backend: poule vide → cancelled) par CLOUD (2026-10-23) |
 | Déployeurs | LOCAL, CLOUD |
 | Verrou deploy | (aucun) |
 
